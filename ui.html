@@ -258,6 +258,10 @@
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.65);
     border-color: rgba(255, 255, 255, 0.2);
   }
+  /* 下拉菜单需要越过卡片边界；仅在展开时取消裁切，保留卡片其余状态的圆角光效。 */
+  .spotlight-card:has(.sel-panel.open) {
+    overflow: visible;
+  }
   /* The Border Glow - V3: Sharp & Electric Hairline Mask */
   .spotlight-card::before {
     content: '';
