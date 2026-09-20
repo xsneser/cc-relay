@@ -61,3 +61,5 @@ sentinel.py
 # ── 示例文件白名单保证 ──
 !config.example.json
 !codex-proxy/config.example.yaml
+.claude/
+.playwright-cli/
