@@ -137,21 +137,80 @@ class TestRoutingAndSubagent(unittest.TestCase):
         self.assertEqual(model, "gpt-5.6-sol")
 
     def test_pick_route_opus_and_other_tiers(self):
-        # OPUS 档保持最高优先级 (即便带 subagent header 也是 opus)
-        headers = {"x-claude-code-agent-id": "agent-003"}
+        # 轨道一：CLI 占位符 OPUS_MODEL 始终走 opus 档
+        headers = {"x-claude-code-agent-id": "explore-agent-003"}
         body = {"model": "OPUS_MODEL[1m]"}
         up, model, reason = pick_route(self.conf, headers, body)
         self.assertEqual(reason, "hybrid:opus")
         self.assertEqual(model, "gpt-5.6-sol")
 
-        # SONNET 档
+        # 轨道二：官方模型名 claude-opus-5 在主循环时，依据 system 提示词正确命中 main 档 (而不是 opus 档！)
+        headers = {}
+        body = {
+            "model": "claude-opus-5",
+            "system": "You are an interactive agent that helps users with software engineering tasks.",
+        }
+        up, model, reason = pick_route(self.conf, headers, body)
+        self.assertEqual(reason, "hybrid:main")
+        self.assertEqual(model, "deepseek-flash")
+
+        # 轨道二：官方模型名 claude-opus-5 在主循环无特定提示词时，默认进入 main 档
+        body = {"model": "claude-opus-5"}
+        up, model, reason = pick_route(self.conf, {}, body)
+        self.assertEqual(reason, "hybrid:main")
+        self.assertEqual(model, "deepseek-flash")
+
+        # 轨道二：官方模型名 claude-opus-5 下 Plan 代理依据提示词特征正确命中 agent 档
+        headers = {"x-claude-code-agent-id": "plan-agent-004"}
+        body = {
+            "model": "claude-opus-5",
+            "system": "You are a software architect and planning specialist for Claude Code.",
+        }
+        up, model, reason = pick_route(self.conf, headers, body)
+        self.assertEqual(reason, "hybrid:agent")
+        self.assertEqual(model, "gpt-5.6-sol")
+
+        # 轨道二：官方模型名 claude-opus-5 下 Explore 代理依据提示词特征正确命中 opus 档
+        body = {
+            "model": "claude-opus-5",
+            "system": "You are a file search specialist for Claude Code.",
+        }
+        up, model, reason = pick_route(self.conf, headers, body)
+        self.assertEqual(reason, "hybrid:opus")
+        self.assertEqual(model, "gpt-5.6-sol")
+
+        # 轨道二：官方模型名下 安全审查等任务命中 sonnet 档
+        body = {
+            "model": "claude-opus-5",
+            "system": "You are a security monitor for autonomous AI coding agents.",
+        }
+        up, model, reason = pick_route(self.conf, {}, body)
+        self.assertEqual(reason, "hybrid:sonnet")
+        self.assertEqual(model, "deepseek-chat")
+
+        # 轨道一：CLI 占位符 SONNET_MODEL
         body = {"model": "SONNET_MODEL[1m]"}
         up, model, reason = pick_route(self.conf, {}, body)
         self.assertEqual(reason, "hybrid:sonnet")
         self.assertEqual(model, "deepseek-chat")
 
-        # FAST 档
+        # 轨道一：CLI 占位符 FAST_MODEL
         body = {"model": "FAST_MODEL[1m]"}
+        up, model, reason = pick_route(self.conf, {}, body)
+        self.assertEqual(reason, "hybrid:fast")
+        self.assertEqual(model, "deepseek-flash")
+
+        # 轨道二：官方模型名 会话命名任务命中 fast 档
+        body = {
+            "model": "claude-opus-5",
+            "system": "You are naming a coding session so the user can pick it out.",
+        }
+        up, model, reason = pick_route(self.conf, {}, body)
+        self.assertEqual(reason, "hybrid:fast")
+        self.assertEqual(model, "deepseek-flash")
+
+        # 轨道二：官方长版本号模型 claude-haiku-4-5-20251001 命中 fast 档
+        body = {"model": "claude-haiku-4-5-20251001"}
         up, model, reason = pick_route(self.conf, {}, body)
         self.assertEqual(reason, "hybrid:fast")
         self.assertEqual(model, "deepseek-flash")
