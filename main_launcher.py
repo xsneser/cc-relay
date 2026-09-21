@@ -12,6 +12,7 @@ CC Relay - Windows 独立打包与后台静默启动主入口 (main_launcher.py)
 """
 import os
 import sys
+import re
 import time
 import socket
 import shutil
@@ -142,15 +143,105 @@ def ensure_essential_files():
             except Exception as e:
                 print(f"写入 config.json 失败: {e}", file=sys.stderr)
 
-    # 释放 ui.html (如果磁盘没有，从打包目录复制出来供用户自定义修改)
+def _extract_ui_version(filepath):
+    """从 ui.html 头部提取 <meta name="ui-version" content="..."> 版本号元数据"""
+    if not os.path.isfile(filepath):
+        return None
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            for _ in range(80):
+                line = f.readline()
+                if not line:
+                    break
+                m = re.search(r'<meta\s+name=["\']ui-version["\']\s+content=["\']([0-9]+(?:\.[0-9]+)*)["\']', line)
+                if m:
+                    return tuple(int(p) for p in m.group(1).split('.'))
+    except Exception:
+        pass
+    return None
+
+def _sync_ui_file():
+    """释放并同步 ui.html，防止打包运行或旧版解压导致磁盘残留旧文件使得修复失效"""
     ui_path = os.path.join(EXE_DIR, "ui.html")
+    bundled_ui = os.path.join(BUNDLE_DIR, "ui.html")
+    if not os.path.isfile(bundled_ui) or bundled_ui == ui_path:
+        return
+
+    should_copy = False
     if not os.path.isfile(ui_path):
-        bundled_ui = os.path.join(BUNDLE_DIR, "ui.html")
-        if os.path.isfile(bundled_ui) and bundled_ui != ui_path:
+        should_copy = True
+    else:
+        bundled_ver = _extract_ui_version(bundled_ui)
+        disk_ver = _extract_ui_version(ui_path)
+        if bundled_ver is not None:
+            if disk_ver is None or bundled_ver > disk_ver:
+                should_copy = True
+        else:
             try:
-                shutil.copy2(bundled_ui, ui_path)
+                if os.path.getmtime(bundled_ui) > os.path.getmtime(ui_path):
+                    should_copy = True
             except Exception:
                 pass
+
+    if should_copy:
+        try:
+            if os.path.isfile(ui_path):
+                bak_path = ui_path + ".bak"
+                try:
+                    shutil.copy2(ui_path, bak_path)
+                except Exception:
+                    pass
+            shutil.copy2(bundled_ui, ui_path)
+        except Exception:
+            pass
+
+def ensure_essential_files():
+    # 初始化 config.json
+    conf_path = os.path.join(EXE_DIR, "config.json")
+    if not os.path.isfile(conf_path):
+        bundled_conf = os.path.join(BUNDLE_DIR, "config.json")
+        if os.path.isfile(bundled_conf) and bundled_conf != conf_path:
+            try:
+                shutil.copy2(bundled_conf, conf_path)
+            except Exception:
+                pass
+        else:
+            default_conf = {
+                "listen_host": "127.0.0.1",
+                "listen_port": 8400,
+                "ui_port": 8610,
+                "mode": "hybrid",
+                "model": "deepseek-chat",
+                "upstreams": {
+                    "deepseek": {
+                        "url": "https://api.deepseek.com",
+                        "auth_type": "bearer",
+                        "key_env": "DEEPSEEK_API_KEY",
+                        "real_key": ""
+                    },
+                    "antigravity": {
+                        "url": "http://127.0.0.1:8045",
+                        "auth_type": "bearer",
+                        "key_env": "ANTIGRAVITY_API_KEY",
+                        "real_key": ""
+                    },
+                    "codex": {
+                        "url": "http://127.0.0.1:8317",
+                        "auth_type": "bearer",
+                        "key_env": "CODEX_PROXY_KEY",
+                        "real_key": ""
+                    }
+                }
+            }
+            try:
+                import json
+                with open(conf_path, "w", encoding="utf-8") as f:
+                    json.dump(default_conf, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"写入 config.json 失败: {e}", file=sys.stderr)
+
+    # 释放与同步 ui.html
+    _sync_ui_file()
 
 # 4. 单实例与端口检测
 def is_port_busy(port, host="127.0.0.1"):

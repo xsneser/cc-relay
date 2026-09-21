@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="ui-version" content="2.1.1">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -258,9 +259,31 @@
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.65);
     border-color: rgba(255, 255, 255, 0.2);
   }
-  /* 下拉菜单需要越过卡片边界；仅在展开时取消裁切，保留卡片其余状态的圆角光效。 */
+  /* ══ 通用下拉菜单溢出与层叠上下文提升 (双重保障: .dropdown-open class + :has 伪类) ══ */
+  .spotlight-card.dropdown-open,
   .spotlight-card:has(.sel-panel.open) {
-    overflow: visible;
+    overflow: visible !important;
+    z-index: 100 !important;
+  }
+  .mode-card.dropdown-open,
+  .mode-card:has(.sel-panel.open) {
+    overflow: visible !important;
+    z-index: 120 !important;
+  }
+  .card-hybrid.dropdown-open,
+  .card-hybrid:has(.sel-panel.open) {
+    overflow: visible !important;
+    z-index: 110 !important;
+  }
+  .tier.dropdown-open,
+  .tier:has(.sel-panel.open) {
+    position: relative;
+    z-index: 80 !important;
+  }
+  .sel.dropdown-open,
+  .sel:has(.sel-panel.open) {
+    position: relative;
+    z-index: 60 !important;
   }
   /* The Border Glow - V3: Sharp & Electric Hairline Mask */
   .spotlight-card::before {
@@ -365,7 +388,6 @@
     position: relative;
     z-index: 0;
   }
-  .mode-card:has(.sel-panel.open) { z-index: 70; }
 
   .mode-card-header {
     display: flex;
@@ -593,16 +615,18 @@
     background: rgba(10, 10, 10, 0.98);
     border: 1px solid var(--glass-border-hover);
     border-radius: 14px;
-    z-index: 120;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    z-index: 150;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.12);
     padding: 10px;
     backdrop-filter: blur(28px);
     -webkit-backdrop-filter: blur(28px);
     animation: popIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .tier:nth-child(n+4) .sel-panel {
-    left: auto;
-    right: 0;
+  @media (min-width: 1101px) {
+    .tier:nth-child(n+4) .sel-panel {
+      left: auto;
+      right: 0;
+    }
   }
   @keyframes popIn {
     from { opacity: 0; transform: translateY(-6px) scale(0.98); }
@@ -753,7 +777,6 @@
     position: relative;
     z-index: 0;
   }
-  .card-hybrid:has(.sel-panel.open) { z-index: 60; }
 
   .hb-head {
     display: flex;
@@ -2559,6 +2582,7 @@ const trafficCacheSummary = r => {
 
 // ── 视图切换 ──
 function showView(name) {
+  closeAllDropdowns();
   $('#dashboard-view').style.display = name === 'dashboard' ? 'block' : 'none';
   $('#config-view').style.display = name === 'config' ? 'block' : 'none';
   $('#tab-dashboard').classList.toggle('active', name === 'dashboard');
@@ -2604,24 +2628,96 @@ function buildSel(sel, models, curModel, curEff) {
   ol.innerHTML = html;
 }
 
+function closeAllDropdowns(exceptSel) {
+  $$('.sel-panel.open').forEach(p => {
+    if (!exceptSel || p !== exceptSel.querySelector('.sel-panel')) {
+      p.classList.remove('open', 'model');
+      p.style.left = '';
+      p.style.right = '';
+    }
+  });
+  $$('.sel-btn.open').forEach(b => {
+    if (!exceptSel || b !== exceptSel.querySelector('.sel-btn')) {
+      b.classList.remove('open', 'mode-eff');
+    }
+  });
+  $$('.dropdown-open').forEach(el => {
+    if (!exceptSel || (!el.contains(exceptSel) && el !== exceptSel)) {
+      el.classList.remove('dropdown-open');
+    }
+  });
+}
+
+function adjustSelPanelPosition(panel, sel) {
+  panel.style.left = '0px';
+  panel.style.right = 'auto';
+  const rect = panel.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth || window.innerWidth;
+  const margin = 12;
+  if (rect.right > vw - margin) {
+    panel.style.left = 'auto';
+    panel.style.right = '0px';
+    const flippedRect = panel.getBoundingClientRect();
+    if (flippedRect.left < margin) {
+      const shift = margin - flippedRect.left;
+      panel.style.right = (-shift) + 'px';
+    }
+  } else if (rect.left < margin) {
+    panel.style.left = (margin - rect.left) + 'px';
+    panel.style.right = 'auto';
+  }
+}
+
 function openSel(sel) {
-  $$('.sel-panel.open').forEach(p => { if (p !== sel.querySelector('.sel-panel')) p.classList.remove('open'); });
-  $$('.sel-btn.open').forEach(b => { if (b !== sel.querySelector('.sel-btn')) { b.classList.remove('open'); b.classList.remove('mode-eff'); } });
+  closeAllDropdowns(sel);
   const panel = sel.querySelector('.sel-panel'), btn = sel.querySelector('.sel-btn');
   panel.classList.remove('model');
   btn.classList.add('mode-eff');
-  panel.classList.add('open'); btn.classList.add('open');
+  panel.classList.add('open');
+  btn.classList.add('open');
+
+  sel.classList.add('dropdown-open');
+  const tier = sel.closest('.tier');
+  if (tier) tier.classList.add('dropdown-open');
+  const card = sel.closest('.spotlight-card');
+  if (card) card.classList.add('dropdown-open');
+
+  adjustSelPanelPosition(panel, sel);
 }
 
 function closeSel(sel) {
   const panel = sel.querySelector('.sel-panel'), btn = sel.querySelector('.sel-btn');
-  panel.classList.remove('open', 'model'); btn.classList.remove('open', 'mode-eff');
+  panel.classList.remove('open', 'model');
+  btn.classList.remove('open', 'mode-eff');
+  panel.style.left = '';
+  panel.style.right = '';
+
+  sel.classList.remove('dropdown-open');
+  const tier = sel.closest('.tier');
+  if (tier) tier.classList.remove('dropdown-open');
+  const card = sel.closest('.spotlight-card');
+  if (card && !card.querySelector('.sel-panel.open')) {
+    card.classList.remove('dropdown-open');
+  }
 }
 
 document.addEventListener('click', e => {
   if (!e.target.closest('.sel')) {
-    $$('.sel-panel.open').forEach(p => p.classList.remove('open', 'model'));
-    $$('.sel-btn.open').forEach(b => b.classList.remove('open', 'mode-eff'));
+    closeAllDropdowns();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeAllDropdowns();
+  }
+});
+
+window.addEventListener('resize', () => {
+  const openPanel = document.querySelector('.sel-panel.open');
+  if (openPanel) {
+    const sel = openPanel.closest('.sel');
+    if (sel) adjustSelPanelPosition(openPanel, sel);
   }
 });
 
@@ -2855,14 +2951,13 @@ async function refresh() {
     box.querySelectorAll('.tmod-btn').forEach(b => {
       b.classList.toggle('sel-' + b.dataset.m, b.dataset.m === cur);
     });
-    });
     box.disabled = !hb;
   });
 
   const gmm = (st.gemini_modifier || 'builtin');
   document.querySelectorAll('#gm-mod .tmod-btn').forEach(b => b.classList.toggle('sel-' + b.dataset.m, b.dataset.m === gmm));
 
-  const run = !st.proxy_running, grun = !(st.antigravity_up || (st.upstreams_status || {}).gemini?.available);
+  const run = !!st.proxy_running, grun = !!(st.antigravity_up || (st.upstreams_status || {}).gemini?.available);
   $('#pdot').className = 'dot' + (run ? ' on' : '');
   $('#pdot2').className = 'dot' + (run ? ' on' : '');
   $('#ptxt2').textContent = run ? 'Codex 运行中' : 'Codex 未启动';
@@ -2975,7 +3070,31 @@ async function loadTraffic() {
   } catch (e) {}
   finally { window.scrollTo(0, _sy); }
 }
-$('#b-treset').onclick = async () => { await api('/api/reset', {}); await loadTraffic(); loadCalls(true); };
+$('#b-treset').onclick = async () => {
+  if (!confirm('确定要清零所有流量统计指标与抓包历史记录吗？此操作不可恢复。')) return;
+  const btn = $('#b-treset');
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '清零中…';
+  try {
+    const res = await api('/api/reset', {});
+    if (res && res.error) {
+      toast('清零失败: ' + res.error, true);
+      return;
+    }
+    for (const k in _dc) delete _dc[k];
+    _clSig = null;
+    _callsRawList = [];
+    await loadTraffic();
+    await loadCalls(true);
+    toast('统计指标与抓包历史已清零');
+  } catch (e) {
+    toast('清零操作失败: ' + e, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+};
 
 // ── 抓包审计查看器 (Packet Sniffer Matrix Console) ──
 const _dc = {};
@@ -2985,12 +3104,33 @@ let _clLimit = 120;
 let _clFilter = 'all';
 let _clLoading = false;
 
+function copyCallDetailJson(idx) {
+  const item = _dc[idx];
+  if (item && item.rawJson) {
+    navigator.clipboard.writeText(item.rawJson);
+    toast('已复制完整调用 JSON');
+  } else {
+    toast('未找到该条记录的 JSON 数据', true);
+  }
+}
+
+function copyCallDetailSys(idx) {
+  const item = _dc[idx];
+  if (item && item.sys) {
+    navigator.clipboard.writeText(item.sys);
+    toast('已复制 System 提示词');
+  } else {
+    toast('该条记录无 System 提示词', true);
+  }
+}
+
 // 1. 抓包数据拉取
 async function loadCalls(force, newLimit) {
   if (newLimit) _clLimit = Number(newLimit);
+  if (_clLoading && !force) return;
+  _clLoading = true;
   const refBtn = $('#b-crefresh');
   if (refBtn && force) refBtn.classList.add('spinning');
-  _clLoading = true;
 
   try {
     const d = await api('/api/calls?n=' + _clLimit);
@@ -3119,7 +3259,18 @@ function renderCallsTable(calls) {
   }
   html += '</tbody></table>';
   body.innerHTML = html;
-  body.querySelectorAll('tr[data-idx]').forEach(tr => tr.onclick = () => toggleDetail(tr.dataset.idx));
+
+  // 采用容器事件委托，避免数百行逐个绑定监听器的性能与内存开销
+  if (!body._delegatedClick) {
+    body._delegatedClick = true;
+    body.addEventListener('click', (e) => {
+      if (e.target.closest('.detail') || e.target.closest('button') || e.target.closest('a')) return;
+      const tr = e.target.closest('tr[data-idx]');
+      if (tr && body.contains(tr)) {
+        toggleDetail(tr.dataset.idx);
+      }
+    });
+  }
 
   // 恢复已展开抽屉
   Object.keys(dtops).forEach(id => {
@@ -3145,13 +3296,26 @@ async function fetchDetail(idx) {
     const hd = Object.entries(r.headers || {}).filter(([k]) => !k.startsWith('X-Stainless')).map(([k, v]) => k + ': ' + String(v).slice(0, 120)).join('\n');
     const sys = b.system ? (typeof b.system === 'string' ? b.system : JSON.stringify(b.system, null, 2)) : '(无 System 提示词)';
 
-    const msgsList = b.messages || [];
+    const msgsList = (b && typeof b === 'object' && Array.isArray(b.messages)) ? b.messages : [];
     const msgs = msgsList.map((m, i) => {
+      if (!m) return '';
       let t = '';
-      if (typeof m.content === 'string') t = m.content;
-      else if (Array.isArray(m.content)) t = m.content.map(x => x.type === 'text' ? x.text : (x.type === 'tool_use' ? '[tool_use ' + x.name + ']' : x.type === 'tool_result' ? '[tool_result]' : '[' + x.type + ']')).join(' ');
-      return '── 消息 #' + (i + 1) + ' [' + (m.role || 'user').toUpperCase() + '] ──\n' + String(t).slice(0, 800);
-    }).join('\n\n');
+      if (typeof m === 'string') t = m;
+      else if (typeof m.content === 'string') t = m.content;
+      else if (Array.isArray(m.content)) {
+        t = m.content.map(x => {
+          if (!x) return '';
+          if (typeof x === 'string') return x;
+          if (x.type === 'text') return x.text || '';
+          if (x.type === 'tool_use') return '[tool_use ' + (x.name || '') + ']';
+          if (x.type === 'tool_result') return '[tool_result ' + (x.tool_use_id || '') + ']';
+          return '[' + (x.type || 'block') + ']';
+        }).join(' ');
+      } else if (m.content != null) {
+        t = JSON.stringify(m.content);
+      }
+      return '── 消息 #' + (i + 1) + ' [' + escHtml((m.role || 'user').toUpperCase()) + '] ──\n' + String(t).slice(0, 800);
+    }).filter(Boolean).join('\n\n');
 
     const agentId = (r.headers && (r.headers['x-claude-code-agent-id'] || r.headers['X-Claude-Code-Agent-Id'])) || '(主循环交互)';
     const cu = r.cache;
@@ -3161,6 +3325,7 @@ async function fetchDetail(idx) {
       : '上游未返回缓存统计元数据';
 
     const rawJson = JSON.stringify(r, null, 2);
+    _dc[idx] = { record: r, rawJson, sys, html: "" };
 
     const html = `
       <div class="detail-topbar">
@@ -3173,7 +3338,7 @@ async function fetchDetail(idx) {
           <span class="detail-chip">指纹清理: <b>${r.stripped_banner ? '已剔除 ' + r.stripped_banner + ' 块' : '未开启'}</b></span>
           <span class="detail-chip">子代理 ID: <b>${escHtml(String(agentId).slice(0, 16))}</b></span>
         </div>
-        <button type="button" class="pm-act-btn" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(rawJson)}'));toast('已复制完整调用 JSON');">
+        <button type="button" class="pm-act-btn" onclick="copyCallDetailJson('${r.idx}')">
           📋 复制完整抓包 JSON
         </button>
       </div>
@@ -3181,7 +3346,7 @@ async function fetchDetail(idx) {
         <div class="detail-box">
           <div class="detail-box-title">
             <span>System 提示词 (${sys.length} 字符)</span>
-            <button type="button" class="pm-act-btn" style="padding:2px 6px;font-size:9.5px;" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(sys)}'));toast('已复制 System 提示词');">复制</button>
+            <button type="button" class="pm-act-btn" style="padding:2px 6px;font-size:9.5px;" onclick="copyCallDetailSys('${r.idx}')">复制</button>
           </div>
           <pre class="detail-pre">${escHtml(sys.slice(0, 3000))}${sys.length > 3000 ? '\n\n... (余下 ' + (sys.length - 3000) + ' 字符已折叠)' : ''}</pre>
         </div>
@@ -3203,7 +3368,7 @@ async function fetchDetail(idx) {
       </div>
     `;
 
-    _dc[idx] = { html };
+    _dc[idx].html = html;
     if (el) el.innerHTML = html;
   } catch (e) {
     if (el) el.textContent = '加载详情失败: ' + e;

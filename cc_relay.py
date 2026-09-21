@@ -366,6 +366,8 @@ REASONING_MAP = {
 EFFORT_VALUES = tuple(REASONING_MAP)
 _MODELS_CACHE = {"ts": 0, "ds": list(DEEPSEEK_MODELS), "cx": list(CODEX_MODELS),
                  "gm": list(GEMINI_MODELS), "health": {}}
+_MODELS_LOCK = threading.Lock()
+_MODELS_REFRESHING = False
 
 
 def _fetch_models(base, key, timeout=6, prefix=None):
@@ -460,31 +462,43 @@ def probe_upstream(conf, name="antigravity", timeout=6):
                 "messages_path": base + "/v1/messages"}
 
 
+def _bg_fetch_models(conf, now):
+    global _MODELS_REFRESHING
+    try:
+        ds = _fetch_models((_upstream_conf(conf, "deepseek")).get("base", ""),
+                           _key_for(conf, _upstream_conf(conf, "deepseek"), "deepseek"), prefix="deepseek-")
+        cx = _fetch_models((_upstream_conf(conf, "codex")).get("base", ""),
+                           _key_for(conf, _upstream_conf(conf, "codex"), "codex"), prefix="gpt-")
+        gm = _fetch_models((_upstream_conf(conf, "antigravity")).get("base", ""),
+                           _key_for(conf, _upstream_conf(conf, "antigravity"), "antigravity"), prefix="gemini-")
+        if not ds:
+            ds = list(DEEPSEEK_MODELS)
+        if not cx:
+            cx = list(CODEX_MODELS)
+        if not gm:
+            gm = list(GEMINI_MODELS)
+        with _MODELS_LOCK:
+            _MODELS_CACHE.update({"ts": now, "ds": ds, "cx": cx, "gm": gm,
+                                  "health": {"deepseek": bool(ds), "codex": bool(cx),
+                                              "antigravity": bool(gm)}})
+    finally:
+        _MODELS_REFRESHING = False
+
+
 def live_models(conf, ttl=120):
-    """实时模型列表(带缓存): 优先从三上游拉, 失败回退各自常量"""
+    """实时模型列表(带缓存): 后台异步从三上游拉, 避免网络阻塞主工作线程, 失败回退各自常量"""
+    global _MODELS_REFRESHING
     now = time.time()
-    if now - _MODELS_CACHE["ts"] < ttl:
-        return _MODELS_CACHE
-    ds = _fetch_models((_upstream_conf(conf, "deepseek")).get("base", ""),
-                       _key_for(conf, _upstream_conf(conf, "deepseek"), "deepseek"), prefix="deepseek-")
-    cx = _fetch_models((_upstream_conf(conf, "codex")).get("base", ""),
-                       _key_for(conf, _upstream_conf(conf, "codex"), "codex"), prefix="gpt-")
-    gm = _fetch_models((_upstream_conf(conf, "antigravity")).get("base", ""),
-                       _key_for(conf, _upstream_conf(conf, "antigravity"), "antigravity"), prefix="gemini-")
-    if not ds:
-        ds = list(DEEPSEEK_MODELS)
-    if not cx:
-        cx = list(CODEX_MODELS)
-    if not gm:
-        gm = list(GEMINI_MODELS)
-    _MODELS_CACHE.update({"ts": now, "ds": ds, "cx": cx, "gm": gm,
-                          "health": {"deepseek": bool(ds), "codex": bool(cx),
-                                      "antigravity": bool(gm)}})
-    return _MODELS_CACHE
+    with _MODELS_LOCK:
+        expired = (now - _MODELS_CACHE["ts"] >= ttl)
+        if expired and not _MODELS_REFRESHING:
+            _MODELS_REFRESHING = True
+            threading.Thread(target=_bg_fetch_models, args=(conf, now), daemon=True).start()
+        return dict(_MODELS_CACHE)
 
 
 def _strip_model_suffix(model):
-    """剥离 CC 附加的后缀: deepseek-chat[1m] / 本地中转[1m] -> 基名"""
+    """剥离 CC 附加的后缀: deepseek-chat[1m] / relay-main[1m] / 本地中转[1m] -> 基名"""
     if not model:
         return "", ""
     import re as _re
@@ -494,20 +508,55 @@ def _strip_model_suffix(model):
     return model.strip(), ""
 
 
+RELAY_MAIN_PLACEHOLDERS = {
+    "本地中转",
+    "relay",
+    "local",
+    "relay-main",
+    "cc-relay",
+    "main",
+}
+
+
+def is_relay_placeholder(model: str) -> bool:
+    """判断是否为中转占位模型名 (不区分大小写，支持常见变体与前缀)"""
+    if not model:
+        return True
+    m = str(model).strip().lower()
+    if m in RELAY_MAIN_PLACEHOLDERS:
+        return True
+    if m.startswith(("relay-main", "relay_", "local-", "local_")):
+        return True
+    if m in ("relay", "local") or "本地中转" in m:
+        return True
+    return False
+
+
 def _is_subagent(headers, body_json):
-    """识别子代理: 请求头带 x-claude-code-agent-id, 或 system 里 billing header
+    """识别子代理: 请求头带 x-claude-code-agent-id (大小写不敏感), 或 system 里 billing header
     含 cc_is_subagent=true, 或提示含 'Claude Agent SDK' / 'You are a Claude agent'
-    (主循环的 system 是 'You are Claude Code', 不冲突)"""
+    / 'software architect and planning specialist' 等 (Plan 代理特定特征)"""
     try:
-        if (headers or {}).get("x-claude-code-agent-id"):
-            return True
+        hdrs = headers or {}
+        if hasattr(hdrs, "items"):
+            for k, v in hdrs.items():
+                if str(k).strip().lower() == "x-claude-code-agent-id" and v:
+                    return True
         sys = (body_json or {}).get("system")
         txt = ""
         if isinstance(sys, str):
             txt = sys
         elif isinstance(sys, list):
             txt = " ".join((c.get("text") or "") for c in sys if isinstance(c, dict))
-        return ("cc_is_subagent=true" in txt) or ("Claude Agent SDK" in txt) or ("You are a Claude agent" in txt)
+        signatures = (
+            "cc_is_subagent=true",
+            "Claude Agent SDK",
+            "You are a Claude agent",
+            "software architect and planning specialist",
+            "planning specialist for Claude Code",
+            "You are a software engineer for Claude Code",
+        )
+        return any(sig in txt for sig in signatures)
     except Exception:
         return False
 
@@ -822,9 +871,9 @@ def pick_route(conf, headers, body_json):
     raw_model = ""
     if isinstance(body_json, dict):
         raw_model = body_json.get("model") or ""
-    # 剥离 [1m] 等后缀; 若基名是中转占位名(本地中转等), 视为未指定模型
+    # 剥离 [1m] 等后缀; 若基名是中转占位名(relay-main, 本地中转等), 视为未指定模型
     model, _suffix = _strip_model_suffix(raw_model)
-    if not model or model in ("本地中转", "relay", "local"):
+    if is_relay_placeholder(model):
         model = ""
 
     if route == "codex":
@@ -844,24 +893,25 @@ def pick_route(conf, headers, body_json):
     tier = router.get("tiers") or {}
     def _up(m):
         return provider_for_model(m, conf) or "deepseek"
+    m_lower = model.lower()
     # OPUS 档(plan/复杂推理) -> 高价值模型
-    if model in ("OPUS_MODEL", "claude-opus-5", "claude-opus-4-6"):
+    if m_lower in ("opus_model", "claude-opus-5", "claude-opus-4-6", "relay-opus"):
         m = (tier.get("opus") or hv).strip()
         return _up(m), m, "hybrid:opus"
     # SONNET 档(子代理) -> 可单独配
-    if model in ("SONNET_MODEL", "claude-sonnet-5"):
+    if m_lower in ("sonnet_model", "claude-sonnet-5", "relay-sonnet"):
         m = (tier.get("sonnet") or dd).strip()
         return _up(m), m, "hybrid:sonnet"
     # FAST 档(后台小调用)
-    if model in ("FAST_MODEL", "claude-haiku"):
+    if m_lower in ("fast_model", "claude-haiku", "relay-fast"):
         m = (tier.get("fast") or dd).strip()
         return _up(m), m, "hybrid:fast"
     if provider_for_model(model, conf) == "codex":
         return "codex", model, "hybrid:gpt-direct"
     if provider_for_model(model, conf) == "antigravity":
         return "antigravity", model, "hybrid:antigravity-direct"
-    # 子代理档(Claude Agent SDK, model=本地中转) -> 单独分流, 不并入主模型档
-    if not model and _is_subagent(headers, body_json):
+    # 子代理档(Claude Agent SDK / Plan 代理, model 为空或中转占位名) -> 单独分流, 不并入主模型档
+    if (not model or is_relay_placeholder(model)) and _is_subagent(headers, body_json):
         m = (tier.get("agent") or dd).strip()
         return _up(m), m, "hybrid:agent"
     # 主模型档 / 其余；默认保持旧配置的 DeepSeek 行为
@@ -968,6 +1018,8 @@ def _resp_cache_usage(resp_body):
             continue
         payload = line[5:].strip()
         if not payload or payload == "[DONE]":
+            continue
+        if "usage" not in payload and "cache" not in payload:
             continue
         try:
             walk(json.loads(payload))
@@ -1102,8 +1154,16 @@ def _find_record_by_idx(target_idx, max_bytes=800_000_000):
     return None
 
 
+_STATS_CACHE = {"ts": 0.0, "idx": -1, "data": None}
+_STATS_LOCK = threading.Lock()
+
+
 def stats_snapshot():
     """给 UI 的实时流量(从文件尾读足够条数, 适配超大单条记录)"""
+    now = time.time()
+    with _STATS_LOCK:
+        if _STATS_CACHE["data"] is not None and _STATS_CACHE["idx"] == _IDX[0] and (now - _STATS_CACHE["ts"] < 2.0):
+            return dict(_STATS_CACHE["data"])
     recs = _iter_records_tail()
     by = {}
     for r in recs:
@@ -1113,7 +1173,7 @@ def stats_snapshot():
                                 'sent': r.get('sent_model'), 'req': 0, 'ok': 0, 'err': 0, 'last': 0,
                                 'input_tokens': 0, 'cache_read_tokens': 0,
                                 'cache_creation_tokens': 0, 'cache_requests': 0})
-        usage = _resp_cache_usage(r.get('resp_body'))
+        usage = r.get('cache') if r.get('cache') is not None else _resp_cache_usage(r.get('resp_body'))
         if usage:
             b['input_tokens'] += usage.get('cache_total_tokens', 0) or 0
             b['cache_read_tokens'] += usage.get('cache_read_tokens', 0) or 0
@@ -1137,7 +1197,7 @@ def stats_snapshot():
     if route == 'gemini':
         route = 'antigravity'
     # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶。
-    return {'route': route, 'mode': route,
+    res = {'route': route, 'mode': route,
             'model': rt.get('model', ''),
             'models_ds': lm['ds'], 'models_codex': lm['cx'], 'models_gemini': lm['gm'],
             # 旧 UI / API 兼容别名
@@ -1195,6 +1255,11 @@ def stats_snapshot():
                 'gemini': {'available': antigravity_up(conf), 'managed': True},
             },
             'last_up': _UP['last'], 'last_model': _UP['last_model']}
+    with _STATS_LOCK:
+        _STATS_CACHE["ts"] = time.time()
+        _STATS_CACHE["idx"] = _IDX[0]
+        _STATS_CACHE["data"] = res
+    return res
 
 
 # ---------- HTTP ----------
@@ -1458,6 +1523,7 @@ class Relay(BaseHTTPRequestHandler):
                 "custom_prompt": custom_prompt_applied,
                 "upstream": upstream, "resp_status": status,
                 "resp_body": rbody.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)],
+                "cache": _resp_cache_usage(rbody.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)]),
                 "resp_error": err,
             })
         except Exception:
@@ -1527,7 +1593,7 @@ class UIHandler(BaseHTTPRequestHandler):
         for r in recs:
             b = r.get("body") or {}
             h = {k.lower(): v for k, v in (r.get("headers") or {}).items()}
-            cache = _resp_cache_usage(r.get("resp_body"))
+            cache = r.get("cache") if r.get("cache") is not None else _resp_cache_usage(r.get("resp_body"))
             out.append({
                 "idx": r.get("idx"),
                 "ts": r.get("ts"),
@@ -1559,7 +1625,7 @@ class UIHandler(BaseHTTPRequestHandler):
         r = _find_record_by_idx(idx)
         if r:
             out = dict(r)
-            out["cache"] = _resp_cache_usage(r.get("resp_body"))
+            out["cache"] = r.get("cache") if r.get("cache") is not None else _resp_cache_usage(r.get("resp_body"))
             return out
         return {"error": "not found"}
 
@@ -1748,11 +1814,26 @@ class UIHandler(BaseHTTPRequestHandler):
             else:
                 self._json({"error": "unsupported upstream action"}, 400)
         elif p == "/api/reset":
-            try:
-                open(RECORDS, "w").close()
-            except Exception:
-                pass
-            self._json({"ok": True})
+            err = None
+            for attempt in range(5):
+                try:
+                    with LOCK:
+                        with open(RECORDS, "w", encoding="utf-8") as f:
+                            pass
+                        _IDX[0] = 0
+                        with _STATS_LOCK:
+                            _STATS_CACHE["ts"] = 0.0
+                            _STATS_CACHE["idx"] = -1
+                            _STATS_CACHE["data"] = None
+                    err = None
+                    break
+                except Exception as e:
+                    err = e
+                    time.sleep(0.05)
+            if err:
+                self._json({"error": f"清零记录失败: {err}"}, 500)
+            else:
+                self._json({"ok": True})
         elif p == "/api/prompts":
             tier = data.get("tier")
             custom_txt = data.get("custom")
