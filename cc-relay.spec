@@ -12,11 +12,14 @@ BASE_DIR = os.path.abspath(os.getcwd())
 datas = [
     ('ui.html', '.'),
     ('config.example.json', '.'),
+    ('THIRD_PARTY_NOTICES.md', '.'),
 ]
 
 # 如果存在 custom_modifier.py 等可选模块，确保打包
 hiddenimports = [
     'cc_relay',
+    'codex_login',
+    'codex_callback',
     'custom_modifier',
     'urllib.request',
     'urllib.error',

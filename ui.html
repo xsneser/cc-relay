@@ -1862,6 +1862,36 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
   }
+  .codex-login-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin: 0 0 16px;
+    letter-spacing: 0;
+  }
+  .codex-login-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 122px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    background: #fff;
+    color: #111;
+    font: 600 12px var(--font-sans);
+    cursor: pointer;
+  }
+  .codex-login-button:disabled { opacity: .55; cursor: wait; }
+  .codex-login-button svg { width: 16px; height: 16px; flex: none; }
+  .codex-login-status { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+  .codex-login-status[data-status="ok"] { color: #39c998; }
+  .codex-login-status[data-status="error"],
+  .codex-login-status[data-status="timeout"] { color: #ff7272; }
+  .codex-login-link { color: #7ecaff; font-size: 12px; white-space: nowrap; }
   .config-field {
     display: flex;
     flex-direction: column;
@@ -2550,12 +2580,21 @@ function toast(msg, err) {
 }
 
 async function api(path, body) {
-  const r = await fetch(path, {
-    method: body ? 'POST' : 'GET',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  return r.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), body ? 60000 : 20000);
+  try {
+    const r = await fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'Content-Type': 'application/json',
+        ...(path.startsWith('/api/codex/login') ? { 'X-CC-Relay-UI': '1' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const noJunk = m => m && !m.startsWith('gpt-image') && m !== 'codex-auto-review';
@@ -2814,6 +2853,92 @@ document.querySelectorAll('.tmod-btn').forEach(btn => btn.addEventListener('clic
 
 // ── 连接配置交互 ──
 let _configDirty = false, _configLoaded = false;
+let _codexLogin = { status: 'idle', message: '尚未登录' };
+let _codexLoginBusy = false, _codexLoginTimer = null, _codexLoginRequest = null;
+let _codexLoginRevision = 0, _codexLoginPollFailures = 0;
+function codexAuthURL(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'auth.openai.com'
+      && !url.username && !url.password && (!url.port || url.port === '443') ? url.href : '';
+  } catch (_) { return ''; }
+}
+function paintCodexLogin() {
+  const button = $('#codex-login'), status = $('#codex-login-status'), link = $('#codex-login-link');
+  if (!button || !status || !link) return;
+  const waiting = _codexLogin.status === 'waiting';
+  button.disabled = _codexLoginBusy || waiting;
+  button.querySelector('span').textContent = _codexLoginBusy ? '启动中...' : waiting ? '等待授权' : 'Codex 登录';
+  status.dataset.status = _codexLogin.status;
+  status.textContent = _codexLoginBusy ? '正在启动认证服务' : (_codexLogin.message || ({
+    idle: '尚未登录', waiting: '等待浏览器授权', ok: '已登录', error: '登录失败', timeout: '授权超时，请重新登录'
+  }[_codexLogin.status] || '状态未知'));
+  const url = waiting ? codexAuthURL(_codexLogin.url) : '';
+  link.hidden = !url;
+  if (url) link.href = url; else link.removeAttribute('href');
+}
+function scheduleCodexLoginPoll() {
+  clearTimeout(_codexLoginTimer);
+  if (_codexLogin.status === 'waiting' && !_codexLoginBusy) {
+    _codexLoginTimer = setTimeout(refreshCodexLogin, Math.min(10000, 2000 * (1 + _codexLoginPollFailures)));
+  }
+}
+function refreshCodexLogin() {
+  if (_codexLoginBusy) return Promise.resolve();
+  if (_codexLoginRequest) return _codexLoginRequest;
+  const revision = _codexLoginRevision;
+  _codexLoginRequest = (async () => {
+    try {
+      const result = await api('/api/codex/login/status');
+      if (revision !== _codexLoginRevision) return;
+      _codexLogin = result; _codexLoginPollFailures = 0;
+    } catch (_) {
+      if (revision !== _codexLoginRevision) return;
+      _codexLoginPollFailures++;
+      _codexLogin = { ..._codexLogin, message: '登录状态暂时不可用，正在重试' };
+      if (_codexLoginPollFailures >= 6 || _codexLogin.status !== 'waiting') {
+        _codexLogin = { status: 'error', message: '无法读取登录状态，请重试或刷新配置' };
+      }
+    } finally {
+      _codexLoginRequest = null;
+      paintCodexLogin(); scheduleCodexLoginPoll();
+    }
+  })();
+  return _codexLoginRequest;
+}
+async function startCodexLogin() {
+  if (_codexLoginBusy || _codexLogin.status === 'waiting') return;
+  if (_configDirty) { toast('请先保存或刷新连接配置，再登录 Codex', true); return; }
+  let popup = null;
+  try { popup = window.open('about:blank', '_blank'); if (popup) popup.opener = null; } catch (_) {}
+  _codexLoginBusy = true; _codexLoginRevision++;
+  clearTimeout(_codexLoginTimer); paintCodexLogin();
+  try {
+    _codexLogin = await api('/api/codex/login', {});
+    const url = codexAuthURL(_codexLogin.url);
+    if (_codexLogin.status === 'waiting' && url) {
+      if (popup && !popup.closed) popup.location.replace(url);
+    } else {
+      if (popup && !popup.closed) popup.close();
+      if (_codexLogin.status === 'waiting') _codexLogin = { status: 'error', message: '授权地址无效，请重试' };
+    }
+  } catch (_) {
+    if (popup && !popup.closed) popup.close();
+    _codexLogin = { status: 'error', message: '启动请求失败，请刷新配置检查状态后重试' };
+  } finally {
+    _codexLoginBusy = false; paintCodexLogin(); scheduleCodexLoginPoll();
+  }
+}
+function appendCodexLogin(card) {
+  const row = document.createElement('div'); row.className = 'codex-login-row';
+  // Lucide log-in, v0.468.0. License: THIRD_PARTY_NOTICES.md.
+  row.innerHTML = '<button type="button" id="codex-login" class="codex-login-button" title="Codex 登录">'
+    + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg>'
+    + '<span>Codex 登录</span></button><span id="codex-login-status" class="codex-login-status" role="status" aria-live="polite"></span>'
+    + '<a id="codex-login-link" class="codex-login-link" target="_blank" rel="noopener noreferrer" hidden>打开授权页</a>';
+  row.querySelector('button').addEventListener('click', startCodexLogin);
+  card.appendChild(row);
+}
 function markConfigDirty() { _configDirty = true; }
 function configField(labelText, cls, type, value, placeholder) {
   const field = document.createElement('div'); field.className = 'config-field';
@@ -2849,6 +2974,7 @@ function renderConfig(cfg) {
     const b = document.createElement('b'); b.textContent = name; title.appendChild(b);
     const code = document.createElement('code'); code.textContent = info.key_env ? 'key_env: ' + info.key_env : '未配置 key_env'; title.appendChild(code);
     card.appendChild(title);
+    if (name === 'codex') appendCodexLogin(card);
     const grid = document.createElement('div'); grid.className = 'config-grid';
     const base = configField('Base URL', 'cfg-base', 'url', info.base, 'https://example.com/v1');
     const proxy = configField('上游代理 URL', 'cfg-up-proxy', 'text', info.proxy_url, '留空直连；可填 direct');
@@ -2857,6 +2983,8 @@ function renderConfig(cfg) {
     card.appendChild(grid); root.appendChild(card);
   });
   _configDirty = false; _configLoaded = true;
+  paintCodexLogin();
+  refreshCodexLogin();
 }
 async function loadConfig() {
   try {
@@ -2901,8 +3029,27 @@ $('#tab-dashboard').addEventListener('click', () => {
 });
 
 // ── 状态轮询与刷新 ──
-async function refresh() {
-  st = await api('/api/status');
+let _statusRequest = null;
+function refresh() {
+  if (_statusRequest) return _statusRequest;
+  _statusRequest = (async () => {
+    try {
+      st = await api('/api/status');
+      if (st.error) throw new Error(st.error);
+      renderStatus();
+      await loadTraffic(st);
+    } catch (e) {
+      $('#routedot').className = 'dot';
+      $('#tf-since').textContent = '状态获取失败，正在重试';
+      console.error('Status refresh failed:', e);
+    } finally {
+      _statusRequest = null;
+    }
+  })();
+  return _statusRequest;
+}
+
+function renderStatus() {
   const _sy = window.scrollY;
   const route = st.route || st.mode || 'hybrid';
   const ds = route === 'deepseek', hb = route === 'hybrid', cx = route === 'codex', gm = route === 'antigravity' || route === 'gemini';
@@ -2958,9 +3105,10 @@ async function refresh() {
   document.querySelectorAll('#gm-mod .tmod-btn').forEach(b => b.classList.toggle('sel-' + b.dataset.m, b.dataset.m === gmm));
 
   const run = !!st.proxy_running, grun = !!(st.antigravity_up || (st.upstreams_status || {}).gemini?.available);
-  $('#pdot').className = 'dot' + (run ? ' on' : '');
-  $('#pdot2').className = 'dot' + (run ? ' on' : '');
-  $('#ptxt2').textContent = run ? 'Codex 运行中' : 'Codex 未启动';
+  $('#pdot').className = 'dot' + (run || grun ? ' on' : '');
+  $('#pdot2').className = 'dot' + (run || grun ? ' on' : '');
+  $('#ptxt2').textContent = grun ? (run ? 'Codex / Gemini 运行中' : 'Gemini 运行中') :
+    (run ? 'Codex 运行中' : '本地上游未启动');
   $('#ptxt').innerHTML = 'Codex :8317 <b>' + (run ? '运行中' : '未启动') + '</b> ｜ Gemini :8045 <b>' + (grun ? '运行中' : '未启动') + '</b>';
 
   const rb = $('#bd-route'); rb.className = 'badge route-' + route;
@@ -3013,13 +3161,15 @@ $('#b-pstart').onclick = async () => { await api('/api/proxy', { action: 'start'
 $('#b-pstop').onclick = async () => { await api('/api/proxy', { action: 'stop' }); await refresh(); };
 
 // ── 流量与指标监控 ──
-async function loadTraffic() {
+async function loadTraffic(snapshot) {
+  if (!snapshot) return refresh();
   let _sy = 0;
   try {
-    const t = await api('/api/status');
+    const t = snapshot;
     const rows = t.rows || [];
     _sy = window.scrollY;
-    $('#tf-since').textContent = 'Codex 服务: ' + (t.codex_up ? 'ONLINE 运行中' : 'OFFLINE 未运行');
+    $('#tf-since').textContent = 'Codex: ' + (t.codex_up ? '运行中' : '未启动') +
+      ' ｜ Gemini: ' + (t.antigravity_up ? '运行中' : '未启动');
     const body = $('#tf-body');
     const req = rows.reduce((a, r) => a + (r.req || 0), 0);
     const ok = rows.reduce((a, r) => a + (r.ok || 0), 0);
@@ -3067,7 +3217,10 @@ async function loadTraffic() {
     }
     html += '</tbody></table>';
     body.innerHTML = html;
-  } catch (e) {}
+  } catch (e) {
+    $('#tf-since').textContent = '统计显示失败，正在重试';
+    console.error('Traffic render failed:', e);
+  }
   finally { window.scrollTo(0, _sy); }
 }
 $('#b-treset').onclick = async () => {
@@ -3601,7 +3754,6 @@ $('#pm-fold').addEventListener('click', (e) => {
 });
 
 refresh(); setInterval(refresh, 4000);
-loadTraffic(); setInterval(loadTraffic, 3000);
 loadCalls(); setInterval(loadCalls, 5000);
 loadPromptsData(); setInterval(loadPromptsData, 6000);
 </script>

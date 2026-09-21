@@ -3,7 +3,14 @@
 """
 测试 cc-relay 路由逻辑、中转占位模型识别以及子代理 (Plan 代理) 识别
 """
+import os
+import sys
 import unittest
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
 from cc_relay import (
     _strip_model_suffix,
     is_relay_placeholder,
@@ -214,7 +221,6 @@ class TestRoutingAndSubagent(unittest.TestCase):
         up, model, reason = pick_route(self.conf, {}, body)
         self.assertEqual(reason, "hybrid:fast")
         self.assertEqual(model, "deepseek-flash")
-
 
 if __name__ == "__main__":
     unittest.main()

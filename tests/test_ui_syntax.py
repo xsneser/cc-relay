@@ -9,9 +9,12 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 UI_PATH = os.path.join(BASE_DIR, "ui.html")
 
 

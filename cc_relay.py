@@ -36,6 +36,17 @@ def load_conf():
 
 
 CONF_LOCK = threading.Lock()
+_CODEX_LOGIN = None
+_CODEX_LOGIN_LOCK = threading.Lock()
+
+
+def get_codex_login():
+    global _CODEX_LOGIN
+    with _CODEX_LOGIN_LOCK:
+        if _CODEX_LOGIN is None:
+            from codex_login import CodexLogin
+            _CODEX_LOGIN = CodexLogin(BASE, load_conf, _save_conf, CONF_LOCK)
+        return _CODEX_LOGIN
 
 
 def _save_conf(conf):
@@ -1278,48 +1289,71 @@ def _find_record_by_idx(target_idx, max_bytes=800_000_000):
     return None
 
 
-_STATS_CACHE = {"ts": 0.0, "idx": -1, "data": None}
+_STATUS_TAIL_BYTES = 500_000_000
+_CALLS_TAIL_BYTES = 600_000_000
+_CALLS_CACHE_LIMIT = 8
+_STATS_CACHE = {"fingerprint": None, "rows": None, "total": 0}
+_CALLS_CACHE = {}
 _STATS_LOCK = threading.Lock()
+_CALLS_LOCK = threading.Lock()
+
+
+def _records_fingerprint():
+    """On-disk cache key; intentionally independent of this process's _IDX."""
+    try:
+        stat = os.stat(RECORDS)
+    except OSError:
+        return (os.path.abspath(RECORDS), None, None, None, None)
+    return (os.path.abspath(RECORDS), getattr(stat, "st_dev", None),
+            getattr(stat, "st_ino", None), stat.st_mtime_ns, stat.st_size)
 
 
 def stats_snapshot():
-    """给 UI 的实时流量(从文件尾读足够条数, 适配超大单条记录)"""
-    now = time.time()
+    """Cache record aggregates; configuration and model state remain live per call."""
     with _STATS_LOCK:
-        if _STATS_CACHE["data"] is not None and _STATS_CACHE["idx"] == _IDX[0] and (now - _STATS_CACHE["ts"] < 2.0):
-            return dict(_STATS_CACHE["data"])
-    recs = _iter_records_tail()
-    by = {}
-    for r in recs:
-        real_model = _resp_model(r.get('resp_body')) or r.get('sent_model') or r.get('orig_model')
-        key = (r.get('route'), real_model)
-        b = by.setdefault(key, {'route': r.get('route'), 'model': real_model,
-                                'sent': r.get('sent_model'), 'req': 0, 'ok': 0, 'err': 0, 'last': 0,
-                                'input_tokens': 0, 'cache_read_tokens': 0,
-                                'cache_creation_tokens': 0, 'cache_requests': 0})
-        usage = r.get('cache') if r.get('cache') is not None else _resp_cache_usage(r.get('resp_body'))
-        if usage:
-            b['input_tokens'] += usage.get('cache_total_tokens', 0) or 0
-            b['cache_read_tokens'] += usage.get('cache_read_tokens', 0) or 0
-            b['cache_creation_tokens'] += usage.get('cache_creation_tokens', 0) or 0
-            b['cache_requests'] += 1
-        b['req'] += 1
-        st = r.get('resp_status') or 0
-        if st and st < 400:
-            b['ok'] += 1
+        # Capture before parsing. An append during the read must invalidate it next time.
+        fingerprint = _records_fingerprint()
+        if _STATS_CACHE["fingerprint"] == fingerprint and _STATS_CACHE["rows"] is not None:
+            rows = [dict(row) for row in _STATS_CACHE["rows"]]
+            total_records = _STATS_CACHE["total"]
         else:
-            b['err'] += 1
-        b['last'] = r.get('idx', 0)
-    for b in by.values():
-        total = b['input_tokens']
-        b['cache_hit_rate'] = (b['cache_read_tokens'] / total) if total else None
-    rows = sorted(by.values(), key=lambda x: -x['last'])
+            recs = _iter_records_tail(max_records=400, max_bytes=_STATUS_TAIL_BYTES)
+            by = {}
+            for r in recs:
+                real_model = _resp_model(r.get('resp_body')) or r.get('sent_model') or r.get('orig_model')
+                key = (r.get('route'), real_model)
+                b = by.setdefault(key, {'route': r.get('route'), 'model': real_model,
+                                        'sent': r.get('sent_model'), 'req': 0, 'ok': 0, 'err': 0, 'last': 0,
+                                        'input_tokens': 0, 'cache_read_tokens': 0,
+                                        'cache_creation_tokens': 0, 'cache_requests': 0})
+                usage = r.get('cache') if r.get('cache') is not None else _resp_cache_usage(r.get('resp_body'))
+                if usage:
+                    b['input_tokens'] += usage.get('cache_total_tokens', 0) or 0
+                    b['cache_read_tokens'] += usage.get('cache_read_tokens', 0) or 0
+                    b['cache_creation_tokens'] += usage.get('cache_creation_tokens', 0) or 0
+                    b['cache_requests'] += 1
+                b['req'] += 1
+                st = r.get('resp_status') or 0
+                if st and st < 400:
+                    b['ok'] += 1
+                else:
+                    b['err'] += 1
+                b['last'] = r.get('idx', 0)
+            for b in by.values():
+                total = b['input_tokens']
+                b['cache_hit_rate'] = (b['cache_read_tokens'] / total) if total else None
+            rows = sorted(by.values(), key=lambda x: -x['last'])
+            total_records = len(recs)
+            _STATS_CACHE.update({"fingerprint": fingerprint, "rows": rows, "total": total_records})
+            rows = [dict(row) for row in rows]
     conf = load_conf()
     rt = conf.get('router') or {}
     lm = live_models(conf)
     route = rt.get('route', 'hybrid')
     if route == 'gemini':
         route = 'antigravity'
+    codex_available = codex_up()
+    antigravity_available = antigravity_up(conf)
     # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶。
     res = {'route': route, 'mode': route,
             'model': rt.get('model', ''),
@@ -1370,20 +1404,58 @@ def stats_snapshot():
             },
             'deepseek_profile': {'default_model': 'deepseek-flash'},
             'hybrid_pins': {'ANTHROPIC_DEFAULT_OPUS_MODEL': 'gpt-5.6-sol'},
-            'proxy_running': codex_up(),
-            'rows': rows, 'total': len(recs),
-            'codex_up': codex_up(), 'antigravity_up': antigravity_up(conf),
+            'proxy_running': codex_available,
+            'rows': rows, 'total': total_records,
+            'codex_up': codex_available, 'antigravity_up': antigravity_available,
             'upstreams_status': {
                 'deepseek': {'available': True},
-                'codex': {'available': codex_up(), 'managed': True},
-                'gemini': {'available': antigravity_up(conf), 'managed': True},
+                'codex': {'available': codex_available, 'managed': True},
+                'gemini': {'available': antigravity_available, 'managed': True},
             },
             'last_up': _UP['last'], 'last_model': _UP['last_model']}
-    with _STATS_LOCK:
-        _STATS_CACHE["ts"] = time.time()
-        _STATS_CACHE["idx"] = _IDX[0]
-        _STATS_CACHE["data"] = res
     return res
+
+
+def _calls_snapshot(n):
+    """Return cached, body-free call viewer summaries for one requested range."""
+    with _CALLS_LOCK:
+        # Use the pre-read version just like status: append during parsing is not hidden.
+        fingerprint = _records_fingerprint()
+        key = (fingerprint, n)
+        cached = _CALLS_CACHE.get(key)
+        if cached is not None:
+            calls, total = cached
+            return {"calls": [dict(call) for call in calls], "total": total}
+        recs = _iter_records_tail(max_records=n, max_bytes=_CALLS_TAIL_BYTES)
+        calls = []
+        for r in recs:
+            body = r.get("body") or {}
+            headers = {k.lower(): v for k, v in (r.get("headers") or {}).items()}
+            cache = r.get("cache") if r.get("cache") is not None else _resp_cache_usage(r.get("resp_body"))
+            calls.append({
+                "idx": r.get("idx"),
+                "ts": r.get("ts"),
+                "path": r.get("path"),
+                "orig_model": r.get("orig_model"),
+                "sent_model": r.get("sent_model"),
+                "route": r.get("route"),
+                "route_reason": r.get("route_reason"),
+                "status": r.get("resp_status"),
+                "agent_id": (headers.get("x-claude-code-agent-id") or "")[:12],
+                "session": (headers.get("x-claude-code-session-id") or "")[:8],
+                "msgs": len(body.get("messages") or []),
+                "tools": len(body.get("tools") or []),
+                "stream": body.get("stream"),
+                "cache": cache,
+                "resp_error": r.get("resp_error"),
+                "has_custom_prompt": bool(r.get("custom_prompt")),
+                "stripped_banner": bool(r.get("stripped_banner")),
+            })
+        # Keep a bounded number of small summaries even when the UI changes n.
+        if len(_CALLS_CACHE) >= _CALLS_CACHE_LIMIT:
+            _CALLS_CACHE.clear()
+        _CALLS_CACHE[key] = (calls, len(calls))
+        return {"calls": [dict(call) for call in calls], "total": len(calls)}
 
 
 # ---------- HTTP ----------
@@ -1703,8 +1775,46 @@ class UIHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
+        if self.path.split("?")[0].startswith("/api/codex/login"):
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(b)
+
+    def _codex_login_allowed(self, write=False):
+        try:
+            host = self.headers.get("Host", "")
+            target = urlsplit("http://" + host)
+            allowed = (is_loopback_host(self.client_address[0])
+                       and is_loopback_host(target.hostname)
+                       and target.port == self.server.server_port
+                       and not target.username and not target.password
+                       and not target.path and not target.query and not target.fragment)
+            origin = self.headers.get("Origin")
+            if origin is not None and origin != "http://" + host:
+                allowed = False
+            if self.headers.get("Sec-Fetch-Site") not in (None, "none", "same-origin"):
+                allowed = False
+            if write:
+                allowed = (allowed and origin == "http://" + host
+                           and self.headers.get("X-CC-Relay-UI") == "1"
+                           and self.headers.get_content_type() == "application/json")
+        except ValueError:
+            allowed = False
+        if not allowed:
+            self.close_connection = True
+            # Drain only small, bounded bodies so Windows can deliver the 403
+            # instead of resetting a connection with unread incoming data.
+            if write and not self.headers.get("Transfer-Encoding"):
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if 0 < length <= 1024:
+                        self.connection.settimeout(1)
+                        self.rfile.read(length)
+                except (ValueError, OSError):
+                    pass
+            self._json({"error": "Codex login requires the local relay UI"}, 403)
+        return allowed
 
     def _calls(self):
         """最近 N 条调用摘要(抓包查看器): CC发了什么 / 我们选了谁转发"""
@@ -1712,32 +1822,7 @@ class UIHandler(BaseHTTPRequestHandler):
         q = parse_qs(urlparse(self.path).query)
         n = int((q.get("n") or ["100"])[0])
         n = max(1, min(n, 1000))
-        recs = _iter_records_tail(max_records=n, max_bytes=600_000_000)
-        out = []
-        for r in recs:
-            b = r.get("body") or {}
-            h = {k.lower(): v for k, v in (r.get("headers") or {}).items()}
-            cache = r.get("cache") if r.get("cache") is not None else _resp_cache_usage(r.get("resp_body"))
-            out.append({
-                "idx": r.get("idx"),
-                "ts": r.get("ts"),
-                "path": r.get("path"),
-                "orig_model": r.get("orig_model"),
-                "sent_model": r.get("sent_model"),
-                "route": r.get("route"),
-                "route_reason": r.get("route_reason"),
-                "status": r.get("resp_status"),
-                "agent_id": (h.get("x-claude-code-agent-id") or "")[:12],
-                "session": (h.get("x-claude-code-session-id") or "")[:8],
-                "msgs": len(b.get("messages") or []),
-                "tools": len(b.get("tools") or []),
-                "stream": b.get("stream"),
-                "cache": cache,
-                "resp_error": r.get("resp_error"),
-                "has_custom_prompt": bool(r.get("custom_prompt")),
-                "stripped_banner": bool(r.get("stripped_banner")),
-            })
-        return {"calls": out, "total": len(out)}
+        return _calls_snapshot(n)
 
     def _call_detail(self):
         """单条完整内容(headers/body/响应)"""
@@ -1754,7 +1839,14 @@ class UIHandler(BaseHTTPRequestHandler):
         return {"error": "not found"}
 
     def do_GET(self):
-        if self.path.startswith("/api/config"):
+        if self.path.split("?")[0] == "/api/codex/login/status":
+            if not self._codex_login_allowed():
+                return
+            try:
+                self._json(get_codex_login().status())
+            except Exception:
+                self._json({"status": "error", "message": "无法读取 Codex 登录状态"}, 500)
+        elif self.path.startswith("/api/config"):
             try:
                 self._json(_config_public_view(load_conf()))
             except Exception as e:
@@ -1786,6 +1878,31 @@ class UIHandler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self):
+        if self.path.split("?")[0] == "/api/codex/login":
+            if not self._codex_login_allowed(write=True):
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("invalid login body size")
+            except ValueError:
+                self.close_connection = True
+                self._json({"error": "Invalid login request size"}, 400)
+                return
+            self.connection.settimeout(10)
+            try:
+                raw = self.rfile.read(length)
+                if len(raw) != length or not isinstance(json.loads(raw or b"{}"), dict):
+                    raise ValueError("invalid login body")
+            except (ValueError, OSError):
+                self.close_connection = True
+                self._json({"error": "Invalid login request"}, 400)
+                return
+            try:
+                self._json(get_codex_login().start())
+            except Exception:
+                self._json({"status": "error", "message": "无法启动 Codex 登录，请稍后重试"}, 500)
+            return
         ln = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(ln).decode() if ln else "{}"
         try:
@@ -1946,9 +2063,9 @@ class UIHandler(BaseHTTPRequestHandler):
                             pass
                         _IDX[0] = 0
                         with _STATS_LOCK:
-                            _STATS_CACHE["ts"] = 0.0
-                            _STATS_CACHE["idx"] = -1
-                            _STATS_CACHE["data"] = None
+                            _STATS_CACHE.update({"fingerprint": None, "rows": None, "total": 0})
+                        with _CALLS_LOCK:
+                            _CALLS_CACHE.clear()
                     err = None
                     break
                 except Exception as e:
@@ -1980,12 +2097,22 @@ class UIHandler(BaseHTTPRequestHandler):
         self.send_response(204); self.end_headers()
 
 
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    """Use Windows exclusive binding so a second relay instance cannot share a port."""
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        return super().server_bind()
+
+
 def serve_ui(conf):
     host = conf.get("listen_host", "127.0.0.1")
     if not is_loopback_host(host):
         raise ValueError(f"Refusing to bind UI to non-loopback host '{host}'.")
     port = conf.get("ui_port", 8610)
-    srv = ThreadingHTTPServer((host, port), UIHandler)
+    srv = ExclusiveThreadingHTTPServer((host, port), UIHandler)
     print(f"cc-relay UI on http://{host}:{port}")
     srv.serve_forever()
 
@@ -1996,7 +2123,7 @@ def serve(a):
     if not is_loopback_host(host):
         raise ValueError(f"Refusing to bind relay to non-loopback host '{host}'.")
     port = conf.get("listen_port", 8400)
-    srv = ThreadingHTTPServer((host, port), Relay)
+    srv = ExclusiveThreadingHTTPServer((host, port), Relay)
     srv.reload_conf = lambda: load_conf()
     # 同时起 UI (可选)
     if not a.no_ui:

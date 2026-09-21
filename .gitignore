@@ -4,6 +4,7 @@ config.json
 *.pem
 codex-proxy/config.yaml
 codex-proxy/.proxy_key
+codex-proxy/ui-auth-runtime/
 .proxy_key
 .cli-proxy-api/
 
@@ -46,6 +47,17 @@ codex-proxy/cli-proxy-api.exe
 codex-proxy/LICENSE
 codex-proxy/README*.md
 *.exe
+build/
+dist/
+manager-core/dist/
+manager-core/node_modules/
+manager-core/results/
+manager-core/run/
+manager-core/upstream/
+manager-core/upstream.zip
+gemini-core/results/
+diagnostics/*.json
+diagnostics/*.log
 
 # ── 编辑器与操作系统 ──
 .vscode/
