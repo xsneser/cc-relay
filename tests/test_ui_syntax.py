@@ -114,6 +114,45 @@ class TestUISyntax(unittest.TestCase):
         self.assertIn("confirm('确定要重启 CC Relay 服务吗？正在处理中的请求将会中断。')", self.html)
         self.assertIn("CC Relay 重启成功", self.html)
 
+    def test_header_status_and_action_affordance(self):
+        # 1. 状态展示组、分隔线与操作组必须按顺序独立分组
+        structure = re.compile(
+            r'<div class="status-group"[^>]*>.*?'
+            r'<span class="header-divider"[^>]*>.*?'
+            r'<div class="action-group"[^>]*>',
+            re.DOTALL,
+        )
+        self.assertRegex(self.html, structure)
+
+        # 2. 操作按钮使用独立 .btn-action 类, 保留既有 ID 兼容性
+        self.assertIn('class="btn-action btn-traffic"', self.html)
+        self.assertIn('class="btn-action btn-restart"', self.html)
+
+        # 3. 状态胶囊必须显式声明只读 (默认光标, 无按下位移)
+        self.assertRegex(
+            self.html,
+            re.compile(r"\.badge\s*\{[^}]*border-radius:\s*99px;[^}]*cursor:\s*default;", re.DOTALL),
+        )
+        # 4. 操作按钮必须是圆角矩形 + 手型光标
+        self.assertRegex(
+            self.html,
+            re.compile(r"\.btn-action\s*\{[^}]*border-radius:\s*8px;[^}]*cursor:\s*pointer;", re.DOTALL),
+        )
+
+        # 5. 操作按钮必须具备悬停抬升 / 按下凹陷 / 键盘焦点可见反馈
+        self.assertIn(".btn-action:hover", self.html)
+        self.assertIn(".btn-action:active", self.html)
+        self.assertIn(".btn-action:focus-visible", self.html)
+        self.assertIn("translateY(-1px)", self.html)
+
+        # 6. 分隔线与响应式换行规则存在
+        self.assertIn(".header-divider", self.html)
+        self.assertIn(".status-group .badge", self.html)
+
+        # 7. renderTrafficControl 不得使用 className 赋值覆盖按钮基类
+        self.assertNotIn("btn.className = 'btn-traffic", self.html)
+        self.assertIn("btn.classList.toggle('paused'", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

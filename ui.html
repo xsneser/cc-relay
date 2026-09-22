@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="ui-version" content="2.3.0">
+<meta name="ui-version" content="2.4.0">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -152,36 +152,90 @@
     gap: 12px;
     flex-wrap: wrap;
   }
-  .status-pills {
+
+  /* 只读状态展示区: 刻意弱化“可点感” (无 hover 反馈 / 默认光标 / 低对比) */
+  .status-group {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
   }
+  /* 状态区与操作区之间的渐隐竖向分隔线 */
+  .header-divider {
+    width: 1px;
+    height: 20px;
+    background: linear-gradient(180deg, transparent, var(--glass-border-hover), transparent);
+    margin: 0 2px;
+    flex: none;
+  }
   .badge {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 11px;
+    font-size: 10.5px;
     padding: 6px 14px;
     border-radius: 99px;
-    background: var(--card-bg);
-    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(16px);
-    color: var(--text-muted);
+    color: var(--text-dim);
     font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    transition: all 0.25s ease;
+    cursor: default;
+    user-select: none;
+    opacity: 0.9;
   }
   .badge b {
     color: #ffffff;
     font-weight: 700;
   }
-  .badge.route-hybrid { border-color: rgba(16, 185, 129, 0.35); }
-  .badge.route-deepseek { border-color: rgba(59, 130, 246, 0.35); }
-  .badge.route-codex { border-color: rgba(249, 115, 22, 0.35); }
-  .badge.route-antigravity, .badge.route-gemini { border-color: rgba(168, 85, 247, 0.35); }
+  .badge.route-hybrid { border-color: rgba(16, 185, 129, 0.28); }
+  .badge.route-deepseek { border-color: rgba(59, 130, 246, 0.28); }
+  .badge.route-codex { border-color: rgba(249, 115, 22, 0.28); }
+  .badge.route-antigravity, .badge.route-gemini { border-color: rgba(168, 85, 247, 0.28); }
+
+  /* 可点击操作区: 圆角矩形 + 立体感 + 明确的交互反馈 */
+  .action-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn-action {
+    --btn-accent: var(--emerald);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--btn-accent);
+    backdrop-filter: blur(16px);
+    color: #ffffff;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    user-select: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: border-color 0.2s ease, background 0.2s ease,
+                box-shadow 0.2s ease, transform 0.12s ease;
+  }
+  .btn-action:hover {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                0 2px 10px rgba(0, 0, 0, 0.4),
+                0 0 12px var(--btn-accent);
+  }
+  .btn-action:active {
+    transform: translateY(0) scale(0.97);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+  }
+  .btn-action:focus-visible {
+    outline: 2px solid var(--btn-accent);
+    outline-offset: 2px;
+  }
 
   .dot {
     width: 7px;
@@ -209,46 +263,28 @@
     50% { opacity: 0.4; transform: scale(0.85); }
   }
 
-  /* 流量启停控制按钮 */
+  /* 流量启停控制按钮 (可点击操作, 继承 .btn-action 的按钮形态与交互反馈) */
   .btn-traffic {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    padding: 6px 14px;
-    border-radius: 99px;
-    background: var(--card-bg);
-    border: 1px solid rgba(16, 185, 129, 0.4);
-    backdrop-filter: blur(16px);
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    cursor: pointer;
-    transition: all 0.25s ease;
-    user-select: none;
-  }
-  .btn-traffic:hover {
-    border-color: rgba(16, 185, 129, 0.8);
-    background: rgba(16, 185, 129, 0.08);
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+    --btn-accent: rgba(16, 185, 129, 0.8);
+    border-color: rgba(16, 185, 129, 0.45);
+    color: #d1fae5;
   }
   .btn-traffic b {
     color: #ffffff;
     font-weight: 700;
   }
   .btn-traffic .traffic-action {
+    padding-left: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.14);
     color: var(--text-dim);
     font-size: 10px;
-    margin-left: 2px;
+    font-weight: 600;
   }
   .btn-traffic.paused {
+    --btn-accent: rgba(239, 68, 68, 0.8);
     border-color: rgba(239, 68, 68, 0.6);
     background: rgba(239, 68, 68, 0.12);
-    box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
-  }
-  .btn-traffic.paused:hover {
-    border-color: rgba(239, 68, 68, 0.9);
-    background: rgba(239, 68, 68, 0.2);
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+    color: #fecaca;
   }
   .btn-traffic.paused b {
     color: #fca5a5;
@@ -263,13 +299,9 @@
     pointer-events: none;
   }
   .btn-restart {
-    border-color: rgba(245, 158, 11, 0.4);
-    color: var(--text-muted);
-  }
-  .btn-restart:hover {
-    border-color: rgba(245, 158, 11, 0.85);
-    background: rgba(245, 158, 11, 0.08);
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+    --btn-accent: rgba(245, 158, 11, 0.8);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #fde68a;
   }
   .btn-restart.pending svg {
     animation: spinRestart 1s linear infinite;
@@ -2289,6 +2321,9 @@
     .tf-mdl {
       max-width: 120px;
     }
+    /* 顶栏控制区在窄屏下独占一行, 避免挤压品牌与导航 */
+    header { align-items: flex-start; }
+    .header-actions { width: 100%; justify-content: flex-start; }
   }
 
   @media (max-width: 800px) {
@@ -2312,11 +2347,25 @@
     .calls-search {
       width: 100% !important;
     }
+    /* 窄屏下状态组与操作组各占一行, 竖向分隔线转为横向 */
+    .header-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+    .status-group, .action-group { width: 100%; }
+    .status-group .badge { flex: 1 1 200px; }
+    .header-divider {
+      width: 100%;
+      height: 1px;
+      margin: 0;
+      background: linear-gradient(90deg, transparent, var(--glass-border-hover) 12%, var(--glass-border-hover) 88%, transparent);
+    }
+    .action-group .btn-action { flex: 1 1 0; justify-content: center; }
+    .nav-tabs { width: 100%; }
+    .nav-tab { flex: 1 1 0; justify-content: center; }
   }
 
   @media (max-width: 540px) {
     .hb-grid { grid-template-columns: 1fr; }
     .metrics-grid { grid-template-columns: 1fr; }
+    .status-group .badge, .action-group .btn-action { flex: 1 1 100%; }
   }
 </style>
 </head>
@@ -2344,14 +2393,22 @@
     </div>
 
     <div class="header-actions">
-      <div class="status-pills">
-        <div class="badge" id="bd-route"><span class="dot" id="routedot"></span>路由 <b id="routetxt">…</b></div>
-        <div class="badge"><span class="dot" id="pdot"></span>代理 <b id="ptxt2">检查…</b></div>
-        <button type="button" class="btn-traffic" id="btn-traffic-toggle" title="点击手动启停所有上游流量">
-          <span class="dot on" id="traffic-dot"></span>流量 <b id="traffic-txt">运行中</b><span class="traffic-action" id="traffic-action">[暂停]</span>
+      <!-- 只读状态展示区 -->
+      <div class="status-group" role="group" aria-label="当前运行状态">
+        <div class="badge" id="bd-route" role="status"><span class="dot" id="routedot" aria-hidden="true"></span>路由 <b id="routetxt">…</b></div>
+        <div class="badge" role="status"><span class="dot" id="pdot" aria-hidden="true"></span>代理 <b id="ptxt2">检查…</b></div>
+      </div>
+
+      <!-- 状态与操作的分隔线 -->
+      <span class="header-divider" aria-hidden="true"></span>
+
+      <!-- 可点击操作区 -->
+      <div class="action-group" role="group" aria-label="快捷操作">
+        <button type="button" class="btn-action btn-traffic" id="btn-traffic-toggle" title="点击手动启停所有上游流量">
+          <span class="dot on" id="traffic-dot" aria-hidden="true"></span>流量 <b id="traffic-txt">运行中</b><span class="traffic-action" id="traffic-action">暂停</span>
         </button>
-        <button type="button" class="btn-traffic btn-restart" id="btn-restart" title="一键重启 CC Relay 核心服务">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+        <button type="button" class="btn-action btn-restart" id="btn-restart" title="一键重启 CC Relay 核心服务">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
           <b>重启服务</b>
         </button>
       </div>
@@ -3510,11 +3567,14 @@ function renderTrafficControl() {
 
   const isPaused = !!(st && st.traffic_paused);
   btn.setAttribute('aria-pressed', isPaused ? 'true' : 'false');
+  // 仅切换 paused 修饰类, 保留 .btn-action 的按钮形态与交互反馈
+  btn.classList.toggle('paused', isPaused);
 
   if (_trafficPending) {
     btn.disabled = true;
     if (bannerBtn) bannerBtn.disabled = true;
-    if (act) act.textContent = '[处理中…]';
+    if (act) act.textContent = '处理中…';
+    if (txt) txt.textContent = isPaused ? '已暂停' : '运行中';
     return;
   }
 
@@ -3522,16 +3582,14 @@ function renderTrafficControl() {
   if (bannerBtn) bannerBtn.disabled = false;
 
   if (isPaused) {
-    btn.className = 'btn-traffic paused';
     if (dot) dot.className = 'dot dot-paused';
     if (txt) txt.textContent = '已暂停';
-    if (act) act.textContent = '[恢复]';
+    if (act) act.textContent = '恢复';
     if (banner) banner.style.display = 'flex';
   } else {
-    btn.className = 'btn-traffic';
     if (dot) dot.className = 'dot on';
     if (txt) txt.textContent = '运行中';
-    if (act) act.textContent = '[暂停]';
+    if (act) act.textContent = '暂停';
     if (banner) banner.style.display = 'none';
   }
 }
