@@ -2,6 +2,7 @@
   "listen_host": "127.0.0.1",
   "listen_port": 8400,
   "ui_port": 8610,
+  "traffic_paused": false,
   "fake_api_key": "sk-relay-local-0000",
   "real_deepseek_key": "sk-your-deepseek-key-here",
   "codex_proxy_key": "your-codex-proxy-key-here",

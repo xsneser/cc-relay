@@ -25,6 +25,7 @@ RECORDS = os.path.join(BASE, "records.jsonl")
 LOCK = threading.Lock()
 _IDX = [0]
 _UP = {"last": "", "last_model": "", "last_ts": 0}
+_PROCESS_INSTANCE_ID = f"{os.getpid()}-{time.time_ns()}"
 
 
 def load_conf():
@@ -55,6 +56,118 @@ def _save_conf(conf):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(conf, f, ensure_ascii=False, indent=2)
     os.replace(tmp, CONF)
+
+
+def traffic_paused(conf):
+    """返回流量闸门状态: True 表示用户已手动暂停所有上游流量."""
+    return (conf or {}).get("traffic_paused", False) is True
+
+
+_RESTART_LOCK = threading.Lock()
+_RESTART_QUEUED = False
+
+
+def _powershell_quote(arg):
+    """Safely quote a string for PowerShell single-quoted string literal."""
+    return "'" + str(arg).replace("'", "''") + "'"
+
+
+def _restart_launch_spec():
+    """Determine (executable, args_list, working_dir) for restarting."""
+    if getattr(sys, "frozen", False):
+        exe = sys.executable
+        return exe, [], os.path.dirname(os.path.abspath(exe))
+
+    exe = sys.executable
+    script = os.path.abspath(sys.argv[0])
+    base_name = os.path.basename(script).lower()
+
+    if base_name == "main_launcher.py":
+        return exe, [script], os.path.dirname(script)
+    elif base_name == "cc_relay.py":
+        return exe, [script, "serve"], BASE
+    else:
+        launcher = os.path.join(BASE, "main_launcher.py")
+        if os.path.isfile(launcher):
+            return exe, [launcher], BASE
+        return exe, [os.path.join(BASE, "cc_relay.py"), "serve"], BASE
+
+
+def _build_restart_supervisor_command(pid, launch_spec):
+    """Build the PowerShell command that waits for old PID to exit then launches the new process."""
+    exe, args_list, cwd = launch_spec
+    exe_q = _powershell_quote(exe)
+    cwd_q = _powershell_quote(cwd)
+    if args_list:
+        args_q = ", ".join(_powershell_quote(a) for a in args_list)
+        arg_part = f"-ArgumentList @({args_q})"
+    else:
+        arg_part = ""
+
+    return (
+        f"Wait-Process -Id {pid} -Timeout 10 -ErrorAction SilentlyContinue; "
+        f"Start-Sleep -Milliseconds 500; "
+        f"Start-Process -WindowStyle Hidden -FilePath {exe_q} {arg_part} -WorkingDirectory {cwd_q}"
+    )
+
+
+def _spawn_restart_supervisor(pid=None):
+    """Launch the detached PowerShell supervisor process. Returns True on success."""
+    if pid is None:
+        pid = os.getpid()
+
+    launch_spec = _restart_launch_spec()
+    ps_cmd = _build_restart_supervisor_command(pid, launch_spec)
+
+    ps_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+    if not os.path.isfile(ps_exe):
+        ps_exe = "powershell.exe"
+
+    detached_flags = (
+        getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    )
+
+    env = dict(os.environ)
+    env["CC_RELAY_NO_BROWSER"] = "1"
+
+    try:
+        subprocess.Popen(
+            [ps_exe, "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+             "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
+            creationflags=detached_flags,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to spawn restart supervisor: {e}", file=sys.stderr)
+        return False
+
+
+def _restart_worker():
+    global _RESTART_QUEUED
+    time.sleep(0.4)
+    if _spawn_restart_supervisor():
+        os._exit(0)
+    else:
+        with _RESTART_LOCK:
+            _RESTART_QUEUED = False
+
+
+def schedule_restart():
+    """Atomically schedule a background restart if not already queued. Returns True if scheduled."""
+    global _RESTART_QUEUED
+    with _RESTART_LOCK:
+        if _RESTART_QUEUED:
+            return True
+        _RESTART_QUEUED = True
+        threading.Thread(target=_restart_worker, daemon=True).start()
+        return True
 
 
 UPSTREAM_ALLOWED_KEYS = {
@@ -1356,6 +1469,8 @@ def stats_snapshot():
     antigravity_available = antigravity_up(conf)
     # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶。
     res = {'route': route, 'mode': route,
+            'traffic_paused': traffic_paused(conf),
+            'instance_id': _PROCESS_INSTANCE_ID,
             'model': rt.get('model', ''),
             'models_ds': lm['ds'], 'models_codex': lm['cx'], 'models_gemini': lm['gm'],
             # 旧 UI / API 兼容别名
@@ -1450,6 +1565,7 @@ def _calls_snapshot(n):
                 "resp_error": r.get("resp_error"),
                 "has_custom_prompt": bool(r.get("custom_prompt")),
                 "stripped_banner": bool(r.get("stripped_banner")),
+                "traffic_paused": bool(r.get("traffic_paused") or r.get("route") == "paused"),
             })
         # Keep a bounded number of small summaries even when the UI changes n.
         if len(_CALLS_CACHE) >= _CALLS_CACHE_LIMIT:
@@ -1470,10 +1586,13 @@ class Relay(BaseHTTPRequestHandler):
     def _do(self, method):
         # 每次请求重读 config -> UI 改 mode 即时生效
         try:
-            conf = self.server.reload_conf()
+            if hasattr(self.server, "reload_conf") and callable(self.server.reload_conf):
+                conf = self.server.reload_conf()
+            else:
+                conf = load_conf()
             self.server.conf = conf
         except Exception:
-            conf = self.server.conf
+            conf = getattr(self.server, "conf", None) or load_conf()
 
         # 下游 fake_api_key 认证校验 (支持 Bearer / x-api-key, 常量时间比对防时序攻击)
         fake_key = (conf.get("fake_api_key") or "").strip()
@@ -1521,6 +1640,50 @@ class Relay(BaseHTTPRequestHandler):
                 body_json = json.loads(raw.decode("utf-8", "replace"))
             except Exception:
                 body_json = None
+
+        # 流量闸门: 用户手动暂停所有上游流量时短路拦截，返回 503
+        if traffic_paused(conf):
+            err_payload = {
+                "type": "error",
+                "error": {
+                    "type": "api_error",
+                    "message": "cc-relay traffic is paused by the operator; resume it in the local relay UI",
+                },
+            }
+            resp_bytes = json.dumps(err_payload, ensure_ascii=False).encode("utf-8")
+            orig_m = (body_json or {}).get("model") if isinstance(body_json, dict) else None
+            try:
+                record({
+                    "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "method": method, "path": path,
+                    "client": self.client_address[0] if self.client_address else "127.0.0.1",
+                    "headers": {k: v for k, v in self.headers.items()},
+                    "body": body_json,
+                    "body_raw": raw.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)],
+                    "route": "paused", "route_reason": "traffic_paused",
+                    "orig_model": orig_m, "sent_model": None,
+                    "stripped_banner": 0,
+                    "custom_prompt": False,
+                    "upstream": None, "resp_status": 503,
+                    "resp_body": resp_bytes.decode("utf-8", "replace"),
+                    "cache": None,
+                    "resp_error": "traffic_paused",
+                    "traffic_paused": True,
+                })
+            except Exception:
+                pass
+            try:
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-CC-Relay-Traffic-Paused", "1")
+                self.send_header("Content-Length", str(len(resp_bytes)))
+                self.end_headers()
+                if method != "HEAD":
+                    self.wfile.write(resp_bytes)
+            except Exception:
+                pass
+            return
 
         up_name, map_model, reason = pick_route(conf, self.headers, body_json)
 
@@ -1775,13 +1938,13 @@ class UIHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
-        if self.path.split("?")[0].startswith("/api/codex/login"):
+        if self.path.split("?")[0].startswith(("/api/codex/login", "/api/restart")):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(b)
 
-    def _codex_login_allowed(self, write=False):
+    def _local_ui_allowed(self, write=False, error_message="This operation requires the local relay UI"):
         try:
             host = self.headers.get("Host", "")
             target = urlsplit("http://" + host)
@@ -1813,8 +1976,14 @@ class UIHandler(BaseHTTPRequestHandler):
                         self.rfile.read(length)
                 except (ValueError, OSError):
                     pass
-            self._json({"error": "Codex login requires the local relay UI"}, 403)
+            self._json({"error": error_message}, 403)
         return allowed
+
+    def _codex_login_allowed(self, write=False):
+        return self._local_ui_allowed(write=write, error_message="Codex login requires the local relay UI")
+
+    def _restart_allowed(self):
+        return self._local_ui_allowed(write=True, error_message="Restart requires the local relay UI")
 
     def _calls(self):
         """最近 N 条调用摘要(抓包查看器): CC发了什么 / 我们选了谁转发"""
@@ -1878,7 +2047,8 @@ class UIHandler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self):
-        if self.path.split("?")[0] == "/api/codex/login":
+        p = self.path.split("?")[0]
+        if p == "/api/codex/login":
             if not self._codex_login_allowed(write=True):
                 return
             try:
@@ -1903,6 +2073,34 @@ class UIHandler(BaseHTTPRequestHandler):
             except Exception:
                 self._json({"status": "error", "message": "无法启动 Codex 登录，请稍后重试"}, 500)
             return
+        elif p == "/api/restart":
+            if not self._restart_allowed():
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("invalid restart body size")
+            except ValueError:
+                self.close_connection = True
+                self._json({"error": "Invalid restart request size"}, 400)
+                return
+            self.connection.settimeout(10)
+            try:
+                raw = self.rfile.read(length)
+                if len(raw) != length or not isinstance(json.loads(raw or b"{}"), dict):
+                    raise ValueError("invalid restart body")
+            except (ValueError, OSError):
+                self.close_connection = True
+                self._json({"error": "Invalid restart request body"}, 400)
+                return
+            self.close_connection = True
+            self._json({"ok": True, "message": "cc-relay restarting..."})
+            try:
+                self.wfile.flush()
+            except Exception:
+                pass
+            schedule_restart()
+            return
         ln = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(ln).decode() if ln else "{}"
         try:
@@ -1920,6 +2118,24 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json({"error": str(e)}, 400)
             except Exception as e:
                 self._json({"error": "unable to save config: " + str(e)}, 500)
+        elif p == "/api/traffic":
+            if not isinstance(data, dict) or "paused" not in data or not isinstance(data["paused"], bool):
+                self._json({"error": "invalid parameter: 'paused' must be a boolean"}, 400)
+                return
+            paused = data["paused"]
+            changed = False
+            try:
+                with CONF_LOCK:
+                    conf = load_conf()
+                    old_state = traffic_paused(conf)
+                    if old_state != paused:
+                        conf["traffic_paused"] = paused
+                        _save_conf(conf)
+                        changed = True
+                self._json({"ok": True, "traffic_paused": paused, "changed": changed})
+            except Exception as e:
+                self._json({"error": f"failed to update traffic state: {e}"}, 500)
+            return
         elif p == "/api/route":
             route = str(data.get("route") or "").strip().lower()
             if route == "gemini":

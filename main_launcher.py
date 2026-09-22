@@ -271,10 +271,12 @@ def main():
         pass
 
     ui_url = f"http://{host}:{ui_port}"
+    no_browser = os.environ.get("CC_RELAY_NO_BROWSER") == "1"
 
-    # 单实例检查: 如果 8400 或 8610 已经在跑，直接唤醒浏览器
+    # 单实例检查: 如果 8400 或 8610 已经在跑，直接唤醒浏览器 (除非被静默抑制)
     if is_port_busy(relay_port, host) or is_port_busy(ui_port, host):
-        webbrowser.open(ui_url)
+        if not no_browser:
+            webbrowser.open(ui_url)
         sys.exit(0)
 
     # 导入 cc_relay 模块
@@ -296,7 +298,8 @@ def main():
         # 超时保底打开
         webbrowser.open(ui_url)
 
-    threading.Thread(target=open_browser_when_ready, daemon=True).start()
+    if not no_browser:
+        threading.Thread(target=open_browser_when_ready, daemon=True).start()
 
     # 启动中转主服务 (启动 8400 中转与 8610 UI)
     args = SimpleNamespace(cmd="serve", no_ui=False)

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="ui-version" content="2.1.1">
+<meta name="ui-version" content="2.3.0">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -198,6 +198,213 @@
   @keyframes pulseDot {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.55; transform: scale(0.9); }
+  }
+  .dot.dot-paused {
+    background: var(--red);
+    box-shadow: 0 0 10px var(--red);
+    animation: pulseDotFast 1s infinite ease-in-out;
+  }
+  @keyframes pulseDotFast {
+    0%, 100% { opacity: 1; transform: scale(1.1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+  }
+
+  /* 流量启停控制按钮 */
+  .btn-traffic {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    padding: 6px 14px;
+    border-radius: 99px;
+    background: var(--card-bg);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    backdrop-filter: blur(16px);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    user-select: none;
+  }
+  .btn-traffic:hover {
+    border-color: rgba(16, 185, 129, 0.8);
+    background: rgba(16, 185, 129, 0.08);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+  }
+  .btn-traffic b {
+    color: #ffffff;
+    font-weight: 700;
+  }
+  .btn-traffic .traffic-action {
+    color: var(--text-dim);
+    font-size: 10px;
+    margin-left: 2px;
+  }
+  .btn-traffic.paused {
+    border-color: rgba(239, 68, 68, 0.6);
+    background: rgba(239, 68, 68, 0.12);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+  }
+  .btn-traffic.paused:hover {
+    border-color: rgba(239, 68, 68, 0.9);
+    background: rgba(239, 68, 68, 0.2);
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+  }
+  .btn-traffic.paused b {
+    color: #fca5a5;
+  }
+  .btn-traffic.paused .traffic-action {
+    color: #ffffff;
+    font-weight: 600;
+  }
+  .btn-traffic:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  .btn-restart {
+    border-color: rgba(245, 158, 11, 0.4);
+    color: var(--text-muted);
+  }
+  .btn-restart:hover {
+    border-color: rgba(245, 158, 11, 0.85);
+    background: rgba(245, 158, 11, 0.08);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+  }
+  .btn-restart.pending svg {
+    animation: spinRestart 1s linear infinite;
+  }
+  @keyframes spinRestart {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* 全屏重新连接遮罩 */
+  .restart-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(12px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeInBanner 0.2s ease;
+  }
+  .restart-modal {
+    background: #0a0a0c;
+    border: 1px solid var(--glass-border-hover);
+    border-radius: 16px;
+    padding: 32px 36px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(59, 130, 246, 0.15);
+  }
+  .restart-icon-wrap {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 18px;
+    border-radius: 50%;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--blue);
+  }
+  .restart-icon-wrap svg {
+    width: 28px;
+    height: 28px;
+  }
+  .restart-icon-wrap.spinning svg {
+    animation: spinRestart 1.2s linear infinite;
+  }
+  .restart-icon-wrap.err {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: var(--red);
+  }
+  .restart-modal h2 {
+    font-size: 17px;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 8px;
+  }
+  .restart-modal p {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  .restart-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  /* 流量暂停全局横幅 */
+  .traffic-paused-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 20px;
+    margin-bottom: 20px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.15) 0%, rgba(245, 158, 11, 0.12) 100%);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.15);
+    backdrop-filter: blur(16px);
+    animation: fadeInBanner 0.3s ease;
+  }
+  @keyframes fadeInBanner {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .traffic-paused-banner .banner-msg {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: #fecaca;
+    line-height: 1.5;
+  }
+  .traffic-paused-banner .banner-msg svg {
+    width: 20px;
+    height: 20px;
+    color: #ef4444;
+    flex: none;
+  }
+  .traffic-paused-banner .banner-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 16px;
+    background: #ef4444;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    flex: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+  }
+  .traffic-paused-banner .banner-action-btn:hover {
+    background: #dc2626;
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.6);
+    transform: translateY(-1px);
+  }
+  .traffic-paused-banner .banner-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
   }
 
   /* 导航 Tab (Matrix Glass 胶囊组) */
@@ -1224,6 +1431,7 @@
     align-items: center;
     gap: 8px;
     color: #ffffff;
+    flex-wrap: wrap;
   }
   .sec-title svg { width: 18px; height: 18px; color: var(--blue); }
 
@@ -1371,6 +1579,7 @@
   .tagc.deepseek { background: rgba(59, 130, 246, 0.12); color: var(--blue); border: 1px solid rgba(59, 130, 246, 0.3); }
   .tagc.antigravity, .tagc.gemini { background: rgba(168, 85, 247, 0.12); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.3); }
   .tagc.hybrid { background: rgba(16, 185, 129, 0.12); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+  .tagc.paused { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); }
 
   /* ── 抓包查看器 (Packet Inspector Matrix Console) ── */
   .calls {
@@ -1702,6 +1911,8 @@
     color: #ffffff;
     line-height: 1.6;
     animation: popIn 0.15s ease;
+    box-sizing: border-box;
+    max-width: 100%;
   }
   .detail.show { display: block; }
 
@@ -1713,13 +1924,14 @@
     padding-bottom: 10px;
     margin-bottom: 14px;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
   }
   .detail-tags {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    flex: 1;
   }
   .detail-chip {
     font-size: 10.5px;
@@ -1728,10 +1940,23 @@
     padding: 3px 8px;
     border-radius: 6px;
     color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   .detail-chip b { color: #ffffff; }
   .detail-chip.warn b { color: var(--red); }
   .detail-chip.ok b { color: var(--emerald); }
+  .detail-chip .clip-text {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: bottom;
+  }
 
   .detail-grid {
     display: grid;
@@ -1744,6 +1969,8 @@
     border: 1px solid var(--glass-border);
     border-radius: 10px;
     padding: 12px;
+    box-sizing: border-box;
+    min-width: 0;
   }
   .detail-box-title {
     font-size: 9.5px;
@@ -1756,13 +1983,41 @@
     align-items: center;
     justify-content: space-between;
   }
+  .cache-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .c-badge {
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+    padding: 2px 7px;
+    border-radius: 5px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .c-badge b { color: var(--text-muted); font-weight: 600; }
+  .c-badge.hit {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: var(--emerald);
+  }
+  .c-badge.hit b { color: var(--emerald); font-weight: 700; }
   .detail-pre {
     margin: 0;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-muted);
     white-space: pre-wrap;
-    word-break: break-all;
+    word-break: normal;
+    overflow-wrap: break-word;
     max-height: 220px;
     overflow-y: auto;
     line-height: 1.55;
@@ -1972,18 +2227,93 @@
   }
   .config-cancel:hover { background: rgba(255, 255, 255, 0.12); }
 
-  /* 响应式优化 */
+  /* 响应式优化 (适配 WinTile5 分屏槽位与各类窄窗口) */
   @media (max-width: 1100px) {
     .hb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .detail-grid { grid-template-columns: 1fr; }
+
+    /* 抓包表格自适应缩窄：在窄屏/分屏下自动隐藏非核心的 CC 请求模型(3) 与 箭头(4) 列 */
+    table.cl th:nth-child(3), table.cl tr[data-idx] td:nth-child(3),
+    table.cl th:nth-child(4), table.cl tr[data-idx] td:nth-child(4) {
+      display: none;
+    }
+    table.cl .mdl-out {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .tf-mdl {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
+
+  @media (max-width: 900px) {
+    .wrap { padding: 12px 14px 40px; }
+    .calls-toolbar {
+      margin-left: 0;
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .calls-stats-group {
+      margin-left: 0;
+    }
+    .detail-topbar {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .detail-topbar .pm-act-btn {
+      align-self: flex-start;
+    }
+    /* 进一步缩窄表格列间距与隐藏次要列，彻底杜绝横向滚动条 */
+    table.cl th, table.cl td {
+      padding: 8px 10px;
+    }
+    table.cl th:nth-child(7), table.cl tr[data-idx] td:nth-child(7),
+    table.cl th:nth-child(10), table.cl tr[data-idx] td:nth-child(10) {
+      display: none; /* 隐藏分流规则与请求来源，展开详情顶部均有完整呈现 */
+    }
+    table.tf th, table.tf td {
+      padding: 8px 10px;
+    }
+    table.tf th:nth-child(8), table.tf td:nth-child(8) {
+      display: none; /* 隐藏监控表中次要的“最近请求序号” */
+    }
+    .tf-mdl {
+      max-width: 120px;
+    }
+  }
+
   @media (max-width: 800px) {
     .row2 { grid-template-columns: 1fr; }
     .hb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .detail-grid { grid-template-columns: 1fr; }
     .metrics-grid { grid-template-columns: 1fr 1fr; }
   }
+
+  @media (max-width: 680px) {
+    table.tf th:nth-child(6), table.tf td:nth-child(6) {
+      display: none; /* 极窄窗口下隐藏输入 Token 列 */
+    }
+    .calls-filter-bar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .calls-search-box {
+      width: 100%;
+    }
+    .calls-search {
+      width: 100% !important;
+    }
+  }
+
   @media (max-width: 540px) {
     .hb-grid { grid-template-columns: 1fr; }
     .metrics-grid { grid-template-columns: 1fr; }
@@ -2017,6 +2347,13 @@
       <div class="status-pills">
         <div class="badge" id="bd-route"><span class="dot" id="routedot"></span>路由 <b id="routetxt">…</b></div>
         <div class="badge"><span class="dot" id="pdot"></span>代理 <b id="ptxt2">检查…</b></div>
+        <button type="button" class="btn-traffic" id="btn-traffic-toggle" title="点击手动启停所有上游流量">
+          <span class="dot on" id="traffic-dot"></span>流量 <b id="traffic-txt">运行中</b><span class="traffic-action" id="traffic-action">[暂停]</span>
+        </button>
+        <button type="button" class="btn-traffic btn-restart" id="btn-restart" title="一键重启 CC Relay 核心服务">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+          <b>重启服务</b>
+        </button>
       </div>
       <div class="nav-tabs">
         <button type="button" class="nav-tab active" id="tab-dashboard">
@@ -2030,6 +2367,36 @@
       </div>
     </div>
   </header>
+
+  <!-- 全局流量暂停警示横幅 -->
+  <div id="traffic-banner" class="traffic-paused-banner" style="display:none;" role="alert">
+    <div class="banner-msg">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div>
+        <strong>所有上游流量已手动暂停</strong>
+        <div style="font-size:11px;opacity:0.85;">发往 Relay 的模型请求将直接返回 HTTP 503。Web 控制台与模型发现不受影响。</div>
+      </div>
+    </div>
+    <button type="button" class="banner-action-btn" id="btn-banner-resume">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      恢复流量
+    </button>
+  </div>
+
+  <!-- 全屏重新连接遮罩 -->
+  <div id="restart-overlay" class="restart-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="restart-modal-title">
+    <div class="restart-modal">
+      <div class="restart-icon-wrap spinning" id="restart-icon-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+      </div>
+      <h2 id="restart-modal-title">正在重启 CC Relay 服务</h2>
+      <p id="restart-modal-msg" aria-live="polite">正在重新连接，请稍候...</p>
+      <div class="restart-actions" id="restart-modal-actions" style="display:none;">
+        <button type="button" class="footbtn btn-matrix-primary" id="btn-restart-retry">重新检测</button>
+        <button type="button" class="config-cancel" id="btn-restart-close">关闭</button>
+      </div>
+    </div>
+  </div>
 
   <div id="dashboard-view">
     <!-- 第一行: DeepSeek / Codex / Gemini 三种全量模式 -->
@@ -3030,7 +3397,9 @@ $('#tab-dashboard').addEventListener('click', () => {
 
 // ── 状态轮询与刷新 ──
 let _statusRequest = null;
+let _restartPending = false;
 function refresh() {
+  if (_restartPending) return Promise.resolve();
   if (_statusRequest) return _statusRequest;
   _statusRequest = (async () => {
     try {
@@ -3123,8 +3492,212 @@ function renderStatus() {
   $('#routedot').className = 'dot on';
 
   $('#cur').innerHTML = '本地服务入口: <b>http://127.0.0.1:8400</b> ｜ 上游: DeepSeek + Codex(:8317) + Gemini(:8045) ｜ 本地密钥: <b>sk-relay-local-0000</b>';
+  renderTrafficControl();
   window.scrollTo(0, _sy);
 }
+
+// ── 流量闸门手动启停控制 ──
+let _trafficPending = false;
+
+function renderTrafficControl() {
+  const btn = $('#btn-traffic-toggle');
+  const dot = $('#traffic-dot');
+  const txt = $('#traffic-txt');
+  const act = $('#traffic-action');
+  const banner = $('#traffic-banner');
+  const bannerBtn = $('#btn-banner-resume');
+  if (!btn) return;
+
+  const isPaused = !!(st && st.traffic_paused);
+  btn.setAttribute('aria-pressed', isPaused ? 'true' : 'false');
+
+  if (_trafficPending) {
+    btn.disabled = true;
+    if (bannerBtn) bannerBtn.disabled = true;
+    if (act) act.textContent = '[处理中…]';
+    return;
+  }
+
+  btn.disabled = false;
+  if (bannerBtn) bannerBtn.disabled = false;
+
+  if (isPaused) {
+    btn.className = 'btn-traffic paused';
+    if (dot) dot.className = 'dot dot-paused';
+    if (txt) txt.textContent = '已暂停';
+    if (act) act.textContent = '[恢复]';
+    if (banner) banner.style.display = 'flex';
+  } else {
+    btn.className = 'btn-traffic';
+    if (dot) dot.className = 'dot on';
+    if (txt) txt.textContent = '运行中';
+    if (act) act.textContent = '[暂停]';
+    if (banner) banner.style.display = 'none';
+  }
+}
+
+async function toggleTraffic(desired) {
+  if (_trafficPending) return;
+  const current = !!(st && st.traffic_paused);
+  const target = (typeof desired === 'boolean') ? desired : !current;
+  _trafficPending = true;
+  renderTrafficControl();
+
+  try {
+    const res = await api('/api/traffic', { paused: target });
+    if (res.error) {
+      toast('操作失败: ' + res.error, true);
+    } else {
+      st = st || {};
+      st.traffic_paused = res.traffic_paused;
+      toast(target ? '所有上游流量已手动暂停' : '流量已恢复正常转发');
+    }
+  } catch (err) {
+    toast('网络请求失败: ' + err, true);
+  } finally {
+    _trafficPending = false;
+    renderTrafficControl();
+    await refresh();
+  }
+}
+
+const trafficBtn = $('#btn-traffic-toggle');
+if (trafficBtn) trafficBtn.onclick = () => toggleTraffic();
+const bannerResumeBtn = $('#btn-banner-resume');
+if (bannerResumeBtn) bannerResumeBtn.onclick = () => toggleTraffic(false);
+
+// ── 一键重启服务控制 ──
+let _restartPollTimer = null;
+
+function showRestartOverlay(msg, isErr) {
+  const overlay = $('#restart-overlay');
+  const icon = $('#restart-icon-box');
+  const txt = $('#restart-modal-msg');
+  const acts = $('#restart-modal-actions');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  if (txt) txt.textContent = msg || '正在重新连接，请稍候...';
+  if (icon) {
+    icon.className = 'restart-icon-wrap' + (isErr ? ' err' : ' spinning');
+  }
+  if (acts) {
+    acts.style.display = isErr ? 'flex' : 'none';
+  }
+}
+
+function hideRestartOverlay() {
+  const overlay = $('#restart-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function startRestartPolling(prevInstanceId) {
+  if (_restartPollTimer) {
+    clearInterval(_restartPollTimer);
+    _restartPollTimer = null;
+  }
+  showRestartOverlay('正在重新连接，请稍候...', false);
+
+  const startTime = Date.now();
+  const maxWaitMs = 25000;
+
+  _restartPollTimer = setInterval(async () => {
+    const elapsed = Date.now() - startTime;
+    if (elapsed > maxWaitMs) {
+      clearInterval(_restartPollTimer);
+      _restartPollTimer = null;
+      showRestartOverlay('25 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
+      const btn = $('#btn-restart');
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('pending');
+      }
+      return;
+    }
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch('/api/status?_ts=' + Date.now(), {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      clearTimeout(tid);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && !data.error && (!prevInstanceId || data.instance_id !== prevInstanceId)) {
+          clearInterval(_restartPollTimer);
+          _restartPollTimer = null;
+          hideRestartOverlay();
+          _restartPending = false;
+          const btn = $('#btn-restart');
+          if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('pending');
+          }
+          toast('CC Relay 重启成功');
+          st = data;
+          renderStatus();
+          await refresh();
+          await loadCalls(true);
+        }
+      }
+    } catch (e) {
+      // 服务尚未就绪，继续轮询探测
+    }
+  }, 600);
+}
+
+async function restartService() {
+  if (_restartPending) return;
+  if (!confirm('确定要重启 CC Relay 服务吗？正在处理中的请求将会中断。')) return;
+
+  const btn = $('#btn-restart');
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('pending');
+  }
+
+  const prevInstanceId = (st && st.instance_id) || '';
+  _restartPending = true;
+  showRestartOverlay('正在触发重启并断开旧进程连接...', false);
+
+  try {
+    const res = await fetch('/api/restart', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CC-Relay-UI': '1',
+      },
+      body: '{}',
+    });
+    try { await res.json(); } catch (e) {}
+  } catch (err) {
+    // 忽略旧进程断开造成的网络中断
+  }
+
+  startRestartPolling(prevInstanceId);
+}
+
+const restartBtn = $('#btn-restart');
+if (restartBtn) restartBtn.onclick = () => restartService();
+
+const restartRetryBtn = $('#btn-restart-retry');
+if (restartRetryBtn) restartRetryBtn.onclick = () => {
+  const prevInstanceId = (st && st.instance_id) || '';
+  startRestartPolling(prevInstanceId);
+};
+
+const restartCloseBtn = $('#btn-restart-close');
+if (restartCloseBtn) restartCloseBtn.onclick = () => {
+  hideRestartOverlay();
+  _restartPending = false;
+  const btn = $('#btn-restart');
+  if (btn) {
+    btn.disabled = false;
+    btn.classList.remove('pending');
+  }
+};
 
 const TIER_NAME = { main: '主模型', opus: 'explore代理', sonnet: '审查代理', fast: '任务名称代理', agent: 'plan代理' };
 
@@ -3206,8 +3779,9 @@ async function loadTraffic(snapshot) {
     for (const r of rows) {
       const cs = trafficCacheSummary(r);
       const tokenLabel = r.cache_requests ? Number(r.input_tokens || 0).toLocaleString() : '—';
-      html += '<tr><td><span class="dot' + (r.err ? '' : ' on') + '" style="display:inline-block;margin-right:6px;vertical-align:middle;"></span><span class="tagc ' + (r.route === 'codex' ? 'codex' : ((r.route === 'antigravity' || r.route === 'gemini') ? 'gemini' : 'deepseek')) + '">' + escHtml(r.route) + '</span></td>' +
-        '<td class="mono">' + escHtml(r.model) + '</td>' +
+      const tagcClass = r.route === 'paused' ? 'paused' : (r.route === 'codex' ? 'codex' : ((r.route === 'antigravity' || r.route === 'gemini') ? 'gemini' : 'deepseek'));
+      html += '<tr><td><span class="dot' + (r.err ? '' : ' on') + '" style="display:inline-block;margin-right:6px;vertical-align:middle;"></span><span class="tagc ' + tagcClass + '">' + escHtml(r.route) + '</span></td>' +
+        '<td class="mono tf-mdl" title="' + escHtml(r.model) + '">' + escHtml(r.model) + '</td>' +
         '<td class="mono" style="text-align:right">' + r.req + '</td>' +
         '<td class="mono" style="text-align:right;color:var(--emerald)">' + r.ok + '</td>' +
         '<td class="mono" style="text-align:right;color:' + (r.err ? 'var(--red)' : 'var(--text-faint)') + '">' + r.err + '</td>' +
@@ -3279,6 +3853,7 @@ function copyCallDetailSys(idx) {
 
 // 1. 抓包数据拉取
 async function loadCalls(force, newLimit) {
+  if (_restartPending) return;
   if (newLimit) _clLimit = Number(newLimit);
   if (_clLoading && !force) return;
   _clLoading = true;
@@ -3394,14 +3969,14 @@ function renderCallsTable(calls) {
     const cst = c.status || 0;
     const isErr = cst >= 400 || c.resp_error;
     const cs = cacheSummary(c);
-    const routeClass = c.route === 'codex' ? 'codex' : ((c.route === 'antigravity' || c.route === 'gemini') ? 'gemini' : 'deepseek');
+    const routeClass = c.route === 'paused' ? 'paused' : (c.route === 'codex' ? 'codex' : ((c.route === 'antigravity' || c.route === 'gemini') ? 'gemini' : 'deepseek'));
 
     html += '<tr data-idx="' + c.idx + '" class="' + (isErr ? 'err-row' : '') + '">' +
       '<td class="mono" style="color:var(--text-dim);font-size:10px;">#' + c.idx + '</td>' +
       '<td style="color:var(--text-dim);font-family:var(--font-mono);">' + escHtml((c.ts || '').slice(11)) + '</td>' +
       '<td class="mono" style="color:var(--text-muted);">' + escHtml(c.orig_model || '—') + '</td>' +
       '<td class="arrow">→</td>' +
-      '<td class="mono mdl-out">' + escHtml(c.sent_model || '—') + '</td>' +
+      '<td class="mono mdl-out" title="' + escHtml(c.sent_model || '—') + '">' + escHtml(c.sent_model || '—') + '</td>' +
       '<td><span class="tagc ' + routeClass + '">' + escHtml(c.route || 'direct') + '</span></td>' +
       '<td style="color:var(--text-dim);" title="' + escHtml(c.route_reason || '') + '">' + escHtml(rel) + '</td>' +
       '<td class="mono" style="font-weight:700;color:' + (isErr ? 'var(--red)' : 'var(--emerald)') + '">' + (cst || '—') + '</td>' +
@@ -3473,23 +4048,35 @@ async function fetchDetail(idx) {
     const agentId = (r.headers && (r.headers['x-claude-code-agent-id'] || r.headers['X-Claude-Code-Agent-Id'])) || '(主循环交互)';
     const cu = r.cache;
     const fmtN = n => Number.isFinite(Number(n)) ? Number(n).toLocaleString() : '—';
-    const cacheInfo = cu && cu.cache_hit_rate != null
-      ? ('总计 ' + fmtN(cu.cache_total_tokens) + ' ｜ 未缓存 ' + fmtN(cu.input_tokens) + ' ｜ 命中 ' + fmtN(cu.cache_read_tokens) + ' ｜ 写入 ' + fmtN(cu.cache_creation_tokens) + ' ｜ 命中率: ' + (Number(cu.cache_hit_rate) * 100).toFixed(1) + '%')
-      : '上游未返回缓存统计元数据';
+    let cacheHtml = '';
+    if (cu && cu.cache_hit_rate != null) {
+      cacheHtml = '<div class="cache-badges">' +
+        '<span class="c-badge">总计 <b>' + fmtN(cu.cache_total_tokens) + '</b></span>' +
+        '<span class="c-badge">未缓存 <b>' + fmtN(cu.input_tokens) + '</b></span>' +
+        '<span class="c-badge">命中 <b>' + fmtN(cu.cache_read_tokens) + '</b></span>' +
+        '<span class="c-badge">写入 <b>' + fmtN(cu.cache_creation_tokens) + '</b></span>' +
+        '<span class="c-badge hit">命中率 <b>' + (Number(cu.cache_hit_rate) * 100).toFixed(1) + '%</b></span>' +
+        '</div>';
+    } else {
+      cacheHtml = '<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">上游未返回缓存统计元数据</div>';
+    }
 
     const rawJson = JSON.stringify(r, null, 2);
     _dc[idx] = { record: r, rawJson, sys, html: "" };
+
+    const routeLabel = (r.route || '') + (r.sent_model ? ' (' + r.sent_model + ')' : '');
+    const cleanBannerText = r.stripped_banner ? '已剔除 ' + r.stripped_banner + ' 块' : '未开启';
 
     const html = `
       <div class="detail-topbar">
         <div class="detail-tags">
           <span class="detail-chip">序号 <b>#${r.idx}</b></span>
           <span class="detail-chip">时间 <b>${r.ts || ''}</b></span>
-          <span class="detail-chip">接口 <b>${r.path || '/v1/messages'}</b></span>
-          <span class="detail-chip">上游路由 <b>${r.route || ''} (${r.sent_model || ''})</b></span>
+          <span class="detail-chip" title="${escHtml(r.path || '/v1/messages')}">接口 <b class="clip-text">${escHtml(r.path || '/v1/messages')}</b></span>
+          <span class="detail-chip" title="${escHtml(routeLabel)}">上游路由 <b class="clip-text">${escHtml(routeLabel)}</b></span>
           <span class="detail-chip ${r.resp_status >= 400 ? 'warn' : 'ok'}">HTTP <b>${r.resp_status || 200}</b></span>
-          <span class="detail-chip">指纹清理: <b>${r.stripped_banner ? '已剔除 ' + r.stripped_banner + ' 块' : '未开启'}</b></span>
-          <span class="detail-chip">子代理 ID: <b>${escHtml(String(agentId).slice(0, 16))}</b></span>
+          <span class="detail-chip">指纹清理 <b>${cleanBannerText}</b></span>
+          <span class="detail-chip" title="Agent ID: ${escHtml(agentId)}">子代理 ID <b class="clip-text">${escHtml(String(agentId).slice(0, 16))}</b></span>
         </div>
         <button type="button" class="pm-act-btn" onclick="copyCallDetailJson('${r.idx}')">
           📋 复制完整抓包 JSON
@@ -3505,7 +4092,7 @@ async function fetchDetail(idx) {
         </div>
         <div class="detail-box">
           <div class="detail-box-title">缓存与请求头 Headers</div>
-          <div style="font-size:11px;color:var(--emerald);font-weight:600;margin-bottom:8px;">${cacheInfo}</div>
+          ${cacheHtml}
           <pre class="detail-pre" style="max-height:160px;">${escHtml(hd)}</pre>
         </div>
       </div>
@@ -3635,6 +4222,7 @@ let _pmData = { captured: {}, custom: {}, enabled: {} };
 let _curPtier = 'main';
 
 async function loadPromptsData() {
+  if (_restartPending) return;
   try {
     const res = await api('/api/prompts');
     if (res && res.captured) {

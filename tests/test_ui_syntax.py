@@ -90,6 +90,30 @@ class TestUISyntax(unittest.TestCase):
         # 4. 验证表格行点击使用事件委托
         self.assertIn("body._delegatedClick", self.html)
 
+    def test_traffic_pause_ui_elements(self):
+        # 验证流量启停按钮与横幅存在
+        self.assertIn('id="btn-traffic-toggle"', self.html)
+        self.assertIn('id="traffic-banner"', self.html)
+        self.assertIn('id="btn-banner-resume"', self.html)
+        self.assertIn(".btn-traffic", self.html)
+        self.assertIn(".traffic-paused-banner", self.html)
+        self.assertIn("function renderTrafficControl", self.html)
+        self.assertIn("function toggleTraffic", self.html)
+        self.assertIn("aria-pressed", self.html)
+        self.assertIn("route === 'paused'", self.html)
+
+    def test_restart_ui_elements(self):
+        # 验证一键重启按钮、重新连接遮罩与前端状态函数存在
+        self.assertIn('id="btn-restart"', self.html)
+        self.assertIn('id="restart-overlay"', self.html)
+        self.assertIn('id="btn-restart-retry"', self.html)
+        self.assertIn('id="btn-restart-close"', self.html)
+        self.assertIn(".btn-restart", self.html)
+        self.assertIn("function restartService", self.html)
+        self.assertIn("function startRestartPolling", self.html)
+        self.assertIn("confirm('确定要重启 CC Relay 服务吗？正在处理中的请求将会中断。')", self.html)
+        self.assertIn("CC Relay 重启成功", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()
