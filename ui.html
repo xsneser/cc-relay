@@ -3805,6 +3805,11 @@ function renderCpaProgressCard(data) {
   } else if (checking) {
     descText = '正在检查最新版本…';
     isIndeterminate = true;
+  } else if (state === 'queued') {
+    descText = '正在准备更新下载…';
+    isIndeterminate = true;
+    showSpinner = true;
+    showActions = false;
   } else if (state === 'downloading') {
     descText = '正在下载更新…';
   } else if (state === 'verifying') {
@@ -3822,7 +3827,7 @@ function renderCpaProgressCard(data) {
   } else if (state === 'complete') {
     descText = '更新成功！CPA 已就绪。';
     showSpinner = false;
-  } else if (hasUpdate) {
+  } else if (hasUpdate && state === 'idle') {
     descText = '检测到新版本可用，是否立即更新？';
     showSpinner = false;
     showActions = true;
@@ -3915,11 +3920,12 @@ const cpaCardBtnUpdate = $('#cpa-card-btn-update');
 if (cpaCardBtnUpdate) cpaCardBtnUpdate.addEventListener('click', async () => {
   cpaCardBtnUpdate.disabled = true;
   try {
-    await api('/api/cpa/update', {});
-    renderCpaProgressCard({ ...(typeof st !== 'undefined' ? st : {}), update_state: 'downloading', checking: false });
+    renderCpaProgressCard({ ...(typeof st !== 'undefined' ? st : {}), update_state: 'queued', checking: false });
     startCpaFastPoll();
+    await api('/api/cpa/update', {});
   } catch (e) {
     toast('升级失败: ' + e, true);
+    stopCpaFastPoll();
   }
 });
 
@@ -4330,12 +4336,14 @@ function renderConfig(cfg) {
   if (cpaInstall) cpaInstall.addEventListener('click', async () => {
     cpaInstall.disabled = true;
     try {
-      await api('/api/cpa/update', {});
-      renderCpaProgressCard({ ...(typeof st !== 'undefined' ? st : {}), update_state: 'downloading', checking: false });
+      renderCpaProgressCard({ ...(typeof st !== 'undefined' ? st : {}), update_state: 'queued', checking: false });
       startCpaFastPoll();
+      await api('/api/cpa/update', {});
     }
-    catch (e) { toast('升级失败: ' + e, true); }
-    finally { refresh(); }
+    catch (e) {
+      toast('升级失败: ' + e, true);
+      stopCpaFastPoll();
+    }
   });
 
   _configDirty = false; _configLoaded = true;
@@ -4447,7 +4455,9 @@ function renderStatus() {
     cpaMessage.textContent = st.cpa_update_error || st.cpa_update_check_error || stateText[st.cpa_update_state] || (st.cpa_update_checking ? '正在检查更新…' : (st.cpa_has_update ? '发现新版本，可手动升级。' : '自动更新默认关闭；升级时 Codex 将短暂重启。'));
   }
   if (cpaInstall) cpaInstall.disabled = !st.cpa_has_update || ['queued', 'downloading', 'staged', 'installing', 'rolling_back'].includes(st.cpa_update_state);
-  renderCpaProgressCard(st);
+  if (!_cpaFastPollTimer) {
+    renderCpaProgressCard(st);
+  }
 
   // CC Relay 自身更新检测状态与自动弹窗
   const ru = st.relay_update || {};

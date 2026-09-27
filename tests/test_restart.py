@@ -78,9 +78,10 @@ class RestartUnitTests(unittest.TestCase):
         self.assertGreater(len(st["instance_id"]), 0)
 
     def test_voice_probes_fail_fast_on_closed_port(self):
+        closed_conf = {"tools": {"voice": {"port": 18498}}}
         t0 = time.time()
-        self.assertFalse(cc_relay.voice_up())
-        stat = cc_relay.voice_status_dict()
+        self.assertFalse(cc_relay.voice_up(closed_conf))
+        stat = cc_relay.voice_status_dict(closed_conf)
         self.assertEqual(stat["status"], "stopped")
         self.assertFalse(stat["ready"])
         elapsed = time.time() - t0
