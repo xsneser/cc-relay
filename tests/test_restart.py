@@ -77,6 +77,22 @@ class RestartUnitTests(unittest.TestCase):
         self.assertTrue(isinstance(st["instance_id"], str))
         self.assertGreater(len(st["instance_id"]), 0)
 
+    def test_voice_probes_fail_fast_on_closed_port(self):
+        t0 = time.time()
+        self.assertFalse(cc_relay.voice_up())
+        stat = cc_relay.voice_status_dict()
+        self.assertEqual(stat["status"], "stopped")
+        self.assertFalse(stat["ready"])
+        elapsed = time.time() - t0
+        self.assertLess(elapsed, 0.5, f"voice probes on closed port took too long: {elapsed:.2f}s")
+
+    def test_voice_upstream_health_offline_short_circuit(self):
+        with mock.patch("cc_relay.voice_status_dict") as mock_dict:
+            res = cc_relay.get_upstream_health({}, "voice", running=False)
+            self.assertEqual(res["state"], "offline")
+            self.assertFalse(res["running"])
+            mock_dict.assert_not_called()
+
 
 class RestartLauncherTests(unittest.TestCase):
     def test_launcher_respects_no_browser_env(self):
@@ -191,6 +207,16 @@ class RestartEndpointSecurityTests(unittest.TestCase):
             self.assertEqual(res.get("message"), "cc-relay restarting...")
             self.assertEqual(hdrs.get("cache-control"), "no-store")
             mock_sched.assert_called_once()
+
+    def test_ping_endpoint(self):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/ping")
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertTrue(data.get("ok"))
+            self.assertEqual(data.get("instance_id"), cc_relay._PROCESS_INSTANCE_ID)
+            self.assertIn("traffic_paused", data)
+            self.assertFalse(data.get("traffic_paused"))
 
 
 if __name__ == "__main__":

@@ -30,7 +30,23 @@
   },
   "tools": {
     "antigravity": {
-      "auto_start": true
+      "auto_start": false
+    },
+    "codex": {
+      "auto_update": false
+    },
+    "voice": {
+      "auto_start": false,
+      "hotkey": "mouse_x1",
+      "engine": "paraformer_streaming_2pass",
+      "port": 8401,
+      "vad_mode": 2,
+      "beep_feedback": false,
+      "restore_clipboard": true
+    },
+    "relay_update": {
+      "auto_check": true,
+      "check_interval_seconds": 14400
     }
   },
   "router": {

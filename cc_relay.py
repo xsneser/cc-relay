@@ -17,6 +17,8 @@ CC 统一中转 (unified relay)
 import os, sys, json, time, threading, argparse, subprocess, socket, re
 import urllib.request, urllib.error
 from urllib.parse import urlsplit
+from cpa_updater import CPAUpdater
+import relay_updater
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 BASE = os.environ.get("CC_RELAY_DIR") or os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +28,27 @@ LOCK = threading.Lock()
 _IDX = [0]
 _UP = {"last": "", "last_model": "", "last_ts": 0}
 _PROCESS_INSTANCE_ID = f"{os.getpid()}-{time.time_ns()}"
+_CPA_UPDATER = None
+_CPA_UPDATER_LOCK = threading.Lock()
+_CODEX_MAINTENANCE = threading.Condition()
+_CODEX_ACTIVE_REQUESTS = 0
+_CODEX_MAINTENANCE_ACTIVE = False
+_CODEX_LAST_REQUEST_TS = 0.0
+
+
+def _get_cpa_updater(conf=None):
+    global _CPA_UPDATER
+    conf = conf or load_conf()
+    with _CPA_UPDATER_LOCK:
+        if _CPA_UPDATER is None:
+            exe = os.path.join(BASE, "codex-proxy", "cli-proxy-api.exe")
+            cfg = conf.get("codex_config") or os.path.join(BASE, "codex-proxy", "config.yaml")
+            _CPA_UPDATER = CPAUpdater(BASE, exe, cfg)
+        return _CPA_UPDATER
+
+
+def _get_relay_updater(conf=None):
+    return relay_updater.get_relay_updater(conf or load_conf())
 
 
 def load_conf():
@@ -65,6 +88,11 @@ def traffic_paused(conf):
 
 _RESTART_LOCK = threading.Lock()
 _RESTART_QUEUED = False
+
+# Only an Antigravity process launched by this relay may be stopped from the UI.
+_ANTIGRAVITY_PROCESS_LOCK = threading.Lock()
+_ANTIGRAVITY_PROCESS = None
+_ANTIGRAVITY_EXE = ""
 
 
 def _powershell_quote(arg):
@@ -277,7 +305,26 @@ def _config_public_view(conf):
             "key_mask": _mask_config_key(key),
             "has_key": bool(key),
         }
-    return {"upstreams": upstreams}
+    tools_conf = conf.get("tools") or {}
+    codex_view = {"auto_update": ((tools_conf.get("codex") or {}).get("auto_update") is True)}
+    v_conf = tools_conf.get("voice") or {}
+    voice_view = {
+        "auto_start": bool(v_conf.get("auto_start", False)),
+        "hotkey": str(v_conf.get("hotkey") or "mouse_x1"),
+        "engine": str(v_conf.get("engine") or "paraformer_streaming_2pass"),
+        "port": int(v_conf.get("port") or 8401),
+        "restore_clipboard": bool(v_conf.get("restore_clipboard", True)),
+    }
+    return {
+        "upstreams": upstreams,
+        "tools": {
+            "codex": codex_view,
+            "antigravity": {
+                "auto_start": bool(((conf.get("tools") or {}).get("antigravity") or {}).get("auto_start", False)),
+            },
+            "voice": voice_view,
+        },
+    }
 
 
 def _apply_config_update(conf, data):
@@ -317,6 +364,45 @@ def _apply_config_update(conf, data):
                     raise ValueError(f"upstreams.{name}.key must be a string")
                 if key.strip() and key.strip() != _CONFIG_KEY_MASK:
                     candidate[key_env] = key.strip()
+
+    tools_update = data.get("tools")
+    if tools_update is not None:
+        if not isinstance(tools_update, dict):
+            raise ValueError("tools must be an object")
+        tools = candidate.setdefault("tools", {})
+        if "codex" in tools_update:
+            c_patch = tools_update["codex"]
+            if not isinstance(c_patch, dict):
+                raise ValueError("tools.codex must be an object")
+            if "auto_update" in c_patch:
+                if not isinstance(c_patch["auto_update"], bool):
+                    raise ValueError("tools.codex.auto_update must be a boolean")
+                tools.setdefault("codex", {})["auto_update"] = c_patch["auto_update"]
+        if "antigravity" in tools_update:
+            ag = tools.setdefault("antigravity", {})
+            if "auto_start" in tools_update["antigravity"]:
+                ag["auto_start"] = bool(tools_update["antigravity"]["auto_start"])
+        if "voice" in tools_update:
+            v_patch = tools_update["voice"]
+            if not isinstance(v_patch, dict):
+                raise ValueError("tools.voice must be an object")
+            v_conf = tools.setdefault("voice", {})
+            if "auto_start" in v_patch:
+                v_conf["auto_start"] = bool(v_patch["auto_start"])
+            if "hotkey" in v_patch:
+                v_conf["hotkey"] = str(v_patch["hotkey"]).strip().lower()
+            if "engine" in v_patch:
+                engine = str(v_patch["engine"]).strip()
+                if engine not in ("paraformer_streaming_2pass", "sensevoice_offline"):
+                    raise ValueError(f"unsupported engine: {engine}")
+                v_conf["engine"] = engine
+            if "port" in v_patch:
+                port = int(v_patch["port"])
+                if not (1024 <= port <= 65535):
+                    raise ValueError("port must be between 1024 and 65535")
+                v_conf["port"] = port
+            if "restore_clipboard" in v_patch:
+                v_conf["restore_clipboard"] = bool(v_patch["restore_clipboard"])
 
     _save_conf(candidate)
     return _config_public_view(candidate)
@@ -416,6 +502,115 @@ def antigravity_up(conf=None):
         return _tcp(8045)
 
 
+def antigravity_auto_start_enabled(conf=None):
+    """Only explicit true enables implicit sidecar startup."""
+    conf = conf or load_conf()
+    tools = conf.get("tools") or {}
+    settings = tools.get("antigravity") or {}
+    return settings.get("auto_start") is True
+
+
+_UPSTREAM_HEALTH = {
+    "codex": {"api_ok": True, "reason": "", "ts": 0.0},
+    "antigravity": {"api_ok": True, "reason": "", "ts": 0.0},
+    "deepseek": {"api_ok": True, "reason": "", "ts": 0.0},
+}
+_UPSTREAM_HEALTH_LOCK = threading.Lock()
+_CODEX_PROXY_TARGET_CACHE = {"ts": 0.0, "target": None}
+_CODEX_PROXY_TARGET_LOCK = threading.Lock()
+_CODEX_PROXY_CHECK_CACHE = {"ts": 0.0, "ok": True, "port": None}
+_CODEX_PROXY_CHECK_LOCK = threading.Lock()
+
+
+def _get_codex_proxy_target(conf=None):
+    now = time.time()
+    with _CODEX_PROXY_TARGET_LOCK:
+        if now - _CODEX_PROXY_TARGET_CACHE["ts"] < 10.0:
+            return _CODEX_PROXY_TARGET_CACHE["target"]
+    target = None
+    try:
+        import urllib.parse as _urlparse
+        cfg_path = (conf or {}).get("codex_config") or os.path.join(BASE, "codex-proxy", "config.yaml")
+        if os.path.isfile(cfg_path):
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    m = re.match(r'^\s*proxy-url:\s*["\']?(http://[^"\'\s]+)["\']?', line)
+                    if m:
+                        raw = m.group(1).strip()
+                        if raw.lower() != "direct":
+                            u = _urlparse.urlparse(raw)
+                            target = (u.hostname or "127.0.0.1", u.port or 80)
+                        break
+    except Exception:
+        pass
+    with _CODEX_PROXY_TARGET_LOCK:
+        _CODEX_PROXY_TARGET_CACHE.update({"ts": now, "target": target})
+    return target
+
+
+def _check_codex_proxy_reachable(conf=None):
+    now = time.time()
+    with _CODEX_PROXY_CHECK_LOCK:
+        if now - _CODEX_PROXY_CHECK_CACHE["ts"] < 3.0:
+            return _CODEX_PROXY_CHECK_CACHE["ok"], _CODEX_PROXY_CHECK_CACHE["port"]
+    target = _get_codex_proxy_target(conf)
+    if not target:
+        ok, port = True, None
+    else:
+        host, port = target
+        ok = _tcp(port, host, t=0.15)
+    with _CODEX_PROXY_CHECK_LOCK:
+        _CODEX_PROXY_CHECK_CACHE.update({"ts": now, "ok": ok, "port": port})
+    return ok, port
+
+
+def get_upstream_health(conf, name, running=None):
+    """三态健康检测:
+    online: 运行中且 API 正常
+    degraded: 运行中但 API 不可用 (如外发代理 7897 未开、认证失败、近期请求报 5xx)
+    offline: 进程未运行或端口未监听
+    """
+    if name == "codex":
+        is_run = codex_up() if running is None else bool(running)
+        if not is_run:
+            return {"state": "offline", "running": False, "reason": ""}
+        now = time.time()
+        with _UPSTREAM_HEALTH_LOCK:
+            h = dict(_UPSTREAM_HEALTH.get("codex", {}))
+        if h.get("api_ok") is False and (now - h.get("ts", 0.0) < 120.0):
+            return {"state": "degraded", "running": True, "reason": h.get("reason") or "API报错"}
+        ok, proxy_port = _check_codex_proxy_reachable(conf)
+        if not ok and proxy_port:
+            return {"state": "degraded", "running": True, "reason": f"代理未运行 (:{proxy_port})"}
+        return {"state": "online", "running": True, "reason": ""}
+
+    if name in ("antigravity", "gemini"):
+        is_run = antigravity_up(conf) if running is None else bool(running)
+        if not is_run:
+            return {"state": "offline", "running": False, "reason": ""}
+        now = time.time()
+        with _UPSTREAM_HEALTH_LOCK:
+            h = dict(_UPSTREAM_HEALTH.get("antigravity", {}))
+        if h.get("api_ok") is False and (now - h.get("ts", 0.0) < 120.0):
+            return {"state": "degraded", "running": True, "reason": h.get("reason") or "API报错"}
+        return {"state": "online", "running": True, "reason": ""}
+
+    if name == "voice":
+        if running is not None and not running:
+            return {"state": "offline", "running": False, "reason": ""}
+        v_stat = voice_status_dict(conf)
+        is_run = (bool(v_stat.get("ready", False) or voice_up(conf))) if running is None else bool(running)
+        if not is_run:
+            return {"state": "offline", "running": False, "reason": ""}
+        if v_stat.get("status") == "loading_model":
+            return {"state": "degraded", "running": True, "reason": "加载模型中"}
+        if v_stat.get("ready"):
+            return {"state": "online", "running": True, "reason": ""}
+        return {"state": "degraded", "running": True, "reason": "未就绪"}
+
+    return {"state": "online", "running": True, "reason": ""}
+
+
 def codex_start(conf):
     if codex_up():
         return "already"
@@ -438,36 +633,424 @@ def codex_start(conf):
 
 def antigravity_start(conf):
     """按配置懒启动 Antigravity Tools; 已运行时不重复拉起。"""
+    global _ANTIGRAVITY_PROCESS, _ANTIGRAVITY_EXE
     if antigravity_up(conf):
         return "already"
     exe = (conf.get("antigravity_exe") or "").strip()
     if not exe or not os.path.exists(exe):
         return "no-exe"
     try:
-        subprocess.Popen([exe], cwd=os.path.dirname(exe),
-                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        proc = subprocess.Popen([exe], cwd=os.path.dirname(exe),
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception:
         return "start-failed"
+    with _ANTIGRAVITY_PROCESS_LOCK:
+        _ANTIGRAVITY_PROCESS = proc
+        _ANTIGRAVITY_EXE = os.path.normcase(os.path.abspath(exe))
     for _ in range(40):
         time.sleep(0.5)
         if antigravity_up(conf):
             return "started"
+        if proc.poll() is not None:
+            break
+    with _ANTIGRAVITY_PROCESS_LOCK:
+        if _ANTIGRAVITY_PROCESS is proc:
+            _ANTIGRAVITY_PROCESS = None
+            _ANTIGRAVITY_EXE = ""
     return "timeout"
+
+
+def antigravity_stop():
+    """Stop only the Antigravity process started and still owned by this relay."""
+    global _ANTIGRAVITY_PROCESS, _ANTIGRAVITY_EXE
+    with _ANTIGRAVITY_PROCESS_LOCK:
+        proc = _ANTIGRAVITY_PROCESS
+        exe = _ANTIGRAVITY_EXE
+        if proc is None:
+            return "not-managed"
+        if proc.poll() is not None:
+            _ANTIGRAVITY_PROCESS = None
+            _ANTIGRAVITY_EXE = ""
+            return "not-running"
+        pid = getattr(proc, "pid", None)
+        if not pid or not exe:
+            return "not-managed"
+        try:
+            result = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True,
+                                    text=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+            if result.returncode != 0:
+                return "stop-failed"
+        except Exception as e:
+            return repr(e)
+        finally:
+            _ANTIGRAVITY_PROCESS = None
+            _ANTIGRAVITY_EXE = ""
+    return "stopped"
+
+
+def antigravity_owned():
+    with _ANTIGRAVITY_PROCESS_LOCK:
+        return _ANTIGRAVITY_PROCESS is not None and _ANTIGRAVITY_PROCESS.poll() is None
 
 
 def codex_stop():
     try:
-        subprocess.run(["taskkill", "/F", "/IM", "cli-proxy-api.exe"], capture_output=True,
-                       text=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+        result = subprocess.run(["taskkill", "/F", "/IM", "cli-proxy-api.exe"], capture_output=True,
+                                text=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+        if result.returncode != 0 and codex_up():
+            return "stop-failed"
         return "stopped"
     except Exception as e:
         return repr(e)
 
 
+def _codex_request_enter():
+    global _CODEX_ACTIVE_REQUESTS
+    with _CODEX_MAINTENANCE:
+        if _CODEX_MAINTENANCE_ACTIVE:
+            return False
+        _CODEX_ACTIVE_REQUESTS += 1
+        return True
+
+
+def _codex_request_leave():
+    global _CODEX_ACTIVE_REQUESTS, _CODEX_LAST_REQUEST_TS
+    with _CODEX_MAINTENANCE:
+        _CODEX_ACTIVE_REQUESTS = max(0, _CODEX_ACTIVE_REQUESTS - 1)
+        _CODEX_LAST_REQUEST_TS = time.time()
+        _CODEX_MAINTENANCE.notify_all()
+
+
+def _cpa_auto_update_enabled():
+    try:
+        return ((load_conf().get("tools") or {}).get("codex") or {}).get("auto_update") is True
+    except Exception:
+        return False
+
+
+def _cpa_auto_update_idle():
+    with _CODEX_MAINTENANCE:
+        return _CODEX_ACTIVE_REQUESTS == 0 and time.time() - _CODEX_LAST_REQUEST_TS >= 60
+
+
+def _codex_login_pending():
+    try:
+        manager = get_codex_login()
+        with manager._lock:
+            return manager._pending is not None
+    except Exception:
+        return False
+
+
+def _install_cpa_update(staged_path, automatic=False):
+    """Swap CPA only after requests drain; restore the previous executable on failure."""
+    global _CODEX_MAINTENANCE_ACTIVE
+    conf = load_conf()
+    managed = os.path.abspath(os.path.join(BASE, "codex-proxy", "cli-proxy-api.exe"))
+    configured = os.path.abspath(conf.get("codex_exe") or managed)
+    if configured != managed or os.path.abspath(_get_cpa_updater(conf).exe_path) != managed:
+        raise RuntimeError("refusing to update a CPA executable outside this project")
+    deadline = time.time() + 300
+    with _CODEX_MAINTENANCE:
+        while True:
+            active = _CODEX_ACTIVE_REQUESTS > 0
+            quiet_left = max(0.0, 60.0 - (time.time() - _CODEX_LAST_REQUEST_TS)) if automatic else 0.0
+            if not active and quiet_left <= 0:
+                if automatic and not _cpa_auto_update_enabled():
+                    raise RuntimeError("automatic update was disabled before installation")
+                if _codex_login_pending():
+                    raise RuntimeError("Codex login is in progress; update deferred")
+                _CODEX_MAINTENANCE_ACTIVE = True
+                break
+            remaining = deadline - time.time()
+            if remaining <= 0 or (automatic and not _cpa_auto_update_enabled()):
+                raise RuntimeError("automatic update deferred; Codex is not idle or auto-update was disabled")
+            wait_for = min(remaining, 1.0, quiet_left) if quiet_left > 0 else min(remaining, 1.0)
+            _CODEX_MAINTENANCE.wait(wait_for)
+    was_running = codex_up()
+    backup = managed + ".bak"
+    swapped = False
+    try:
+        if was_running:
+            result = codex_stop()
+            if result != "stopped":
+                raise RuntimeError("could not stop current CPA process")
+            for _ in range(50):
+                if not codex_up():
+                    break
+                time.sleep(0.1)
+            if codex_up():
+                raise RuntimeError("CPA process did not exit")
+        shutil.copy2(managed, backup)
+        os.replace(staged_path, managed)
+        swapped = True
+        if was_running:
+            started = codex_start(conf)
+            if started not in ("started", "already"):
+                raise RuntimeError("new CPA failed to start: " + str(started))
+            for _ in range(10):
+                if codex_up() and probe_upstream(conf, "codex", timeout=2).get("available"):
+                    return
+                time.sleep(0.5)
+            raise RuntimeError("new CPA failed its /v1/models health check")
+    except Exception as exc:
+        if swapped:
+            _get_cpa_updater(conf).set_update_state("rolling_back", error=str(exc)[:300])
+            if codex_up():
+                codex_stop()
+                for _ in range(30):
+                    if not codex_up():
+                        break
+                    time.sleep(0.1)
+            try:
+                os.replace(backup, managed)
+                if was_running:
+                    old_start = codex_start(conf)
+                    if old_start not in ("started", "already"):
+                        raise RuntimeError("rollback CPA failed to start: " + str(old_start))
+            except Exception as rollback_exc:
+                raise RuntimeError(f"{exc}; rollback failed: {rollback_exc}") from exc
+        elif was_running and not codex_up():
+            try:
+                old_start = codex_start(conf)
+                if old_start not in ("started", "already"):
+                    raise RuntimeError("previous CPA failed to restart: " + str(old_start))
+            except Exception as restart_exc:
+                raise RuntimeError(f"{exc}; previous CPA restart failed: {restart_exc}") from exc
+        raise
+    finally:
+        with _CODEX_MAINTENANCE:
+            _CODEX_MAINTENANCE_ACTIVE = False
+            _CODEX_MAINTENANCE.notify_all()
+
+
+# ---------- 语音输入伴侣 (Voice Input Companion) ----------
+
+_VOICE_PROCESS = None
+_VOICE_PROCESS_LOCK = threading.Lock()
+_VOICE_JOB = None
+_VOICE_JOB_LOCK = threading.Lock()
+VOICE_PID_FILE = os.path.join(BASE, ".voice.pid")
+
+
+def _get_voice_job():
+    global _VOICE_JOB
+    with _VOICE_JOB_LOCK:
+        if _VOICE_JOB is not None:
+            return _VOICE_JOB
+        try:
+            import win32job
+            job = win32job.CreateJobObject(None, "")
+            info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
+            info["BasicLimitInformation"]["LimitFlags"] |= win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, info)
+            _VOICE_JOB = job
+        except Exception:
+            _VOICE_JOB = False
+        return _VOICE_JOB
+
+
+def voice_up(conf=None):
+    """探测语音 RPC 端口 (8401) 并通过 /health 握手验证是否确为 voice 服务"""
+    conf = conf or load_conf()
+    port = conf.get("tools", {}).get("voice", {}).get("port", 8401)
+    if not _tcp(port, t=0.08):
+        return False
+    try:
+        import urllib.request as _urllib
+        req = _urllib.Request(f"http://127.0.0.1:{port}/health", headers={"Origin": "http://127.0.0.1:8610"})
+        with _urllib.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("service") == "voice"
+    except Exception:
+        pass
+    return False
+
+
+def voice_status_dict(conf=None):
+    """返回详细的语音状态机信息"""
+    conf = conf or load_conf()
+    v_conf = conf.get("tools", {}).get("voice", {})
+    port = v_conf.get("port", 8401)
+    status_info = {
+        "status": "stopped",
+        "ready": False,
+        "pid": None,
+        "owned": voice_owned(),
+        "hotkey": v_conf.get("hotkey", "mouse_x1"),
+        "engine": v_conf.get("engine", "paraformer_streaming_2pass"),
+        "last_error": None,
+    }
+    if not _tcp(port, t=0.08):
+        with _VOICE_PROCESS_LOCK:
+            if _VOICE_PROCESS is not None:
+                if _VOICE_PROCESS.poll() is None:
+                    status_info["status"] = "starting"
+                    status_info["pid"] = _VOICE_PROCESS.pid
+                else:
+                    status_info["status"] = "stopped"
+        return status_info
+
+    try:
+        import urllib.request as _urllib
+        req = _urllib.Request(f"http://127.0.0.1:{port}/health", headers={"Origin": "http://127.0.0.1:8610"})
+        with _urllib.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data.get("service") == "voice":
+                    status_info["status"] = data.get("status", "ready")
+                    status_info["ready"] = bool(data.get("ready"))
+                    status_info["pid"] = data.get("pid")
+                    status_info["engine"] = data.get("engine", status_info["engine"])
+                    return status_info
+    except Exception:
+        pass
+
+    with _VOICE_PROCESS_LOCK:
+        if _VOICE_PROCESS is not None:
+            if _VOICE_PROCESS.poll() is None:
+                status_info["status"] = "starting"
+                status_info["pid"] = _VOICE_PROCESS.pid
+            else:
+                status_info["status"] = "stopped"
+    return status_info
+
+
+def voice_auto_start_enabled(conf=None):
+    conf = conf or load_conf()
+    tools = conf.get("tools") or {}
+    settings = tools.get("voice") or {}
+    return settings.get("auto_start") is True
+
+
+def voice_start(conf=None):
+    """启动语音伴侣子进程并写入 .voice.pid 与绑定 Job Object"""
+    global _VOICE_PROCESS
+    conf = conf or load_conf()
+    if voice_up(conf):
+        return "already"
+
+    venv_py = os.path.join(BASE, "tools", "voice_input", ".venv", "Scripts", "python.exe")
+    if os.path.isfile(venv_py):
+        py_exe = venv_py
+    elif getattr(sys, "frozen", False):
+        py_exe = "pythonw"
+    else:
+        py_exe = sys.executable
+
+    v_conf = conf.get("tools", {}).get("voice", {})
+    hotkey = v_conf.get("hotkey", "mouse_x1")
+    engine = v_conf.get("engine", "paraformer_streaming_2pass")
+    port = str(v_conf.get("port", 8401))
+
+    cmd = [py_exe, "-u", "-m", "tools.voice_input", "service", "--hotkey", hotkey, "--engine", engine, "--port", port]
+    v_out = os.path.join(BASE, "voice.out.log")
+    v_err = os.path.join(BASE, "voice.err.log")
+    try:
+        out_f = open(v_out, "a", encoding="utf-8", errors="replace")
+        err_f = open(v_err, "a", encoding="utf-8", errors="replace")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=BASE,
+            stdout=out_f,
+            stderr=err_f,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception as e:
+        return f"start-failed: {e}"
+
+    with _VOICE_PROCESS_LOCK:
+        _VOICE_PROCESS = proc
+
+    job = _get_voice_job()
+    if job:
+        try:
+            import win32api, win32job
+            handle = win32api.OpenProcess(win32api.PROCESS_ALL_ACCESS, False, proc.pid)
+            win32job.AssignProcessToJobObject(job, handle)
+        except Exception:
+            pass
+
+    try:
+        with open(VOICE_PID_FILE, "w", encoding="utf-8") as f:
+            json.dump({
+                "pid": proc.pid,
+                "create_time": time.time(),
+                "cmdline_marker": "tools.voice_input",
+            }, f)
+    except Exception:
+        pass
+
+    for _ in range(50):
+        time.sleep(0.5)
+        if voice_up(conf):
+            return "started"
+        if proc.poll() is not None:
+            break
+
+    with _VOICE_PROCESS_LOCK:
+        if _VOICE_PROCESS is proc:
+            _VOICE_PROCESS = None
+    return "timeout"
+
+
+def voice_stop():
+    """安全停止语音服务：仅停止确认归属于本服务的 voice 进程"""
+    global _VOICE_PROCESS
+    with _VOICE_PROCESS_LOCK:
+        proc = _VOICE_PROCESS
+        pid_to_kill = None
+
+        if proc is not None and proc.poll() is None:
+            pid_to_kill = proc.pid
+        elif os.path.isfile(VOICE_PID_FILE):
+            try:
+                with open(VOICE_PID_FILE, "r", encoding="utf-8") as f:
+                    pinfo = json.load(f)
+                if pinfo.get("cmdline_marker") == "tools.voice_input":
+                    pid_to_kill = pinfo.get("pid")
+            except Exception:
+                pass
+
+        if not pid_to_kill:
+            _VOICE_PROCESS = None
+            return "not-running"
+
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid_to_kill)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except Exception:
+            pass
+        finally:
+            _VOICE_PROCESS = None
+            if os.path.isfile(VOICE_PID_FILE):
+                try:
+                    os.remove(VOICE_PID_FILE)
+                except Exception:
+                    pass
+
+    return "stopped"
+
+
+def voice_owned():
+    with _VOICE_PROCESS_LOCK:
+        if _VOICE_PROCESS is not None and _VOICE_PROCESS.poll() is None:
+            return True
+    if os.path.isfile(VOICE_PID_FILE):
+        return True
+    return False
+
+
 # ---------- 路由决策 ----------
 
-CODEX_MODELS = ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-astra", "gpt-5.5",
-                "gpt-5.3-codex-spark"]
+CODEX_MODELS = ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna",
+                "gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex-spark"]
 DEEPSEEK_MODELS = ["deepseek-flash", "deepseek-v4-pro"]
 # Antigravity 8045 的运行时模型优先; 这些只用于上游不可用时的安全回退。
 GEMINI_MODELS = ["gemini-3.7-flash-low", "gemini-3.7-flash-thinking", "gemini-3.7-flash", "gemini-2.5-flash", "gemini-2.5-pro"]
@@ -1467,9 +2050,17 @@ def stats_snapshot():
         route = 'antigravity'
     codex_available = codex_up()
     antigravity_available = antigravity_up(conf)
+    v_stat = voice_status_dict(conf)
+    voice_available = v_stat.get("ready", False) or voice_up(conf)
+    cx_health = get_upstream_health(conf, "codex", running=codex_available)
+    gm_health = get_upstream_health(conf, "antigravity", running=antigravity_available)
+    vc_health = get_upstream_health(conf, "voice", running=voice_available)
+    cpa_status = _get_cpa_updater(conf).status()
+    relay_update_status = _get_relay_updater(conf).status()
     # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶。
     res = {'route': route, 'mode': route,
             'traffic_paused': traffic_paused(conf),
+            'antigravity_auto_start': antigravity_auto_start_enabled(conf),
             'instance_id': _PROCESS_INSTANCE_ID,
             'model': rt.get('model', ''),
             'models_ds': lm['ds'], 'models_codex': lm['cx'], 'models_gemini': lm['gm'],
@@ -1522,10 +2113,51 @@ def stats_snapshot():
             'proxy_running': codex_available,
             'rows': rows, 'total': total_records,
             'codex_up': codex_available, 'antigravity_up': antigravity_available,
+            'antigravity_owned': antigravity_owned(),
+            'voice_up': voice_available,
+            'voice_owned': voice_owned(),
+            'voice_status': v_stat,
+            'codex_state': cx_health["state"],
+            'codex_reason': cx_health["reason"],
+            'antigravity_state': gm_health["state"],
+            'antigravity_reason': gm_health["reason"],
+            'voice_state': vc_health["state"],
+            'voice_reason': vc_health["reason"],
+            'cpa_version': cpa_status.get('current_version'),
+            'cpa_latest_version': cpa_status.get('latest_version'),
+            'cpa_has_update': cpa_status.get('has_update', False),
+            'cpa_update_checking': cpa_status.get('checking', False),
+            'cpa_update_check_error': cpa_status.get('check_error'),
+            'cpa_update_checked_at': cpa_status.get('last_checked'),
+            'cpa_update_state': cpa_status.get('update_state', 'idle'),
+            'cpa_update_error': cpa_status.get('update_error'),
+            'relay_update': relay_update_status,
             'upstreams_status': {
-                'deepseek': {'available': True},
-                'codex': {'available': codex_available, 'managed': True},
-                'gemini': {'available': antigravity_available, 'managed': True},
+                'deepseek': {'available': True, 'state': 'online'},
+                'codex': {
+                    'available': cx_health["state"] == "online",
+                    'running': codex_available,
+                    'state': cx_health["state"],
+                    'reason': cx_health["reason"],
+                    'managed': True,
+                },
+                'gemini': {
+                    'available': gm_health["state"] == "online",
+                    'running': antigravity_available,
+                    'state': gm_health["state"],
+                    'reason': gm_health["reason"],
+                    'managed': antigravity_owned(),
+                },
+                'voice': {
+                    'available': vc_health["state"] == "online",
+                    'running': voice_available,
+                    'state': vc_health["state"],
+                    'reason': vc_health["reason"],
+                    'status': v_stat.get('status', 'stopped'),
+                    'managed': voice_owned(),
+                    'hotkey': v_stat.get('hotkey', 'mouse_x1'),
+                    'engine': v_stat.get('engine', 'paraformer_streaming_2pass'),
+                },
             },
             'last_up': _UP['last'], 'last_model': _UP['last_model']}
     return res
@@ -1686,11 +2318,24 @@ class Relay(BaseHTTPRequestHandler):
             return
 
         up_name, map_model, reason = pick_route(conf, self.headers, body_json)
+        if up_name == "codex":
+            with _CODEX_MAINTENANCE:
+                if _CODEX_MAINTENANCE_ACTIVE:
+                    msg = json.dumps({"error": {"type": "api_error", "message": "Codex proxy is updating; retry shortly"}}).encode()
+                    self.send_response(503)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(msg)))
+                    self.send_header("Retry-After", "3")
+                    self.end_headers()
+                    if method != "HEAD":
+                        self.wfile.write(msg)
+                    return
 
         # 若路由到外部 sidecar, 尽量懒启动; 不因启动失败吞掉后续可诊断错误。
         if up_name == "codex" and not codex_up():
             codex_start(conf)
-        elif up_name == "antigravity" and not antigravity_up(conf):
+        elif (up_name == "antigravity" and antigravity_auto_start_enabled(conf)
+              and not antigravity_up(conf)):
             antigravity_start(conf)
 
         up = _upstream_conf(conf, up_name)
@@ -1704,6 +2349,7 @@ class Relay(BaseHTTPRequestHandler):
             if method != "HEAD":
                 self.wfile.write(msg)
             return
+        codex_request_active = False
         upstream = base.rstrip("/") + path
 
         # model 改写
@@ -1842,6 +2488,18 @@ class Relay(BaseHTTPRequestHandler):
                             raw = json.dumps(body_json, ensure_ascii=False).encode("utf-8")
 
         data = raw if raw else None
+        if up_name == "codex":
+            if not _codex_request_enter():
+                msg = json.dumps({"error": {"type": "api_error", "message": "Codex proxy is updating; retry shortly"}}).encode()
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(msg)))
+                self.send_header("Retry-After", "3")
+                self.end_headers()
+                if method != "HEAD":
+                    self.wfile.write(msg)
+                return
+            codex_request_active = True
 
         # 转发
         status = 502
@@ -1867,6 +2525,9 @@ class Relay(BaseHTTPRequestHandler):
             err = repr(e)
             rbody = json.dumps({"error": {"type": "relay_error", "message": err}}).encode()
             rheaders = {"Content-Type": "application/json"}
+        finally:
+            if codex_request_active:
+                _codex_request_leave()
 
         # 记录
         try:
@@ -1887,6 +2548,36 @@ class Relay(BaseHTTPRequestHandler):
             })
         except Exception:
             pass
+
+        # 更新上游运行时健康状态
+        if up_name in ("codex", "antigravity", "gemini", "deepseek"):
+            target_up = "antigravity" if up_name == "gemini" else up_name
+            if status and status < 400:
+                with _UPSTREAM_HEALTH_LOCK:
+                    _UPSTREAM_HEALTH[target_up] = {"api_ok": True, "reason": "", "ts": time.time()}
+            else:
+                err_str = ""
+                if rbody:
+                    try:
+                        err_str = rbody.decode("utf-8", "replace")
+                    except Exception:
+                        err_str = ""
+                if not err_str and err:
+                    err_str = str(err)
+                reason_text = "API报错"
+                m_dial = re.search(r'dial tcp [^:\s]+:(\d+)', err_str)
+                if m_dial and "dial HTTP proxy failed" in err_str:
+                    reason_text = f"代理未运行 (:{m_dial.group(1)})"
+                elif "dial HTTP proxy failed" in err_str:
+                    reason_text = "代理连接失败"
+                elif status in (401, 403):
+                    reason_text = f"鉴权失败 ({status})"
+                elif status and status >= 500:
+                    reason_text = f"上游报错 ({status})"
+                elif err:
+                    reason_text = "网络超时"
+                with _UPSTREAM_HEALTH_LOCK:
+                    _UPSTREAM_HEALTH[target_up] = {"api_ok": False, "reason": reason_text, "ts": time.time()}
 
         _UP["last"] = up_name; _UP["last_model"] = sent_model or ""; _UP["last_ts"] = time.time()
 
@@ -1938,7 +2629,7 @@ class UIHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
-        if self.path.split("?")[0].startswith(("/api/codex/login", "/api/restart")):
+        if self.path.split("?")[0].startswith(("/api/codex/login", "/api/cpa/", "/api/restart", "/api/relay/")):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
@@ -2015,6 +2706,26 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json(get_codex_login().status())
             except Exception:
                 self._json({"status": "error", "message": "无法读取 Codex 登录状态"}, 500)
+        elif self.path.startswith("/api/ping"):
+            try:
+                conf = load_conf()
+            except Exception:
+                conf = {}
+            self._json({
+                "ok": True,
+                "instance_id": _PROCESS_INSTANCE_ID,
+                "traffic_paused": traffic_paused(conf),
+            })
+        elif self.path.split("?")[0] == "/api/cpa/version":
+            try:
+                self._json(_get_cpa_updater(load_conf()).status())
+            except Exception as e:
+                self._json({"error": str(e)}, 500)
+        elif self.path.split("?")[0] == "/api/relay/version":
+            try:
+                self._json(_get_relay_updater(load_conf()).status())
+            except Exception as e:
+                self._json({"error": str(e)}, 500)
         elif self.path.startswith("/api/config"):
             try:
                 self._json(_config_public_view(load_conf()))
@@ -2048,6 +2759,60 @@ class UIHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self.path.split("?")[0]
+        if p in ("/api/cpa/check", "/api/cpa/update"):
+            if not self._local_ui_allowed(write=True, error_message="CPA update requires the local relay UI"):
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("invalid CPA update body size")
+                self.connection.settimeout(10)
+                raw = self.rfile.read(length)
+                if len(raw) != length or not isinstance(json.loads(raw or b"{}"), dict):
+                    raise ValueError("invalid CPA update body")
+            except (ValueError, OSError, json.JSONDecodeError):
+                self.close_connection = True
+                self._json({"error": "Invalid CPA update request"}, 400)
+                return
+            try:
+                conf = load_conf()
+                updater = _get_cpa_updater(conf)
+                if p == "/api/cpa/check":
+                    self._json(updater.request_check())
+                else:
+                    managed = os.path.abspath(os.path.join(BASE, "codex-proxy", "cli-proxy-api.exe"))
+                    configured = os.path.abspath(conf.get("codex_exe") or managed)
+                    if configured != managed or os.path.abspath(updater.exe_path) != managed:
+                        raise RuntimeError("CPA executable is not managed by this project")
+                    self._json(updater.request_update(_install_cpa_update))
+            except Exception as e:
+                self._json({"error": str(e)}, 400)
+            return
+        elif p in ("/api/relay/check", "/api/relay/update"):
+            if not self._local_ui_allowed(write=True, error_message="Relay update requires the local relay UI"):
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("invalid relay update body size")
+                self.connection.settimeout(10)
+                raw = self.rfile.read(length)
+                if len(raw) != length or not isinstance(json.loads(raw or b"{}"), dict):
+                    raise ValueError("invalid relay update body")
+            except (ValueError, OSError, json.JSONDecodeError):
+                self.close_connection = True
+                self._json({"error": "Invalid relay update request"}, 400)
+                return
+            try:
+                conf = load_conf()
+                updater = _get_relay_updater(conf)
+                if p == "/api/relay/check":
+                    self._json(updater.request_check(force=True))
+                else:
+                    self._json(updater.request_update(restart_callback=schedule_restart))
+            except Exception as e:
+                self._json({"error": str(e)}, 500)
+            return
         if p == "/api/codex/login":
             if not self._codex_login_allowed(write=True):
                 return
@@ -2069,7 +2834,11 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json({"error": "Invalid login request"}, 400)
                 return
             try:
-                self._json(get_codex_login().start())
+                with _CODEX_MAINTENANCE:
+                    if _CODEX_MAINTENANCE_ACTIVE:
+                        self._json({"error": "CPA is updating; retry login shortly"}, 409)
+                    else:
+                        self._json(get_codex_login().start())
             except Exception:
                 self._json({"status": "error", "message": "无法启动 Codex 登录，请稍后重试"}, 500)
             return
@@ -2100,6 +2869,48 @@ class UIHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             schedule_restart()
+            return
+        if p == "/api/upstream":
+            if not self._local_ui_allowed(write=True, error_message="Upstream control requires the local relay UI"):
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("invalid upstream body size")
+                self.connection.settimeout(10)
+                raw = self.rfile.read(length)
+                data = json.loads(raw or b"{}")
+                if not isinstance(data, dict):
+                    raise ValueError("invalid upstream body")
+            except (ValueError, OSError, json.JSONDecodeError):
+                self.close_connection = True
+                self._json({"error": "Invalid upstream request"}, 400)
+                return
+            name = str(data.get("name") or "").strip().lower()
+            act = str(data.get("action") or "").strip().lower()
+            conf = load_conf()
+            if name == "codex" and act in ("start", "stop"):
+                with _CODEX_MAINTENANCE:
+                    if _CODEX_MAINTENANCE_ACTIVE:
+                        self._json({"error": "CPA is updating; retry shortly"}, 409)
+                    else:
+                        result = codex_start(conf) if act == "start" else codex_stop()
+                        self._json({"result": result})
+                return
+            if name in ("gemini", "antigravity") and act == "start":
+                self._json({"result": antigravity_start(conf), "probe": probe_upstream(conf, "antigravity")})
+            elif name in ("gemini", "antigravity") and act == "stop":
+                self._json({"result": antigravity_stop(), "probe": probe_upstream(conf, "antigravity")})
+            elif name == "codex" and act == "start":
+                self._json({"result": codex_start(conf)})
+            elif name == "codex" and act == "stop":
+                self._json({"result": codex_stop()})
+            elif name == "voice" and act == "start":
+                self._json({"result": voice_start(conf), "status": voice_status_dict(conf)})
+            elif name == "voice" and act == "stop":
+                self._json({"result": voice_stop(), "status": voice_status_dict(conf)})
+            else:
+                self._json({"error": "unsupported upstream action"}, 400)
             return
         ln = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(ln).decode() if ln else "{}"
@@ -2254,22 +3065,18 @@ class UIHandler(BaseHTTPRequestHandler):
                 _save_conf(conf)
                 self._json({"ok": True, "route": route, "model": rt.get("model", "")})
         elif p == "/api/proxy":
+            if not self._local_ui_allowed(write=True, error_message="Proxy control requires the local relay UI"):
+                return
             act = data.get("action")
-            if act == "start": self._json({"result": codex_start(load_conf())})
-            elif act == "stop": self._json({"result": codex_stop()})
-            else: self._json({"error": "bad action"}, 400)
-        elif p == "/api/upstream":
-            name = str(data.get("name") or "").strip().lower()
-            act = str(data.get("action") or "").strip().lower()
-            conf = load_conf()
-            if name in ("gemini", "antigravity") and act == "start":
-                self._json({"result": antigravity_start(conf), "probe": probe_upstream(conf, "antigravity")})
-            elif name == "codex" and act == "start":
-                self._json({"result": codex_start(conf)})
-            elif name == "codex" and act == "stop":
-                self._json({"result": codex_stop()})
+            if act not in ("start", "stop"):
+                self._json({"error": "bad action"}, 400)
             else:
-                self._json({"error": "unsupported upstream action"}, 400)
+                with _CODEX_MAINTENANCE:
+                    if _CODEX_MAINTENANCE_ACTIVE:
+                        self._json({"error": "CPA is updating; retry shortly"}, 409)
+                    else:
+                        result = codex_start(load_conf()) if act == "start" else codex_stop()
+                        self._json({"result": result})
         elif p == "/api/reset":
             err = None
             for attempt in range(5):
@@ -2335,6 +3142,11 @@ def serve_ui(conf):
 
 def serve(a):
     conf = load_conf()
+    _get_cpa_updater(conf).start(auto_update=lambda: _cpa_auto_update_enabled() and _cpa_auto_update_idle(),
+                                 installer=_install_cpa_update)
+    ru_conf = (conf.get("tools") or {}).get("relay_update") or {}
+    if ru_conf.get("auto_check", True):
+        _get_relay_updater(conf).start(auto_check=True)
     host = conf.get("listen_host", "127.0.0.1")
     if not is_loopback_host(host):
         raise ValueError(f"Refusing to bind relay to non-loopback host '{host}'.")

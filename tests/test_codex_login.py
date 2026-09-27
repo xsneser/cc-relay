@@ -209,6 +209,20 @@ class CodexLoginTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertEqual(command[:5], ["icacls", str(self.login.runtime_dir), "/inheritance:r", "/grant:r", "ACME\\Dev:(OI)(CI)F"])
 
+    def test_status_detects_external_configured_accounts(self):
+        auth_dir = self.base / "external-auth"
+        auth_dir.mkdir()
+        (auth_dir / "codex-test1.json").touch()
+        (auth_dir / "codex-test2.json").touch()
+        (auth_dir / "other.json").touch()
+        config_yaml = self.base / "codex-proxy" / "config.yaml"
+        config_yaml.write_text(f'auth-dir: "{auth_dir}"\n', encoding="utf-8")
+        with mock.patch.object(self.login, "_port_open", return_value=True):
+            res = self.login.status()
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["account_count"], 2)
+        self.assertIn("已登录", res["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

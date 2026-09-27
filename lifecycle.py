@@ -19,6 +19,7 @@ CODEX_PORT = 8317
 ANTIGRAVITY_PORT = int(os.environ.get("CC_RELAY_ANTIGRAVITY_PORT", "8045"))
 RELAY_DEFAULT_PORT = 8400
 UI_DEFAULT_PORT = 8610
+VOICE_DEFAULT_PORT = 8401
 WATCH_PID = os.path.join(BASE, ".watch.pid")
 
 
@@ -66,6 +67,14 @@ def antigravity_up(conf=None):
     return tcp(antigravity_port(conf))
 
 
+def antigravity_auto_start_enabled(conf=None):
+    """Return whether implicit Antigravity startup is explicitly enabled."""
+    conf = conf or _load_conf()
+    tools = conf.get("tools") or {}
+    settings = tools.get("antigravity") or {}
+    return settings.get("auto_start") is True
+
+
 def antigravity_ensure(conf=None):
     """只负责确保外部 Gemini sidecar 已启动, 不默认停止用户进程。"""
     conf = conf or _load_conf()
@@ -84,6 +93,53 @@ def antigravity_ensure(conf=None):
         if antigravity_up(conf):
             return "started"
     return "timeout"
+
+
+def voice_port(conf=None):
+    conf = conf or _load_conf()
+    return int((conf.get("tools") or {}).get("voice", {}).get("port") or VOICE_DEFAULT_PORT)
+
+
+def voice_up(conf=None):
+    port = voice_port(conf)
+    try:
+        import urllib.request as _urllib
+        req = _urllib.Request(f"http://127.0.0.1:{port}/health", headers={"Origin": "http://127.0.0.1:8610"})
+        with _urllib.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("service") == "voice"
+    except Exception:
+        pass
+    return False
+
+
+def voice_auto_start_enabled(conf=None):
+    conf = conf or _load_conf()
+    tools = conf.get("tools") or {}
+    settings = tools.get("voice") or {}
+    return settings.get("auto_start") is True
+
+
+def voice_ensure(conf=None):
+    """确保语音伴侣后台服务已拉起"""
+    conf = conf or _load_conf()
+    if voice_up(conf):
+        return "already"
+    try:
+        import cc_relay
+        return cc_relay.voice_start(conf)
+    except Exception as e:
+        return f"start-failed: {e}"
+
+
+def voice_stop():
+    """安全停止语音伴侣进程"""
+    try:
+        import cc_relay
+        return cc_relay.voice_stop()
+    except Exception as e:
+        return f"stop-failed: {e}"
 
 
 def _route_needs_gemini(conf):
@@ -199,15 +255,19 @@ def _watch_alive():
 def cmd_autostart():
     conf = _load_conf()
     started = relay_start()
-    ag_result = "skipped"
-    tools = conf.get("tools") or {}
-    ag_auto = (tools.get("antigravity") or {}).get("auto_start", True)
+    ag_auto = antigravity_auto_start_enabled(conf)
+    ag_result = "disabled" if not ag_auto else "skipped"
     if ag_auto and _route_needs_gemini(conf) and not os.environ.get("CC_RELAY_SKIP_TOOLS"):
         ag_result = antigravity_ensure(conf)
-    # relay 启动成功仍返回原有语义; Gemini 状态通过 status/JSON 诊断。
+    voice_auto = voice_auto_start_enabled(conf)
+    voice_result = "disabled" if not voice_auto else "skipped"
+    if voice_auto and not os.environ.get("CC_RELAY_SKIP_TOOLS"):
+        voice_result = voice_ensure(conf)
+    # relay 启动成功仍返回原有语义; Gemini 与 Voice 状态通过 status/JSON 诊断。
     if os.environ.get("CC_RELAY_STATUS_JSON") == "1":
         print(json.dumps({"ok": relay_up(), "relay": "started" if started else "already_running",
-                          "antigravity": ag_result, "antigravity_up": antigravity_up(conf)}, ensure_ascii=False))
+                          "antigravity": ag_result, "antigravity_up": antigravity_up(conf),
+                          "voice": voice_result, "voice_up": voice_up(conf)}, ensure_ascii=False))
     return 0 if started else 3
 
 
@@ -231,6 +291,7 @@ def cmd_watch():
                 if claude_count() == 0:
                     relay_stop()
                     codex_stop()
+                    voice_stop()
                     break
                 was_running = False
             if c > 0:
@@ -239,6 +300,7 @@ def cmd_watch():
             elif not was_running and time.time() - idle_since > 90:
                 relay_stop()
                 codex_stop()
+                voice_stop()
                 break
             time.sleep(3)
     finally:
@@ -251,13 +313,15 @@ def cmd_watch():
 def cmd_stopall():
     relay_stop()
     codex_stop()
+    voice_stop()
 
 
 def cmd_status():
     conf = _load_conf()
     print(json.dumps({"relay_up": relay_up(conf), "ui_up": tcp(ui_port(conf)),
                       "codex_up": tcp(CODEX_PORT), "antigravity_up": antigravity_up(conf),
-                      "gemini_up": antigravity_up(conf), "claude_procs": claude_count()}, ensure_ascii=False))
+                      "gemini_up": antigravity_up(conf), "voice_up": voice_up(conf),
+                      "claude_procs": claude_count()}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

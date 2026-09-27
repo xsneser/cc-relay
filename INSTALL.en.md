@@ -105,7 +105,7 @@ cp config.example.json config.json
 
 ### 3.3 Gemini (Antigravity Tools) Bridge
 
-1. Make sure the local Antigravity Tools is running and listening on port `8045` (it exposes an Anthropic-compatible endpoint).
+1. Install and start Antigravity Tools manually when needed; it should listen on port `8045` (it exposes an Anthropic-compatible endpoint). cc-relay does not implicitly launch it by default; an already-running instance remains usable. The web console header provides independent Codex/Gemini start and stop controls; Gemini stop only targets an instance launched and tracked by the current cc-relay process, leaving manually started or mismatched executables untouched.
 2. Configure it in `config.json`:
    ```json
    {
@@ -120,7 +120,20 @@ cp config.example.json config.json
      }
    }
    ```
-3. Verify connectivity: click the **Gemini probe** in the web dashboard, or call `GET /api/probe?name=antigravity`.
+3. To opt back into implicit startup, explicitly add `{"tools":{"antigravity":{"auto_start":true}}}`. The default is `false`. The protected local UI `/api/upstream` start action remains available for explicit manual startup.
+4. Verify connectivity: click the **Gemini probe** in the web dashboard, or call `GET /api/probe?name=antigravity`.
+
+### 3.4 Faster Antigravity Tools updates
+
+Use the standalone updater instead of the application's slow self-download:
+
+```bash
+python update_antigravity.py check
+python update_antigravity.py download --proxy http://127.0.0.1:7890
+python update_antigravity.py install --proxy http://127.0.0.1:7890
+```
+
+It selects the Windows x64 installer from the official `lbjlaq/Antigravity-Manager` release and verifies the GitHub asset SHA-256 digest. `download` only stages the installer; `install` launches the official installer. A third-party acceleration prefix must be supplied explicitly with `--download-base` and should only be used if trusted.
 
 ---
 

@@ -106,7 +106,7 @@ cp config.example.json config.json
 
 ### 3.3 Gemini (Antigravity Tools) 桥接
 
-1. 确保本地 Antigravity Tools 已启动并监听在 `8045` 端口（提供 Anthropic 兼容端点）。
+1. 安装并按需手动启动本地 Antigravity Tools，使其监听 `8045` 端口（提供 Anthropic 兼容端点）。cc-relay 默认不会隐式拉起它；已运行的实例仍会被正常使用。Web 控制台顶栏提供独立的 Codex/Gemini 启停按钮；Gemini 停止只针对当前 cc-relay 启动并跟踪的实例，手动启动或路径不匹配的进程不会被终止。
 2. 在 `config.json` 中配置：
    ```json
    {
@@ -121,7 +121,24 @@ cp config.example.json config.json
      }
    }
    ```
-3. 验证端点连通性：在 Web 仪表盘点击 **Gemini 探针** 或调用 `GET /api/probe?name=antigravity`。
+3. 如需恢复隐式启动，必须显式加入：
+   ```json
+   {"tools": {"antigravity": {"auto_start": true}}}
+   ```
+   默认值为 `false`。也可以在本地 UI 通过受保护的 `/api/upstream` 启动操作明确启动，不受该开关限制。
+4. 验证端点连通性：在 Web 仪表盘点击 **Gemini 探针** 或调用 `GET /api/probe?name=antigravity`。
+
+### 3.4 加速更新 Antigravity Tools
+
+项目提供独立更新器，避免使用 Antigravity Tools 自身的慢速下载：
+
+```bash
+python update_antigravity.py check
+python update_antigravity.py download --proxy http://127.0.0.1:7890
+python update_antigravity.py install --proxy http://127.0.0.1:7890
+```
+
+默认从官方 `lbjlaq/Antigravity-Manager` Release 选择 Windows x64 安装包，并校验 GitHub asset 的 SHA-256 digest。`download` 只暂存，不修改当前安装；`install` 才会启动官方安装器。若使用第三方下载加速前缀，请明确指定 `--download-base` 并确认其信任边界。
 
 ---
 
@@ -312,3 +329,7 @@ systemctl --user status cc-relay.service
   1. 上游模型本身未开启或不支持 Prompt Caching；
   2. 连续两次请求的 System Prompt 或历史上下文发生了剧烈变动；
   3. 注意：`cc-relay` 的 `builtin` 修剪模式已具备断点顺延算法，不会破坏缓存连续性。
+
+### Q6: 在 Windows 终端中如何使用中文语音输入 Claude Code？
+- **说明**：Windows 自带的 `Win + H` 在命令行中容易丢失焦点且标点混乱，Claude Code 官方 `/voice` 在代理模式下无法工作。
+- **推荐方案**：运行本项目内置的 `tools/voice_input/start_voice.bat`（首次使用双击 `setup_voice.bat` 初始化环境与 SenseVoice 模型），在终端中按住 `F8` 键说话，松开即可自动将中文或口述指令（如“*斜杠 cost*”转为 `/cost`）秒速填入终端。详见 `tools/voice_input/README.md`。

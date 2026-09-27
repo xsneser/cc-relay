@@ -29,7 +29,7 @@ Through one unified endpoint it aggregates and dispatches to three upstreams —
 - 🔀 **Three first-class upstreams**:
   - **DeepSeek** — direct connection to the official Anthropic-compatible endpoint, best cost/performance.
   - **Codex (CLIProxyAPI)** — bridges official GPT models (GPT-5.6 / GPT-6 and friends) with Reasoning Effort budget translation.
-  - **Gemini (Antigravity Tools)** — bridges Google Gemini models, lazily started on demand.
+  - **Gemini (Antigravity Tools)** — bridges Google Gemini models; existing sidecars are used, while implicit startup is opt-in.
 - 🎯 **Five-tier routing**:
   - `main`: everyday main conversation model
   - `opus`: complex architecture work and deep reasoning (Plan mode / Opus placeholder)
@@ -203,6 +203,20 @@ The web console talks to the relay over these plain JSON endpoints, which are eq
 
 ---
 
+## 🔄 Antigravity Tools Updates
+
+cc-relay does not implicitly launch Antigravity Tools during a request or `claude` wrapper startup. An already-running `8045` sidecar remains usable; start it explicitly from the local UI when needed. The header provides independent Codex and Gemini start/stop controls; Gemini stop only terminates an instance launched and tracked by the current cc-relay process, leaving manually started or mismatched executables untouched. To avoid the application's slow self-download, use the standalone updater:
+
+```bash
+python update_antigravity.py check
+python update_antigravity.py download
+python update_antigravity.py install
+```
+
+The updater selects the Windows x64 installer from the official [Antigravity-Manager release](https://github.com/lbjlaq/Antigravity-Manager/releases) and verifies its SHA-256 against the GitHub asset digest. Use `--proxy http://127.0.0.1:PORT` for a local HTTP proxy or explicitly provide a trusted acceleration prefix with `--download-base`. Downloading stages the installer without changing the current installation; only `install` launches the official installer.
+
+---
+
 ## ⚙️ Config Dictionary (`config.json`)
 
 ```json
@@ -217,6 +231,11 @@ The web console talks to the relay over these plain JSON endpoints, which are eq
   "codex_exe": "",                     // absolute path to the CLIProxyAPI executable (for auto-start)
   "codex_config": "",                  // absolute path to the CLIProxyAPI config file
   "antigravity_exe": "",               // path to the Antigravity executable
+  "tools": {
+    "antigravity": {
+      "auto_start": false                // no implicit launch; explicit UI start remains available
+    }
+  },
   "max_body_capture": 2000000,         // per-request capture truncation limit in bytes (2 MB)
   "upstreams": {
     "deepseek": {

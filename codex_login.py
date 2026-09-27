@@ -5,6 +5,7 @@ does not import cc_relay or read the user's Codex CLI credentials.
 """
 import json
 import os
+import re
 import secrets
 import socket
 import subprocess
@@ -156,12 +157,38 @@ class CodexLogin:
                     return {"status": "idle", "message": "尚未开始 Codex 登录", "account_count": 0}
                 count = self._account_count(metadata)
                 if count:
-                    return {"status": "ok", "message": "Codex 账号已登录", "account_count": count}
-            except _SafeError:
+                    return {"status": "ok", "message": f"Codex 账号已登录 ({count} 个账号)", "account_count": count}
+            except (_SafeError, Exception):
                 pass
-            except Exception:
-                pass
+
+            ext_count = self._external_codex_account_count()
+            if ext_count > 0:
+                is_running = self._port_open()
+                msg = f"Codex 账号已登录 ({ext_count} 个账号)" if is_running else f"Codex 账号已配置 ({ext_count} 个账号)"
+                return {"status": "ok", "message": msg, "account_count": ext_count}
+
             return {"status": "idle", "message": "尚未开始 Codex 登录", "account_count": 0}
+
+    def _external_codex_account_count(self):
+        """Check for active codex auth files in the configured auth-dir when running in standard mode."""
+        try:
+            with self.conf_lock:
+                conf = self.load_conf() or {}
+            cfg_path = conf.get("codex_config") or str(self.proxy_dir / "config.yaml")
+            if not os.path.isfile(cfg_path):
+                return 0
+            auth_dir = None
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    m = re.match(r'^\s*auth-dir:\s*["\']?([^"\'\s]+)', line)
+                    if m:
+                        auth_dir = os.path.expanduser(m.group(1))
+                        break
+            if not auth_dir or not os.path.isdir(auth_dir):
+                return 0
+            return sum(1 for name in os.listdir(auth_dir) if name.startswith("codex-") and name.endswith(".json"))
+        except Exception:
+            return 0
 
     def close(self):
         """Release a pending loopback callback listener for shutdown/test teardown."""

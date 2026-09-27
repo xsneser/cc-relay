@@ -113,6 +113,34 @@ class TestUISyntax(unittest.TestCase):
         self.assertIn("function startRestartPolling", self.html)
         self.assertIn("confirm('确定要重启 CC Relay 服务吗？正在处理中的请求将会中断。')", self.html)
         self.assertIn("CC Relay 重启成功", self.html)
+        self.assertIn("/api/ping", self.html)
+        self.assertIn("cc_traffic_paused", self.html)
+        self.assertIn("window.location.reload()", self.html)
+        self.assertIn("cc_restart_toast", self.html)
+
+    def test_calls_table_responsive_column_priority(self):
+        # 窄屏隐藏首列序号与请求来源，保留 h:opus / h:main 分流规则
+        m = re.search(
+            r'@media\s*\(max-width:\s*900px\)\s*\{(.*?)\n\s*\}\s*\n\s*@media\s*\(max-width:\s*800px\)',
+            self.html,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(m, "900px responsive block must exist")
+        block = m.group(1)
+        calls_hide = re.search(
+            r'table\.cl\s+th:nth-child\((\d+)\).*?'
+            r'table\.cl\s+tr\[data-idx\]\s+td:nth-child\(\1\).*?'
+            r'table\.cl\s+th:nth-child\((\d+)\).*?'
+            r'table\.cl\s+tr\[data-idx\]\s+td:nth-child\(\2\)',
+            block,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(calls_hide, "narrow calls-table hide selectors must exist")
+        self.assertEqual(calls_hide.group(1), "1")
+        self.assertEqual(calls_hide.group(2), "10")
+        self.assertNotRegex(block, r'table\.cl\s+th:nth-child\(7\)')
+        self.assertIn(".replace('hybrid:', 'h:')", self.html)
+        self.assertIn("<th>分流规则</th>", self.html)
 
     def test_header_status_and_action_affordance(self):
         # 1. 状态展示组、分隔线与操作组必须按顺序独立分组
@@ -152,6 +180,206 @@ class TestUISyntax(unittest.TestCase):
         # 7. renderTrafficControl 不得使用 className 赋值覆盖按钮基类
         self.assertNotIn("btn.className = 'btn-traffic", self.html)
         self.assertIn("btn.classList.toggle('paused'", self.html)
+
+    def test_upstream_controls_are_merged_into_header(self):
+        # 代理状态与启动/停止操作只保留在顶栏, 不再重复渲染 dashboard 控制条
+        header_start = self.html.index('<header>')
+        header_end = self.html.index('</header>', header_start)
+        header = self.html[header_start:header_end]
+        self.assertIn('<div class="upstream-group"', header)
+        for element_id in (
+            'codex-dot', 'codex-status', 'b-codex-toggle',
+            'gemini-dot', 'gemini-status', 'b-gemini-toggle',
+        ):
+            self.assertIn('id="' + element_id + '"', header)
+        for element_id in ('b-codex-start', 'b-codex-stop', 'b-gemini-start', 'b-gemini-stop'):
+            self.assertNotIn('id="' + element_id + '"', self.html)
+        self.assertNotIn('class="proxybar"', self.html)
+        self.assertNotIn('id="b-pstart"', self.html)
+        self.assertNotIn('id="b-pstop"', self.html)
+        self.assertIn("function isUpstreamRunning(provider, snapshot = st)", self.html)
+        self.assertIn("function renderUpstreamToggle(provider, running, owned = true)", self.html)
+        self.assertIn("async function controlUpstream(provider)", self.html)
+        self.assertIn("api('/api/upstream', { name: meta.apiName, action })", self.html)
+        self.assertIn("upstreamPending = { codex: false, antigravity: false, voice: false }", self.html)
+        self.assertIn("btnId: 'b-codex-toggle'", self.html)
+        self.assertIn("btnId: 'b-gemini-toggle'", self.html)
+        self.assertIn("btnId: 'b-voice-toggle'", self.html)
+        self.assertIn("const button = $('#' + meta.btnId);", self.html)
+        self.assertIn("data-action=\"start\"", self.html)
+        self.assertIn("setAttribute('aria-pressed', running ? 'true' : 'false')", self.html)
+
+        # 三个服务各自独立布局, 每个服务只有一个可切换按钮 (Codex, Gemini, Voice)
+        self.assertEqual(header.count('class="upstream-btn '), 3)
+        self.assertIn('.status-group, .upstream-group, .action-group { width: 100%; }', self.html)
+        self.assertIn('.upstream-group { grid-template-columns: 1fr; padding: 5px 8px; }', self.html)
+        self.assertIn('.upstream-btn.start', self.html)
+        self.assertIn('.upstream-btn.stop', self.html)
+        self.assertIn('.upstream-btn.manual', self.html)
+        self.assertIn('.upstream-btn.manual:disabled', self.html)
+        self.assertIn('手动运行 · 不可停止', self.html)
+        self.assertNotIn("' (手动)'", self.html)
+        self.assertNotIn("? ' 手动' : ''", self.html)
+        self.assertIn("renderUpstream('#gemini-dot', '#gemini-status', 'Gemini', '8045', grun);", self.html)
+        self.assertIn('.upstream-icon-stop { display: none; }', self.html)
+        self.assertIn('.upstream-btn:focus-visible', self.html)
+        self.assertIn('.upstream-btn:disabled', self.html)
+        self.assertIn('aria-label="启动 Codex 代理"', self.html)
+        self.assertIn('aria-label="启动 Gemini 代理"', self.html)
+        self.assertIn('role="status" aria-live="polite" aria-atomic="true" id="codex-status-region"', self.html)
+        self.assertIn('aria-controls="gemini-status-region"', self.html)
+
+    def test_upstream_toggle_state_transition_in_node(self):
+        node_bin = shutil.which("node")
+        if not node_bin:
+            self.skipTest("Node.js is not installed or not in PATH")
+
+        # 验证在 JS 运行环境中，renderUpstreamToggle 能够正确找到 #b-codex-toggle
+        # 并在 running 为 true 时更新为 stop 类和“停止”文本，running 为 false 时更新为 start 类和“启动”
+        js_code = """
+        const metaBlock = `""" + self.html[self.html.index("const UPSTREAM_META = {"):self.html.index("function isUpstreamRunning")] + """`;
+        const renderBlock = `""" + self.html[self.html.index("function renderUpstreamToggle(provider"):self.html.index("async function controlUpstream(")] + """`;
+
+        let upstreamPending = { codex: false, antigravity: false, voice: false };
+        const buttons = {
+            '#b-codex-toggle': {
+                dataset: {},
+                classList: new Set(),
+                className: '',
+                attributes: {},
+                setAttribute(k, v) { this.attributes[k] = v; },
+                title: '',
+                disabled: false,
+                querySelector(sel) {
+                    if (sel === '.upstream-btn-label') {
+                        return this.labelNode || (this.labelNode = { textContent: '' });
+                    }
+                    return null;
+                }
+            },
+            '#b-gemini-toggle': {
+                dataset: {},
+                classList: new Set(),
+                className: '',
+                attributes: {},
+                setAttribute(k, v) { this.attributes[k] = v; },
+                title: '',
+                disabled: false,
+                querySelector(sel) {
+                    if (sel === '.upstream-btn-label') {
+                        return this.labelNode || (this.labelNode = { textContent: '' });
+                    }
+                    return null;
+                }
+            },
+            '#b-voice-toggle': {
+                dataset: {},
+                classList: new Set(),
+                className: '',
+                attributes: {},
+                setAttribute(k, v) { this.attributes[k] = v; },
+                title: '',
+                disabled: false,
+                querySelector(sel) {
+                    if (sel === '.upstream-btn-label') {
+                        return this.labelNode || (this.labelNode = { textContent: '' });
+                    }
+                    return null;
+                }
+            }
+        };
+        const $ = sel => buttons[sel] || null;
+
+        eval(metaBlock + '\\n' + renderBlock);
+
+        // 1. 当 Codex 运行中 (running = true)
+        renderUpstreamToggle('codex', true);
+        const btn = buttons['#b-codex-toggle'];
+        if (!btn.className.includes('stop')) {
+            console.error('Expected stop class when running, got:', btn.className);
+            process.exit(1);
+        }
+        if (btn.labelNode.textContent !== '停止') {
+            console.error('Expected label 停止 when running, got:', btn.labelNode.textContent);
+            process.exit(1);
+        }
+        if (btn.dataset.action !== 'stop') {
+            console.error('Expected data-action stop, got:', btn.dataset.action);
+            process.exit(1);
+        }
+
+        // 2. 当 Codex 未启动 (running = false)
+        renderUpstreamToggle('codex', false);
+        if (!btn.className.includes('start')) {
+            console.error('Expected start class when stopped, got:', btn.className);
+            process.exit(1);
+        }
+        if (btn.labelNode.textContent !== '启动') {
+            console.error('Expected label 启动 when stopped, got:', btn.labelNode.textContent);
+            process.exit(1);
+        }
+        if (btn.dataset.action !== 'start') {
+            console.error('Expected data-action start, got:', btn.dataset.action);
+            process.exit(1);
+        }
+
+        // 3. Gemini 由外部手动运行时进入橙色不可停止态
+        const gemini = buttons['#b-gemini-toggle'];
+        renderUpstreamToggle('antigravity', true, false);
+        if (!gemini.className.includes('manual') || gemini.className.includes('stop')) {
+            console.error('Expected manual class for unmanaged Gemini, got:', gemini.className);
+            process.exit(1);
+        }
+        if (!gemini.disabled || gemini.dataset.action !== '') {
+            console.error('Expected unmanaged Gemini toggle to be disabled with no action');
+            process.exit(1);
+        }
+        if (gemini.labelNode.textContent !== '手动运行 · 不可停止') {
+            console.error('Expected manual label, got:', gemini.labelNode.textContent);
+            process.exit(1);
+        }
+        if (gemini.attributes['aria-pressed'] !== 'true' || !gemini.title.includes('无法停止')) {
+            console.error('Expected manual Gemini accessibility state');
+            process.exit(1);
+        }
+
+        // 4. Relay-owned Gemini 仍可正常停止
+        renderUpstreamToggle('antigravity', true, true);
+        if (!gemini.className.includes('stop') || gemini.disabled || gemini.labelNode.textContent !== '停止') {
+            console.error('Expected owned Gemini to be stoppable');
+            process.exit(1);
+        }
+        """
+
+        res = subprocess.run([node_bin, "-e", js_code], capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(res.returncode, 0, f"Node verification failed: {res.stderr}")
+
+    def test_model_efforts_definitions(self):
+        # 验证 gpt-6 系列模型的推理挡位定义
+        self.assertIn("'gpt-6-sol':                   ['instant', 'medium', 'high', 'xhigh', 'max']", self.html)
+        self.assertIn("'gpt-6-luna':                  ['instant', 'medium', 'high', 'xhigh']", self.html)
+
+        node_bin = shutil.which("node")
+        if not node_bin:
+            self.skipTest("Node.js is not installed or not in PATH")
+
+        js_code = self.html[self.html.index("const MODEL_EFFORTS = {"):self.html.index("let st = null, busy = false;")] + """
+        // gpt-6-sol 必须支持 5 挡 (包含 max)
+        const solEffs = effortsFor('gpt-6-sol');
+        if (!Array.isArray(solEffs) || solEffs.length !== 5 || !solEffs.includes('max')) {
+            console.error('gpt-6-sol should have 5 efforts including max, got:', solEffs);
+            process.exit(1);
+        }
+
+        // gpt-6-luna 必须支持 4 挡 (不含 max)
+        const lunaEffs = effortsFor('gpt-6-luna');
+        if (!Array.isArray(lunaEffs) || lunaEffs.length !== 4 || lunaEffs.includes('max')) {
+            console.error('gpt-6-luna should have 4 efforts without max, got:', lunaEffs);
+            process.exit(1);
+        }
+        """
+        res = subprocess.run([node_bin, "-e", js_code], capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(res.returncode, 0, f"Efforts verification failed: {res.stderr}")
 
 
 if __name__ == "__main__":

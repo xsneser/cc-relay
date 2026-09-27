@@ -14,6 +14,7 @@ records.jsonl
 prompts.json
 relay-status.json
 .update-status.json
+.relay-update-state.json
 .watch.pid
 *.pid
 *.tmp
@@ -44,6 +45,8 @@ __pycache__/
 
 # ── 大型二进制与外部依赖 ──
 codex-proxy/cli-proxy-api.exe
+codex-proxy/cli-proxy-api.exe.bak
+codex-proxy/.staging/
 codex-proxy/LICENSE
 codex-proxy/README*.md
 *.exe
@@ -69,6 +72,11 @@ Thumbs.db
 guardian.py
 sentinel.py
 .playwright-cli/
+
+# ── 语音输入伴侣工具隔离（虚拟环境与模型）──
+tools/voice_input/.venv/
+tools/voice_input/models/
+tools/voice_input/*.part
 
 # ── 示例文件白名单保证 ──
 !config.example.json

@@ -29,7 +29,7 @@
 - 🔀 **3 大主流上游汇聚**：
   - **DeepSeek**：官方 Anthropic 兼容端点直连，极致性价比。
   - **Codex (CLIProxyAPI)**：桥接官方 GPT 模型（GPT-5.6 / GPT-6 等），支持 Reasoning Effort 预算转换。
-  - **Gemini (Antigravity Tools)**：桥接 Google Gemini 模型，随需按需懒加载。
+  - **Gemini (Antigravity Tools)**：桥接 Google Gemini 模型；默认只使用已运行的 sidecar，自动拉起需显式开启。
 - 🎯 **5 档位智能路由体系 (5-Tier Routing)**：
   - `main`：日常主对话模型
   - `opus`：复杂架构设计与深度推理（对应 Plan 模式 / Opus 占位符）
@@ -206,6 +206,25 @@ Web 控制台基于以下标准 JSON 接口通信，亦可用于第三方自动�
 
 ---
 
+## 🔄 Antigravity Tools 更新
+
+当前项目不会在请求或 `claude` wrapper 启动时自动拉起 Antigravity Tools。已有的 `8045` 实例仍可正常使用；需要启动时，请从本地 Web UI 明确执行 `/api/upstream` 的启动操作，或手动启动应用。顶栏中的 Codex 与 Gemini 启停按钮彼此独立；Gemini 停止操作只会停止当前 cc-relay 启动并跟踪的实例，手动启动或可执行路径不匹配的进程会被保留。可通过独立更新器从官方 GitHub Release 获取 Windows x64 安装包：
+
+```bash
+# 只检查版本（不下载、不修改安装）
+python update_antigravity.py check
+
+# 下载并校验官方 GitHub asset（不安装）
+python update_antigravity.py download
+
+# 下载后启动官方安装器；安装器本身仍由用户确认
+python update_antigravity.py install
+```
+
+默认来源为 [Antigravity-Manager Releases](https://github.com/lbjlaq/Antigravity-Manager/releases)。更新器会严格选择 Windows x64 setup asset，并将 SHA-256 与 GitHub asset digest 比对；也可通过 `--proxy http://127.0.0.1:端口` 使用本机代理，或通过 `--download-base` 显式指定可信加速前缀。安装器启动前不会删除账号数据；下载失败或校验不通过时不会运行安装器。
+
+---
+
 ## ⚙️ 配置字典 (`config.json`)
 
 ```json
@@ -220,6 +239,11 @@ Web 控制台基于以下标准 JSON 接口通信，亦可用于第三方自动�
   "codex_exe": "",                     // CLIProxyAPI 可执行文件绝对路径（用于按需自启动）
   "codex_config": "",                  // CLIProxyAPI 配置文件绝对路径
   "antigravity_exe": "",               // Antigravity 可执行文件路径
+  "tools": {
+    "antigravity": {
+      "auto_start": false                // 默认不隐式拉起；显式 API 启动仍可用
+    }
+  },
   "max_body_capture": 2000000,         // 单条请求抓包截断上限字节数 (2MB)
   "upstreams": {
     "deepseek": {
@@ -275,6 +299,18 @@ Web 控制台基于以下标准 JSON 接口通信，亦可用于第三方自动�
 1. **本地回环绑定 (Loopback Only)**：默认 `listen_host` 为 `127.0.0.1`。除非你在绝对受信任的私有网络中，否则**切勿**将监听地址开放为 `0.0.0.0`，以免 Web 控制台及密钥信息暴露在公网。
 2. **下游鉴权校验**：Relay 对下游 `/v1/messages` 及 `/v1/models` 请求强制使用安全常量时间比对 (`hmac.compare_digest`)，防止非法客户端接入。
 3. **数据隐私与轮转**：`records.jsonl` 与 `prompts.json` 会记录完整的交互提示词与工具调用报文（用于抓包审计与调试）。本项目 `.gitignore` 已默认将其严格排除，请妥善保管本地机器，切勿将包含敏感业务代码的记录文件分发。
+
+---
+
+## 🎙️ Claude Code CLI 中文语音输入伴侣 (可选扩展)
+
+针对 Windows 终端下使用 Claude Code CLI 时 `Win + H` 体验差、官方 `/voice` 依赖海外网络且不支持第三方代理的问题，本项目在 `tools/voice_input/` 提供了基于 **SenseVoice-Small + sherpa-onnx** 的独立中文语音伴侣：
+- **按住热键说话（默认 F8，支持 CapsLock），松开即在毫秒内转写并安全填入终端**；
+- 纯本地 CPU 离线推理，极低延迟，中英文代码术语友好；
+- 口述斜杠命令智能转换（例如“*斜杠 cost*”自动转为 `/cost`）；
+- 独立虚拟环境隔离，不侵入主服务零 pip 依赖架构。
+
+使用指南详见：[tools/voice_input/README.md](tools/voice_input/README.md)
 
 ---
 

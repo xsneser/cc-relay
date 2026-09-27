@@ -201,9 +201,11 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
             disk_conf = json.load(f)
         self.assertTrue(disk_conf.get("traffic_paused"))
 
-        # Verify /api/status shows paused
+        # Verify /api/status and /api/ping show paused
         _, _, st = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/status")
         self.assertTrue(st.get("traffic_paused"))
+        _, _, ping_st = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/ping")
+        self.assertTrue(ping_st.get("traffic_paused"))
 
         # 4. Idempotent call with same state (changed should be False)
         status, _, res2 = self._post_json(f"http://127.0.0.1:{self.ui_port}/api/traffic", {"paused": True})
@@ -222,6 +224,8 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         with open(self.conf_path, "r", encoding="utf-8") as f:
             disk_conf = json.load(f)
         self.assertFalse(disk_conf.get("traffic_paused"))
+        _, _, ping_st2 = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/ping")
+        self.assertFalse(ping_st2.get("traffic_paused"))
 
     def test_relay_pause_interception_and_records(self):
         msg_payload = {

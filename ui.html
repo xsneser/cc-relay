@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="ui-version" content="2.4.0">
+<meta name="ui-version" content="2.4.1">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -249,6 +249,22 @@
     box-shadow: 0 0 10px var(--emerald);
     animation: pulseDot 2s infinite ease-in-out;
   }
+  .dot.warn {
+    background: var(--amber);
+    box-shadow: 0 0 10px var(--amber);
+    animation: pulseDot 2s infinite ease-in-out;
+  }
+  .cpa-update-badge {
+    border: 1px solid rgba(245, 158, 11, 0.55);
+    border-radius: 99px;
+    padding: 3px 8px;
+    color: #fcd34d;
+    background: rgba(245, 158, 11, 0.12);
+    font: 600 10px var(--font-sans);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .cpa-update-badge:hover, .cpa-update-badge:focus-visible { background: rgba(245, 158, 11, 0.22); outline: 2px solid var(--amber); outline-offset: 2px; }
   @keyframes pulseDot {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.55; transform: scale(0.9); }
@@ -377,6 +393,168 @@
     display: flex;
     gap: 10px;
     justify-content: center;
+  }
+
+  /* AntiTools 风格更新弹窗 */
+  .relay-update-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.68);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeInBanner 0.2s ease;
+  }
+  .relay-update-modal {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 32px 34px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    color: #1e293b;
+    animation: fadeInBanner 0.25s ease;
+  }
+  .relay-update-icon-wrap {
+    width: 62px;
+    height: 62px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: #eff6ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2563eb;
+  }
+  .relay-update-modal h2 {
+    font-size: 22px;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 10px;
+    letter-spacing: -0.01em;
+  }
+  .relay-update-modal p {
+    font-size: 13.5px;
+    color: #64748b;
+    line-height: 1.6;
+    margin: 0 0 20px;
+  }
+  .relay-update-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 16px 20px;
+    text-align: left;
+    margin-bottom: 24px;
+  }
+  .relay-update-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 8px;
+  }
+  .relay-update-row:last-child {
+    margin-bottom: 0;
+  }
+  .relay-update-row .val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 700;
+    font-size: 14px;
+    color: #0f172a;
+  }
+  .relay-update-row .val.green {
+    color: #16a34a;
+  }
+  .relay-update-caption {
+    text-align: right;
+    font-size: 11px;
+    color: #94a3b8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    margin-top: 10px;
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 6px;
+  }
+  .relay-update-note {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #dc2626;
+    line-height: 1.4;
+    text-align: left;
+  }
+  .relay-update-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+  .btn-relay-cancel {
+    flex: 1;
+    height: 44px;
+    background: #f1f5f9;
+    color: #475569;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .btn-relay-cancel:hover {
+    background: #e2e8f0;
+  }
+  .btn-relay-confirm {
+    flex: 1.6;
+    height: 44px;
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    transition: background 0.15s ease, opacity 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn-relay-confirm:hover:not(:disabled) {
+    background: #1d4ed8;
+  }
+  .btn-relay-confirm:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn-relay-update {
+    --btn-accent: rgba(59, 130, 246, 0.8);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: #93c5fd;
+  }
+  .btn-relay-update.has-update {
+    --btn-accent: rgba(16, 185, 129, 0.9);
+    border-color: rgba(16, 185, 129, 0.6);
+    color: #6ee7b7;
+  }
+  .update-pulse-dot {
+    width: 6px;
+    height: 6px;
+    background: #10b981;
+    border-radius: 50%;
+    margin-left: 4px;
+    box-shadow: 0 0 8px #10b981;
+    display: inline-block;
+    animation: pulseDot 1.5s infinite;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
   }
 
   /* 流量暂停全局横幅 */
@@ -1398,49 +1576,136 @@
     line-height: 1.6;
   }
 
-  /* ── 代理服务控制条 ── */
-  .proxybar {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-top: 16px;
-    padding: 14px 20px;
-    font-size: 12px;
-    flex-wrap: wrap;
-  }
-  .proxy-status-block {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 1;
-    min-width: 220px;
-  }
-  #ptxt { color: var(--text-muted); font-size: 12px; }
-  #ptxt b { color: #ffffff; }
-  .proxy-actions {
-    display: flex;
-    gap: 8px;
-  }
-  .pbtn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--glass-border);
-    color: #ffffff;
-    border-radius: 8px;
-    padding: 7px 16px;
-    cursor: pointer;
-    font-size: 11.5px;
-    font-weight: 700;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
+  /* ── 顶栏独立上游服务控制组 ── */
+  .upstream-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
+    min-width: 0;
+    padding: 4px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    backdrop-filter: blur(16px);
   }
-  .pbtn:hover {
+  .dot.rec {
+    background: #ef4444;
+    box-shadow: 0 0 10px #ef4444;
+    animation: blinkRec 0.8s ease infinite alternate;
+  }
+  @keyframes blinkRec {
+    from { opacity: 0.4; }
+    to { opacity: 1; }
+  }
+  .voice-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.78);
+    backdrop-filter: blur(12px);
+    z-index: 99998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeInBanner 0.2s ease;
+  }
+  .voice-modal {
+    background: #0d0e12;
+    border: 1px solid var(--glass-border-hover);
+    border-radius: 16px;
+    padding: 24px 28px;
+    max-width: 540px;
+    width: 100%;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(59, 130, 246, 0.15);
+  }
+  .voice-box {
+    min-height: 110px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-bright);
+    word-break: break-all;
+    margin: 14px 0;
+  }
+  .upstream-provider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 6px 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+  }
+  .upstream-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .upstream-status-text { overflow: hidden; text-overflow: ellipsis; }
+  .upstream-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    flex: none;
+  }
+  .upstream-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 68px;
+    padding: 5px 7px;
+    border: 1px solid var(--glass-border);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: border-color 0.2s ease, background 0.2s ease,
+                box-shadow 0.2s ease, transform 0.12s ease;
+  }
+  .upstream-btn svg { width: 12px; height: 12px; flex: none; }
+  .upstream-icon-stop { display: none; }
+  .upstream-btn.start { border-color: rgba(16, 185, 129, 0.42); color: #d1fae5; }
+  .upstream-btn.stop { border-color: rgba(239, 68, 68, 0.38); color: #fecaca; }
+  .upstream-btn.stop .upstream-icon-start { display: none; }
+  .upstream-btn.stop .upstream-icon-stop { display: block; }
+  .upstream-btn.manual {
+    border-color: rgba(249, 115, 22, 0.62);
+    background: rgba(249, 115, 22, 0.12);
+    color: #fed7aa;
+  }
+  .upstream-btn.manual .upstream-icon-start { display: none; }
+  .upstream-btn.manual .upstream-icon-stop { display: block; }
+  .upstream-btn.manual:hover { transform: none; box-shadow: none; }
+  .upstream-btn.manual:disabled { opacity: 0.95; cursor: not-allowed; }
+  .upstream-btn.pending { cursor: wait; }
+  .upstream-btn:hover {
     background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
   }
-  .pbtn:active { transform: scale(0.97); }
-  .pbtn:disabled { opacity: 0.4; cursor: wait; }
+  .upstream-btn:active { transform: translateY(0) scale(0.97); }
+  .upstream-btn:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+  .upstream-btn:disabled { opacity: 0.4; cursor: wait; pointer-events: none; }
 
   /* ── 实时流量统计看板 (Antigravity Matrix Metrics) ── */
   .traf {
@@ -2308,9 +2573,9 @@
     table.cl th, table.cl td {
       padding: 8px 10px;
     }
-    table.cl th:nth-child(7), table.cl tr[data-idx] td:nth-child(7),
+    table.cl th:nth-child(1), table.cl tr[data-idx] td:nth-child(1),
     table.cl th:nth-child(10), table.cl tr[data-idx] td:nth-child(10) {
-      display: none; /* 隐藏分流规则与请求来源，展开详情顶部均有完整呈现 */
+      display: none; /* 隐藏序号与请求来源，展开详情顶部均有完整呈现 */
     }
     table.tf th, table.tf td {
       padding: 8px 10px;
@@ -2349,8 +2614,12 @@
     }
     /* 窄屏下状态组与操作组各占一行, 竖向分隔线转为横向 */
     .header-actions { flex-direction: column; align-items: stretch; gap: 10px; }
-    .status-group, .action-group { width: 100%; }
+    .status-group, .upstream-group, .action-group { width: 100%; }
     .status-group .badge { flex: 1 1 200px; }
+    .upstream-group { grid-template-columns: 1fr; padding: 5px 8px; }
+    .upstream-provider { width: 100%; }
+    .upstream-actions { margin-left: auto; }
+    .upstream-btn { flex: 1 1 0; justify-content: center; }
     .header-divider {
       width: 100%;
       height: 1px;
@@ -2366,6 +2635,10 @@
     .hb-grid { grid-template-columns: 1fr; }
     .metrics-grid { grid-template-columns: 1fr; }
     .status-group .badge, .action-group .btn-action { flex: 1 1 100%; }
+    .upstream-provider { flex-wrap: wrap; }
+    .upstream-status { flex: 1 1 100%; }
+    .upstream-actions { width: 100%; margin-left: 0; }
+    .upstream-btn { flex: 1 1 0; }
   }
 </style>
 </head>
@@ -2394,9 +2667,52 @@
 
     <div class="header-actions">
       <!-- 只读状态展示区 -->
-      <div class="status-group" role="group" aria-label="当前运行状态">
+      <div class="status-group" role="group" aria-label="当前路由状态">
         <div class="badge" id="bd-route" role="status"><span class="dot" id="routedot" aria-hidden="true"></span>路由 <b id="routetxt">…</b></div>
-        <div class="badge" role="status"><span class="dot" id="pdot" aria-hidden="true"></span>代理 <b id="ptxt2">检查…</b></div>
+      </div>
+
+      <!-- 独立上游服务状态与控制区 -->
+      <div class="upstream-group" role="group" aria-label="独立上游代理服务">
+        <div class="upstream-provider" data-upstream="codex">
+          <div class="upstream-status" role="status" aria-live="polite" aria-atomic="true" id="codex-status-region">
+            <span class="dot" id="codex-dot" aria-hidden="true"></span>
+            <span class="upstream-status-text" id="codex-status">Codex :8317 检查中…</span>
+            <button type="button" id="cpa-update-badge" class="cpa-update-badge" hidden aria-label="发现 CLIProxyAPI 新版本">发现新版本</button>
+          </div>
+          <div class="upstream-actions" role="group" aria-label="Codex 代理控制">
+            <button type="button" class="upstream-btn start" id="b-codex-toggle" disabled data-action="start" aria-pressed="false" title="启动 Codex :8317 代理" aria-label="启动 Codex 代理" aria-controls="codex-status-region">
+              <svg class="upstream-icon-start" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg class="upstream-icon-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>
+              <span class="upstream-btn-label">启动</span>
+            </button>
+          </div>
+        </div>
+        <div class="upstream-provider" data-upstream="gemini">
+          <div class="upstream-status" role="status" aria-live="polite" aria-atomic="true" id="gemini-status-region">
+            <span class="dot" id="gemini-dot" aria-hidden="true"></span>
+            <span class="upstream-status-text" id="gemini-status">Gemini :8045 检查中…</span>
+          </div>
+          <div class="upstream-actions" role="group" aria-label="Gemini 代理控制">
+            <button type="button" class="upstream-btn start" id="b-gemini-toggle" disabled data-action="start" aria-pressed="false" title="启动 Gemini :8045 代理" aria-label="启动 Gemini 代理" aria-controls="gemini-status-region">
+              <svg class="upstream-icon-start" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg class="upstream-icon-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>
+              <span class="upstream-btn-label">启动</span>
+            </button>
+          </div>
+        </div>
+        <div class="upstream-provider" data-upstream="voice">
+          <div class="upstream-status" role="status" aria-live="polite" aria-atomic="true" id="voice-status-region">
+            <span class="dot" id="voice-dot" aria-hidden="true"></span>
+            <span class="upstream-status-text" id="voice-status">语音 :8401 检查中…</span>
+          </div>
+          <div class="upstream-actions" role="group" aria-label="语音伴侣控制">
+            <button type="button" class="upstream-btn start" id="b-voice-toggle" disabled data-action="start" aria-pressed="false" title="启动语音输入伴侣服务" aria-label="启动语音伴侣" aria-controls="voice-status-region">
+              <svg class="upstream-icon-start" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              <svg class="upstream-icon-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>
+              <span class="upstream-btn-label">启动</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- 状态与操作的分隔线 -->
@@ -2404,12 +2720,21 @@
 
       <!-- 可点击操作区 -->
       <div class="action-group" role="group" aria-label="快捷操作">
+        <button type="button" class="btn-action btn-voice-modal" id="btn-voice-modal" title="打开在线实时语音听写测试面板">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          <b>实时听写</b>
+        </button>
         <button type="button" class="btn-action btn-traffic" id="btn-traffic-toggle" title="点击手动启停所有上游流量">
           <span class="dot on" id="traffic-dot" aria-hidden="true"></span>流量 <b id="traffic-txt">运行中</b><span class="traffic-action" id="traffic-action">暂停</span>
         </button>
         <button type="button" class="btn-action btn-restart" id="btn-restart" title="一键重启 CC Relay 核心服务">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
           <b>重启服务</b>
+        </button>
+        <button type="button" class="btn-action btn-relay-update" id="btn-relay-update" title="检查与更新 CC Relay 服务">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="relay-update-btn-txt">检查更新</span>
+          <span id="relay-update-badge-dot" class="update-pulse-dot" style="display:none;" aria-hidden="true"></span>
         </button>
       </div>
       <div class="nav-tabs">
@@ -2440,6 +2765,37 @@
     </button>
   </div>
 
+  <!-- AntiTools 风格更新弹窗 -->
+  <div id="relay-update-overlay" class="relay-update-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="relay-update-title">
+    <div class="relay-update-modal">
+      <div class="relay-update-icon-wrap" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:32px;height:32px">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <h2 id="relay-update-title">发现新版本可用</h2>
+      <p id="relay-update-desc">检测到有新版本发布。是否立即下载更新？客户端将在下载完成后自动热重启以应用更新。</p>
+      <div class="relay-update-card">
+        <div class="relay-update-row">
+          <span>当前版本:</span>
+          <span class="val" id="relay-card-current">...</span>
+        </div>
+        <div class="relay-update-row">
+          <span>最新版本:</span>
+          <span class="val green" id="relay-card-latest">...</span>
+        </div>
+        <div class="relay-update-caption">via github: master</div>
+        <div id="relay-card-note" class="relay-update-note" style="display:none;"></div>
+      </div>
+      <div class="relay-update-actions">
+        <button type="button" class="btn-relay-cancel" id="btn-relay-cancel">取消</button>
+        <button type="button" class="btn-relay-confirm" id="btn-relay-confirm">立即下载并自动更新</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 全屏重新连接遮罩 -->
   <div id="restart-overlay" class="restart-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="restart-modal-title">
     <div class="restart-modal">
@@ -2451,6 +2807,41 @@
       <div class="restart-actions" id="restart-modal-actions" style="display:none;">
         <button type="button" class="footbtn btn-matrix-primary" id="btn-restart-retry">重新检测</button>
         <button type="button" class="config-cancel" id="btn-restart-close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 语音听写测试浮窗 -->
+  <div id="voice-overlay" class="voice-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="voice-modal-title">
+    <div class="voice-modal">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--glass-border);padding-bottom:12px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="dot" id="vm-dot"></span>
+          <h2 id="voice-modal-title" style="margin:0;font-size:16px;color:var(--text-bright);font-weight:700;">在线实时流式语音听写</h2>
+        </div>
+        <button type="button" class="config-cancel" id="btn-voice-close" style="padding:4px 10px;font-size:12px;cursor:pointer;">关闭</button>
+      </div>
+      <div id="vm-secure-notice" style="display:none;margin-bottom:12px;padding:8px 12px;font-size:12px;border-radius:6px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:var(--red);">
+        ⚠️ 麦克风受浏览器安全上下文 (Secure Context) 限制，仅允许通过 http://127.0.0.1 或 http://localhost 访问。
+      </div>
+      <div style="margin-bottom:12px;padding:8px 12px;font-size:12px;border-radius:6px;background:rgba(0,255,196,0.08);border:1px solid rgba(0,255,196,0.25);color:var(--accent);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span>💡 <b>客户端免复制自动输入</b>：语音伴侣已自带桌面悬浮麦克风胶囊，在 VS Code / 终端光标处点击即可边说边出字并自动输入。</span>
+        <button type="button" class="btn-action" id="btn-vm-toggle-capsule" style="font-size:11px;padding:3px 8px;white-space:nowrap;">唤出桌面胶囊</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;color:var(--text-muted);font-family:var(--font-mono);">
+        <span>服务通道: <b id="vm-server-status" style="color:var(--accent);">ws://127.0.0.1:8401/ws/voice</b></span>
+        <span>采样: 16kHz PCM16 (AudioWorklet)</span>
+      </div>
+      <div class="voice-box" id="vm-transcribe-box">
+        <span id="vm-confirmed-text" style="font-weight:600;color:var(--text-bright);"></span>
+        <span id="vm-partial-text" style="color:var(--accent);font-style:italic;">点击下方按钮开始录音听写…</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <button type="button" class="btn-action" id="btn-vm-copy" style="font-size:12px;">复制识别文本</button>
+        <button type="button" class="upstream-btn start" id="btn-vm-record" style="padding:8px 24px;font-weight:700;font-size:13px;border-radius:20px;">
+          <span id="btn-vm-record-label">开始说话</span>
+        </button>
+        <button type="button" class="btn-action" id="btn-vm-clear" style="font-size:12px;">清空文本</button>
       </div>
     </div>
   </div>
@@ -2762,24 +3153,6 @@
       </div>
     </div>
 
-    <!-- 代理条 (Dock 风格) -->
-    <div class="glass-card spotlight-card proxybar">
-      <div class="proxy-status-block">
-        <span class="dot" id="pdot2"></span>
-        <span id="ptxt">检查代理服务…</span>
-      </div>
-      <div class="proxy-actions">
-        <button class="pbtn" id="b-pstart">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          启动代理
-        </button>
-        <button class="pbtn" id="b-pstop">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><rect width="16" height="16" x="4" y="4" rx="2"/></svg>
-          停止代理
-        </button>
-      </div>
-    </div>
-
     <!-- 实时模型流量监控 (Antigravity Matrix Metrics) -->
     <div class="glass-card spotlight-card traf" id="traf">
       <div class="sec-head">
@@ -2980,6 +3353,8 @@ const MODEL_EFFORTS = {
   'deepseek-v4-pro':             ['off', 'high'],
   'deepseek-v4-flash-vision-exp': ['off', 'high'],
   'gpt-6-astra':                 ['instant', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-6-sol':                   ['instant', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-6-luna':                  ['instant', 'medium', 'high', 'xhigh'],
   'gpt-5.6-sol':                 ['instant', 'medium', 'high', 'xhigh', 'max'],
   'gpt-5.6-terra':               ['instant', 'medium', 'high', 'xhigh'],
   'gpt-5.6-luna':                ['instant', 'medium', 'high', 'xhigh'],
@@ -2994,6 +3369,50 @@ const MODEL_EFFORTS = {
 const DEFAULT_EFFORTS = ['instant', 'medium', 'high', 'xhigh'];
 const effortsFor = m => (m && m.startsWith('gemini-') ? ['off'] : (MODEL_EFFORTS[m] || DEFAULT_EFFORTS));
 let st = null, busy = false;
+let upstreamPending = { codex: false, antigravity: false, voice: false };
+const UPSTREAM_META = {
+  codex: { slug: 'codex', btnId: 'b-codex-toggle', apiName: 'codex', label: 'Codex', port: '8317' },
+  antigravity: { slug: 'gemini', btnId: 'b-gemini-toggle', apiName: 'antigravity', label: 'Gemini', port: '8045' },
+  voice: { slug: 'voice', btnId: 'b-voice-toggle', apiName: 'voice', label: '语音', port: '8401' },
+};
+
+function isUpstreamRunning(provider, snapshot = st) {
+  if (!snapshot) return false;
+  if (provider === 'codex') {
+    return snapshot.codex_up != null ? !!snapshot.codex_up : !!snapshot.proxy_running;
+  }
+  if (provider === 'antigravity') {
+    return snapshot.antigravity_up != null
+      ? !!snapshot.antigravity_up
+      : !!(snapshot.upstreams_status || {}).gemini?.available;
+  }
+  if (provider === 'voice') {
+    return snapshot.voice_up != null
+      ? !!snapshot.voice_up
+      : !!(snapshot.upstreams_status || {}).voice?.available;
+  }
+  return false;
+}
+
+function getUpstreamState(provider, snapshot = st) {
+  if (!snapshot) return { state: 'offline', running: false, reason: '' };
+  const provKey = provider === 'antigravity' ? 'gemini' : provider;
+  const ups = (snapshot.upstreams_status || {})[provKey] || {};
+  const state = snapshot[provider + '_state'] || ups.state;
+  const reason = snapshot[provider + '_reason'] || ups.reason || '';
+  const running = isUpstreamRunning(provider, snapshot);
+
+  if (!running) {
+    return { state: 'offline', running: false, reason: '' };
+  }
+  if (state === 'degraded' || state === 'warn') {
+    return { state: 'degraded', running: true, reason: reason || 'API不可用' };
+  }
+  if (state === 'online') {
+    return { state: 'online', running: true, reason: '' };
+  }
+  return { state: 'online', running: true, reason: '' };
+}
 
 function toast(msg, err) {
   const t = $('#toast');
@@ -3010,12 +3429,14 @@ async function api(path, body) {
     const r = await fetch(path, {
       method: body ? 'POST' : 'GET',
       headers: { 'Content-Type': 'application/json',
-        ...(path.startsWith('/api/codex/login') ? { 'X-CC-Relay-UI': '1' } : {}) },
+        ...((path.startsWith('/api/codex/login') || path.startsWith('/api/upstream') || path.startsWith('/api/proxy') || path.startsWith('/api/cpa/'))
+          ? { 'X-CC-Relay-UI': '1' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal
     });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
+    const payload = await r.json();
+    if (!r.ok) throw new Error(payload.error || ('HTTP ' + r.status));
+    return payload;
   } finally {
     clearTimeout(timer);
   }
@@ -3051,6 +3472,14 @@ function showView(name) {
   $('#tab-dashboard').classList.toggle('active', name === 'dashboard');
   $('#tab-config').classList.toggle('active', name === 'config');
 }
+const cpaBadgeButton = $('#cpa-update-badge');
+if (cpaBadgeButton) cpaBadgeButton.addEventListener('click', async () => {
+  if (_configDirty && !confirm('有未保存的修改，确定离开配置页吗？')) return;
+  showView('config');
+  if (!_configLoaded || !_configDirty) await loadConfig();
+  const updateButton = $('#cpa-install-update');
+  if (updateButton) updateButton.focus();
+});
 
 // ── 下拉模型选择器 ──
 function buildSel(sel, models, curModel, curEff) {
@@ -3398,7 +3827,21 @@ function renderConfig(cfg) {
     const b = document.createElement('b'); b.textContent = name; title.appendChild(b);
     const code = document.createElement('code'); code.textContent = info.key_env ? 'key_env: ' + info.key_env : '未配置 key_env'; title.appendChild(code);
     card.appendChild(title);
-    if (name === 'codex') appendCodexLogin(card);
+    if (name === 'codex') {
+      appendCodexLogin(card);
+      const updateBox = document.createElement('div');
+      updateBox.className = 'cpa-update-panel';
+      updateBox.id = 'cpa-update-panel';
+      const autoUpdate = !!((cfg.tools && cfg.tools.codex) || {}).auto_update;
+      updateBox.innerHTML = '<div class="upstream-title"><b>CLIProxyAPI 更新</b><code id="cpa-version-label">检测版本中…</code></div>' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">' +
+        '<button type="button" class="btn-action" id="cpa-check-update">检查更新</button>' +
+        '<button type="button" class="btn-action" id="cpa-install-update" disabled>一键升级</button>' +
+        '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted);margin-left:8px;">' +
+        '<input type="checkbox" id="cfg-codex-auto-update" ' + (autoUpdate ? 'checked' : '') + ' style="width:16px;height:16px;">空闲时自动更新</label></div>' +
+        '<div id="cpa-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">自动更新默认关闭；升级时 Codex 将短暂重启。</div>';
+      card.appendChild(updateBox);
+    }
     const grid = document.createElement('div'); grid.className = 'config-grid';
     const base = configField('Base URL', 'cfg-base', 'url', info.base, 'https://example.com/v1');
     const proxy = configField('上游代理 URL', 'cfg-up-proxy', 'text', info.proxy_url, '留空直连；可填 direct');
@@ -3406,6 +3849,50 @@ function renderConfig(cfg) {
     grid.appendChild(base.field); grid.appendChild(proxy.field); grid.appendChild(key.field);
     card.appendChild(grid); root.appendChild(card);
   });
+  // 语音伴侣独立配置卡片
+  const vConf = (cfg.tools && cfg.tools.voice) || {};
+  const vCard = document.createElement('div');
+  vCard.className = 'upstream-card';
+  vCard.id = 'cfg-voice-card';
+  const autoChecked = vConf.auto_start ? 'checked' : '';
+  const selH = vConf.hotkey || 'mouse_x1';
+  const selE = vConf.engine || 'paraformer_streaming_2pass';
+  vCard.innerHTML = '<div class="upstream-title"><b>voice (语音输入伴侣)</b><code>服务端口: ' + (vConf.port || 8401) + ' · 2-Pass 流式因果识别</code></div>' +
+    '<div class="config-grid">' +
+    '  <div class="config-field"><label>随 CC Relay 自启动</label><div style="display:flex;align-items:center;height:34px;gap:8px;">' +
+    '    <input type="checkbox" id="cfg-voice-autostart" ' + autoChecked + ' style="cursor:pointer;width:16px;height:16px;">' +
+    '    <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起</span></div></div>' +
+    '  <div class="config-field"><label>全局对讲触发热键</label><select id="cfg-voice-hotkey" class="cfg-base" style="cursor:pointer;">' +
+    '    <option value="mouse_x1"' + (selH === 'mouse_x1' ? ' selected' : '') + '>mouse_x1 (鼠标侧后退键 · 推荐)</option>' +
+    '    <option value="mouse_x2"' + (selH === 'mouse_x2' ? ' selected' : '') + '>mouse_x2 (鼠标侧前进键)</option>' +
+    '    <option value="f8"' + (selH === 'f8' ? ' selected' : '') + '>F8 键</option>' +
+    '    <option value="caps_lock"' + (selH === 'caps_lock' ? ' selected' : '') + '>CapsLock 大写锁定键</option>' +
+    '  </select></div>' +
+    '  <div class="config-field"><label>ASR 引擎模式</label><select id="cfg-voice-engine" class="cfg-base" style="cursor:pointer;">' +
+    '    <option value="paraformer_streaming_2pass"' + (selE === 'paraformer_streaming_2pass' ? ' selected' : '') + '>paraformer_streaming_2pass (2-Pass 流式 · 推荐)</option>' +
+    '    <option value="sensevoice_offline"' + (selE === 'sensevoice_offline' ? ' selected' : '') + '>sensevoice_offline (SenseVoice 离线保底)</option>' +
+    '  </select></div>' +
+    '</div>';
+  vCard.querySelectorAll('input, select').forEach(el => el.addEventListener('change', markConfigDirty));
+  root.appendChild(vCard);
+  const cpaAuto = $('#cfg-codex-auto-update');
+  if (cpaAuto) cpaAuto.addEventListener('change', markConfigDirty);
+  const cpaCheck = $('#cpa-check-update');
+  if (cpaCheck) cpaCheck.addEventListener('click', async () => {
+    cpaCheck.disabled = true;
+    try { await api('/api/cpa/check', {}); toast('已开始检查 CLIProxyAPI 更新'); }
+    catch (e) { toast('检查更新失败: ' + e, true); }
+    finally { cpaCheck.disabled = false; refresh(); }
+  });
+  const cpaInstall = $('#cpa-install-update');
+  if (cpaInstall) cpaInstall.addEventListener('click', async () => {
+    if (!confirm('升级会短暂重启 Codex 代理。当前请求会先完成，失败时自动回滚。继续吗？')) return;
+    cpaInstall.disabled = true;
+    try { await api('/api/cpa/update', {}); toast('升级任务已排队'); }
+    catch (e) { toast('升级失败: ' + e, true); }
+    finally { refresh(); }
+  });
+
   _configDirty = false; _configLoaded = true;
   paintCodexLogin();
   refreshCodexLogin();
@@ -3420,6 +3907,7 @@ async function loadConfig() {
 function collectConfig() {
   const payload = { upstreams: {} };
   document.querySelectorAll('#cfg-upstreams .upstream-card').forEach(card => {
+    if (card.id === 'cfg-voice-card') return;
     const key = card.querySelector('.cfg-key');
     payload.upstreams[card.dataset.name] = {
       base: card.querySelector('.cfg-base').value,
@@ -3427,6 +3915,23 @@ function collectConfig() {
       key: key.value
     };
   });
+  const codexAutoUpdate = $('#cfg-codex-auto-update');
+  if (codexAutoUpdate) {
+    payload.tools = payload.tools || {};
+    payload.tools.codex = { auto_update: codexAutoUpdate.checked };
+  }
+  const vCard = $('#cfg-voice-card');
+  if (vCard) {
+    payload.tools = payload.tools || {};
+    const asEl = $('#cfg-voice-autostart');
+    const hkEl = $('#cfg-voice-hotkey');
+    const egEl = $('#cfg-voice-engine');
+    payload.tools.voice = {
+      auto_start: asEl ? asEl.checked : false,
+      hotkey: hkEl ? hkEl.value : 'mouse_x1',
+      engine: egEl ? egEl.value : 'paraformer_streaming_2pass'
+    };
+  }
   return payload;
 }
 $('#cfg-save').addEventListener('click', async () => {
@@ -3462,6 +3967,7 @@ function refresh() {
     try {
       st = await api('/api/status');
       if (st.error) throw new Error(st.error);
+      try { localStorage.setItem('cc_traffic_paused', (st && st.traffic_paused) ? '1' : '0'); } catch (e) {}
       renderStatus();
       await loadTraffic(st);
     } catch (e) {
@@ -3477,6 +3983,75 @@ function refresh() {
 
 function renderStatus() {
   const _sy = window.scrollY;
+  const updateBadge = $('#cpa-update-badge');
+  if (updateBadge) {
+    updateBadge.hidden = !st.cpa_has_update;
+    updateBadge.textContent = st.cpa_latest_version ? ('发现新版本 v' + st.cpa_latest_version) : '发现新版本';
+    updateBadge.setAttribute('aria-label', st.cpa_latest_version ? ('发现 CLIProxyAPI 新版本 v' + st.cpa_latest_version) : '发现 CLIProxyAPI 新版本');
+  }
+  const cpaVersionLabel = $('#cpa-version-label');
+  if (cpaVersionLabel) {
+    const current = st.cpa_version || '未知';
+    const latest = st.cpa_latest_version || (st.cpa_update_checking ? '检查中…' : '尚未检查');
+    cpaVersionLabel.textContent = '当前 v' + current + ' · 最新 ' + (latest.startsWith('v') ? latest : 'v' + latest);
+  }
+  const cpaMessage = $('#cpa-update-message');
+  const cpaInstall = $('#cpa-install-update');
+  if (cpaMessage) {
+    const stateText = { queued: '等待 Codex 空闲…', downloading: '正在下载并校验更新…', staged: '更新已暂存…', installing: '正在重启并验证 CPA…', rolling_back: '正在回滚…', complete: '更新完成。', failed: '更新失败。' };
+    cpaMessage.textContent = st.cpa_update_error || st.cpa_update_check_error || stateText[st.cpa_update_state] || (st.cpa_update_checking ? '正在检查更新…' : (st.cpa_has_update ? '发现新版本，可手动升级。' : '自动更新默认关闭；升级时 Codex 将短暂重启。'));
+  }
+  if (cpaInstall) cpaInstall.disabled = !st.cpa_has_update || ['queued', 'downloading', 'staged', 'installing', 'rolling_back'].includes(st.cpa_update_state);
+
+  // CC Relay 自身更新检测状态与自动弹窗
+  const ru = st.relay_update || {};
+  const ruBtn = $('#btn-relay-update');
+  const ruBtnTxt = $('#relay-update-btn-txt');
+  const ruBadgeDot = $('#relay-update-badge-dot');
+  if (ruBtn && ruBtnTxt) {
+    if (ru.has_update) {
+      ruBtn.classList.add('has-update');
+      ruBtnTxt.textContent = '发现新版本';
+      if (ruBadgeDot) ruBadgeDot.style.display = 'inline-block';
+    } else if (ru.checking) {
+      ruBtn.classList.remove('has-update');
+      ruBtnTxt.textContent = '检查中…';
+      if (ruBadgeDot) ruBadgeDot.style.display = 'none';
+    } else {
+      ruBtn.classList.remove('has-update');
+      ruBtnTxt.textContent = '检查更新';
+      if (ruBadgeDot) ruBadgeDot.style.display = 'none';
+    }
+  }
+
+  const cardCur = $('#relay-card-current');
+  const cardLat = $('#relay-card-latest');
+  const cardNote = $('#relay-card-note');
+  const btnConfirm = $('#btn-relay-confirm');
+  if (cardCur) cardCur.textContent = ru.current_version || '未知';
+  if (cardLat) cardLat.textContent = ru.latest_version || (ru.checking ? '检查中…' : '未知');
+  if (cardNote) {
+    if (ru.blocked_reason) {
+      cardNote.textContent = ru.blocked_reason;
+      cardNote.style.display = 'block';
+    } else {
+      cardNote.style.display = 'none';
+    }
+  }
+  if (btnConfirm) {
+    btnConfirm.disabled = !ru.has_update || !ru.can_update || ['queued', 'fetching', 'applying'].includes(ru.update_state);
+  }
+
+  // 发现更新时自动弹出 AntiTools 风格更新框 (每轮 session 只对该 SHA 自动弹一次，关闭后不再骚扰)
+  if (ru.has_update && ru.latest_sha) {
+    let dismissed = '';
+    try { dismissed = sessionStorage.getItem('cc_relay_dismissed_sha') || ''; } catch (e) {}
+    const overlay = $('#relay-update-overlay');
+    if (dismissed !== ru.latest_sha && overlay && overlay.style.display === 'none') {
+      openRelayUpdateModal();
+    }
+  }
+
   const route = st.route || st.mode || 'hybrid';
   const ds = route === 'deepseek', hb = route === 'hybrid', cx = route === 'codex', gm = route === 'antigravity' || route === 'gemini';
   const models = { ds: (st.models_ds || []), cx: (st.models_codex || []), gm: (st.models_gemini || []) };
@@ -3530,12 +4105,66 @@ function renderStatus() {
   const gmm = (st.gemini_modifier || 'builtin');
   document.querySelectorAll('#gm-mod .tmod-btn').forEach(b => b.classList.toggle('sel-' + b.dataset.m, b.dataset.m === gmm));
 
-  const run = !!st.proxy_running, grun = !!(st.antigravity_up || (st.upstreams_status || {}).gemini?.available);
-  $('#pdot').className = 'dot' + (run || grun ? ' on' : '');
-  $('#pdot2').className = 'dot' + (run || grun ? ' on' : '');
-  $('#ptxt2').textContent = grun ? (run ? 'Codex / Gemini 运行中' : 'Gemini 运行中') :
-    (run ? 'Codex 运行中' : '本地上游未启动');
-  $('#ptxt').innerHTML = 'Codex :8317 <b>' + (run ? '运行中' : '未启动') + '</b> ｜ Gemini :8045 <b>' + (grun ? '运行中' : '未启动') + '</b>';
+  const run = isUpstreamRunning('codex');
+  const grun = isUpstreamRunning('antigravity');
+  const geminiOwned = !!st.antigravity_owned;
+  const renderUpstream = (dotId, textId, label, port, up, detail) => {
+    const dot = $(dotId);
+    const text = $(textId);
+    const prov = label === 'Codex' ? 'codex' : (label === 'Gemini' ? 'antigravity' : 'voice');
+    const info = getUpstreamState(prov, st);
+    const state = up ? info.state : 'offline';
+    const reason = info.reason;
+    if (dot) {
+      if (state === 'online') dot.className = 'dot on';
+      else if (state === 'degraded') dot.className = 'dot warn';
+      else dot.className = 'dot';
+    }
+    if (text) {
+      let desc = '未启动';
+      if (state === 'online') {
+        desc = '运行中';
+      } else if (state === 'degraded') {
+        desc = reason ? ('API异常 (' + reason + ')') : 'API不可用';
+      }
+      text.textContent = label + ' :' + port + ' ' + desc + (detail || '');
+      if (state === 'degraded' && reason) {
+        text.title = label + ' API不可用: ' + reason;
+      } else {
+        text.removeAttribute('title');
+      }
+    }
+  };
+  renderUpstream('#codex-dot', '#codex-status', 'Codex', '8317', run, '');
+  renderUpstream('#gemini-dot', '#gemini-status', 'Gemini', '8045', grun);
+
+  const vrun = isUpstreamRunning('voice');
+  const voiceInfo = getUpstreamState('voice', st);
+  const vstat = st.voice_status || {};
+  const voiceOwned = !!st.voice_owned;
+  const vdot = $('#voice-dot');
+  const vtext = $('#voice-status');
+  if (vdot) {
+    if (vstat.status === 'recording') vdot.className = 'dot rec';
+    else if (voiceInfo.state === 'online') vdot.className = 'dot on';
+    else if (voiceInfo.state === 'degraded') vdot.className = 'dot warn';
+    else vdot.className = 'dot';
+  }
+  if (vtext) {
+    let desc = '未启动';
+    if (vrun) {
+      if (vstat.status === 'recording') desc = '录音中…';
+      else if (vstat.status === 'loading_model') desc = '加载模型…';
+      else if (vstat.ready) desc = '就绪 (' + (vstat.hotkey || '侧键') + ')';
+      else desc = voiceInfo.reason || '初始化…';
+    }
+    vtext.textContent = '语音 :8401 ' + desc;
+  }
+
+  renderUpstreamToggle('codex', run, true);
+  renderUpstreamToggle('antigravity', grun, geminiOwned);
+  renderUpstreamToggle('voice', vrun, voiceOwned);
+  if (typeof updateVoiceModalStatus === 'function') updateVoiceModalStatus();
 
   const rb = $('#bd-route'); rb.className = 'badge route-' + route;
   const rt = {
@@ -3608,6 +4237,7 @@ async function toggleTraffic(desired) {
     } else {
       st = st || {};
       st.traffic_paused = res.traffic_paused;
+      try { localStorage.setItem('cc_traffic_paused', res.traffic_paused ? '1' : '0'); } catch (e) {}
       toast(target ? '所有上游流量已手动暂停' : '流量已恢复正常转发');
     }
   } catch (err) {
@@ -3623,6 +4253,24 @@ const trafficBtn = $('#btn-traffic-toggle');
 if (trafficBtn) trafficBtn.onclick = () => toggleTraffic();
 const bannerResumeBtn = $('#btn-banner-resume');
 if (bannerResumeBtn) bannerResumeBtn.onclick = () => toggleTraffic(false);
+
+// 页面首帧快速恢复本地流量暂停态缓存，杜绝刷新时跳变闪烁
+try {
+  if (localStorage.getItem('cc_traffic_paused') === '1') {
+    st = st || {};
+    st.traffic_paused = true;
+    renderTrafficControl();
+  }
+} catch (e) {}
+
+// 重启后整页刷新恢复展示 Toast
+try {
+  const restartMsg = sessionStorage.getItem('cc_restart_toast');
+  if (restartMsg) {
+    sessionStorage.removeItem('cc_restart_toast');
+    setTimeout(() => toast(restartMsg), 150);
+  }
+} catch (e) {}
 
 // ── 一键重启服务控制 ──
 let _restartPollTimer = null;
@@ -3663,6 +4311,7 @@ function startRestartPolling(prevInstanceId) {
     if (elapsed > maxWaitMs) {
       clearInterval(_restartPollTimer);
       _restartPollTimer = null;
+      _restartPending = false;
       showRestartOverlay('25 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
       const btn = $('#btn-restart');
       if (btn) {
@@ -3674,8 +4323,8 @@ function startRestartPolling(prevInstanceId) {
 
     try {
       const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 1200);
-      const res = await fetch('/api/status?_ts=' + Date.now(), {
+      const tid = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch('/api/ping?_ts=' + Date.now(), {
         cache: 'no-store',
         signal: controller.signal,
       });
@@ -3686,18 +4335,13 @@ function startRestartPolling(prevInstanceId) {
         if (data && !data.error && (!prevInstanceId || data.instance_id !== prevInstanceId)) {
           clearInterval(_restartPollTimer);
           _restartPollTimer = null;
-          hideRestartOverlay();
           _restartPending = false;
-          const btn = $('#btn-restart');
-          if (btn) {
-            btn.disabled = false;
-            btn.classList.remove('pending');
+          if (data.traffic_paused !== undefined) {
+            try { localStorage.setItem('cc_traffic_paused', data.traffic_paused ? '1' : '0'); } catch (e) {}
           }
-          toast('CC Relay 重启成功');
-          st = data;
-          renderStatus();
-          await refresh();
-          await loadCalls(true);
+          try { sessionStorage.setItem('cc_restart_toast', 'CC Relay 重启成功'); } catch (e) {}
+          window.location.reload();
+          return;
         }
       }
     } catch (e) {
@@ -3757,6 +4401,98 @@ if (restartCloseBtn) restartCloseBtn.onclick = () => {
   }
 };
 
+// ── CC Relay 自动更新控制 ──
+function openRelayUpdateModal() {
+  const overlay = $('#relay-update-overlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function closeRelayUpdateModal(userDismissed) {
+  const overlay = $('#relay-update-overlay');
+  if (overlay) overlay.style.display = 'none';
+  if (userDismissed) {
+    const ru = (st && st.relay_update) || {};
+    if (ru.latest_sha) {
+      try { sessionStorage.setItem('cc_relay_dismissed_sha', ru.latest_sha); } catch (e) {}
+    }
+  }
+}
+
+const relayUpdateBtn = $('#btn-relay-update');
+if (relayUpdateBtn) {
+  relayUpdateBtn.onclick = async () => {
+    const ru = (st && st.relay_update) || {};
+    if (ru.has_update) {
+      openRelayUpdateModal();
+    } else {
+      const btnTxt = $('#relay-update-btn-txt');
+      if (btnTxt) btnTxt.textContent = '检查中…';
+      try {
+        const resp = await fetch('/api/relay/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CC-Relay-UI': '1' },
+          body: JSON.stringify({ force: true })
+        });
+        const data = await resp.json();
+        if (data.has_update) {
+          openRelayUpdateModal();
+        } else {
+          toast('当前已是最新版本 (' + (data.current_version || 'master') + ')');
+        }
+      } catch (e) {
+        toast('检查更新失败: ' + (e && e.message ? e.message : e), true);
+      } finally {
+        await refresh();
+      }
+    }
+  };
+}
+
+const relayCancelBtn = $('#btn-relay-cancel');
+if (relayCancelBtn) {
+  relayCancelBtn.onclick = () => closeRelayUpdateModal(true);
+}
+
+const relayOverlay = $('#relay-update-overlay');
+if (relayOverlay) {
+  relayOverlay.onclick = (e) => {
+    if (e.target === relayOverlay) closeRelayUpdateModal(true);
+  };
+}
+
+const relayConfirmBtn = $('#btn-relay-confirm');
+if (relayConfirmBtn) {
+  relayConfirmBtn.onclick = async () => {
+    const btn = $('#btn-relay-confirm');
+    btn.disabled = true;
+    btn.textContent = '正在更新…';
+    try {
+      const resp = await fetch('/api/relay/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CC-Relay-UI': '1' },
+        body: JSON.stringify({})
+      });
+      const res = await resp.json();
+      if (!resp.ok || res.error) {
+        throw new Error(res.error || '更新失败');
+      }
+      closeRelayUpdateModal(false);
+      const prevInstanceId = (st && st.instance_id) || '';
+      _restartPending = true;
+      showRestartOverlay('更新已完成，正在重启中转服务...', false);
+      startRestartPolling(prevInstanceId);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = '立即下载并自动更新';
+      const note = $('#relay-card-note');
+      if (note) {
+        note.textContent = '更新失败: ' + (err && err.message ? err.message : err);
+        note.style.display = 'block';
+      }
+    }
+  };
+}
+
 const TIER_NAME = { main: '主模型', opus: 'explore代理', sonnet: '审查代理', fast: '任务名称代理', agent: 'plan代理' };
 
 async function doSwitch(route, btnId, model) {
@@ -3788,8 +4524,277 @@ $('#b-hb').onclick = async () => {
   finally { btn.disabled = false; btn.textContent = old; busy = false; }
 };
 
-$('#b-pstart').onclick = async () => { await api('/api/proxy', { action: 'start' }); await refresh(); };
-$('#b-pstop').onclick = async () => { await api('/api/proxy', { action: 'stop' }); await refresh(); };
+function renderUpstreamToggle(provider, running, owned = true) {
+  const meta = UPSTREAM_META[provider];
+  if (!meta) return;
+  const button = $('#' + meta.btnId);
+  if (!button) return;
+  const pending = upstreamPending[provider];
+  const manual = provider === 'antigravity' && running && !owned && !pending;
+  const action = pending ? pending.action : (manual ? null : (running ? 'stop' : 'start'));
+  const pendingLabel = action === 'start' ? '启动中…' : '停止中…';
+  const label = pending ? pendingLabel : (manual ? '手动运行 · 不可停止' : (action === 'start' ? '启动' : '停止'));
+  button.dataset.action = action || '';
+  button.disabled = !!pending || manual;
+  button.className = 'upstream-btn ' + (manual ? 'manual' : action) + (pending ? ' pending' : '');
+  button.setAttribute('aria-pressed', running ? 'true' : 'false');
+  button.setAttribute('aria-label', manual ? 'Gemini 由手动启动，无法停止' : ((pending ? pendingLabel : label) + ' ' + meta.label + ' 代理'));
+  button.title = manual ? 'Gemini 由手动启动，无法停止' : ((pending ? pendingLabel : label) + ' ' + meta.label + ' :' + meta.port + ' 代理');
+  const labelNode = button.querySelector('.upstream-btn-label');
+  if (labelNode) labelNode.textContent = label;
+}
+
+async function controlUpstream(provider) {
+  if (upstreamPending[provider]) return;
+  const meta = UPSTREAM_META[provider];
+  const button = meta && $('#' + meta.btnId);
+  const group = meta && $('.upstream-provider[data-upstream="' + meta.slug + '"]');
+  if (!meta || !button) return;
+  if (provider === 'antigravity' && isUpstreamRunning(provider) && !(st && st.antigravity_owned)) {
+    toast('Gemini 代理由手动启动，无法停止', true);
+    return;
+  }
+  const action = button.dataset.action === 'stop' ? 'stop' :
+    (button.dataset.action === 'start' ? 'start' : null);
+  if (!action) return;
+  upstreamPending[provider] = { action };
+  if (group) group.setAttribute('aria-busy', 'true');
+  renderUpstreamToggle(provider, isUpstreamRunning(provider), provider === 'antigravity' ? !!(st && st.antigravity_owned) : true);
+  try {
+    const res = await api('/api/upstream', { name: meta.apiName, action });
+    if (res.error || res.ok === false) throw new Error(res.error || res.result || '操作失败');
+    if (res.result === 'not-managed') {
+      toast('Gemini 代理不是由当前 Relay 启动，未执行停止操作', true);
+    } else if (res.result === 'not-running') {
+      toast('Gemini 代理已经停止');
+    } else if (['no-exe', 'start-failed', 'stop-failed', 'timeout'].includes(res.result)) {
+      throw new Error(res.result);
+    } else {
+      toast(meta.label + (action === 'start' ? ' 代理启动请求已发送' : ' 代理已停止'));
+    }
+    await refresh();
+  } catch (e) {
+    toast(meta.label + ' 代理操作失败: ' + (e.message || e), true);
+  } finally {
+    upstreamPending[provider] = false;
+    const running = isUpstreamRunning(provider);
+    const owned = provider === 'antigravity' ? !!(st && st.antigravity_owned) : true;
+    renderUpstreamToggle(provider, running, owned);
+    if (group) group.setAttribute('aria-busy', 'false');
+  }
+}
+
+$('#b-codex-toggle').onclick = () => controlUpstream('codex');
+$('#b-gemini-toggle').onclick = () => controlUpstream('antigravity');
+$('#b-voice-toggle').onclick = () => controlUpstream('voice');
+
+// ── 语音实时听写测试面板与 AudioWorklet ──
+let _voiceWs = null;
+let _voiceAudioCtx = null;
+let _voiceMediaStream = null;
+let _voiceWorkletNode = null;
+let _isVoiceRecording = false;
+
+function openVoiceModal() {
+  const overlay = $('#voice-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  const notice = $('#vm-secure-notice');
+  const isSecure = window.isSecureContext && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  if (notice) notice.style.display = isSecure ? 'none' : 'block';
+  updateVoiceModalStatus();
+}
+
+function closeVoiceModal() {
+  stopWebVoiceRecording();
+  const overlay = $('#voice-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function updateVoiceModalStatus() {
+  const stText = $('#vm-server-status');
+  const dot = $('#vm-dot');
+  const running = isUpstreamRunning('voice');
+  if (stText) stText.textContent = running ? '服务运行中 (:8401 就绪)' : '服务未启动 (请先启动)';
+  if (dot) dot.className = 'dot' + (running ? ' on' : '');
+}
+
+async function startWebVoiceRecording() {
+  if (_isVoiceRecording) return;
+  const isSecure = window.isSecureContext && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  if (!isSecure) {
+    toast('麦克风受浏览器安全上下文限制，请使用 http://127.0.0.1 访问', true);
+    return;
+  }
+  if (!isUpstreamRunning('voice')) {
+    toast('语音伴侣服务未运行，请先在顶部启动语音服务', true);
+    return;
+  }
+
+  const btn = $('#btn-vm-record');
+  const btnLabel = $('#btn-vm-record-label');
+  const pText = $('#vm-partial-text');
+  if (pText) pText.textContent = '正在连接语音流服务…';
+
+  try {
+    const wsHost = location.hostname || '127.0.0.1';
+    const wsUrl = 'ws://' + wsHost + ':8401/ws/voice';
+    _voiceWs = new WebSocket(wsUrl);
+    _voiceWs.binaryType = 'arraybuffer';
+
+    await new Promise((resolve, reject) => {
+      const tm = setTimeout(() => reject(new Error('WebSocket 连接超时')), 4000);
+      _voiceWs.onopen = () => { clearTimeout(tm); resolve(); };
+      _voiceWs.onerror = () => { clearTimeout(tm); reject(new Error('无法连接到 ' + wsUrl)); };
+    });
+
+    const sid = 'web_' + Date.now();
+    _voiceWs.send(JSON.stringify({ action: 'start', session_id: sid }));
+
+    _voiceWs.onmessage = e => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'partial') {
+          if (msg.confirmed_text) $('#vm-confirmed-text').textContent = msg.confirmed_text;
+          if (msg.partial_text) $('#vm-partial-text').textContent = msg.partial_text;
+        } else if (msg.type === 'final') {
+          $('#vm-confirmed-text').textContent = msg.text || '';
+          $('#vm-partial-text').textContent = '';
+          try { _voiceWs.close(); } catch (e) {}
+          _voiceWs = null;
+        }
+      } catch (err) {}
+    };
+
+    _voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
+    _voiceAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const workletCode = `
+      class PcmResampler extends AudioWorkletProcessor {
+        constructor() {
+          super();
+          this.ratio = sampleRate / 16000;
+          this.buffer = [];
+        }
+        process(inputs) {
+          const input = inputs[0];
+          if (!input || !input[0]) return true;
+          const data = input[0];
+          for (let i = 0; i < data.length; i += this.ratio) {
+            const idx = Math.floor(i);
+            const s = Math.max(-1, Math.min(1, data[idx]));
+            this.buffer.push(Math.round(s < 0 ? s * 32768 : s * 32767));
+          }
+          if (this.buffer.length >= 320) {
+            const out = new Int16Array(this.buffer);
+            this.port.postMessage(out.buffer, [out.buffer]);
+            this.buffer = [];
+          }
+          return true;
+        }
+      }
+      registerProcessor('pcm-resampler', PcmResampler);
+    `;
+    const blob = new Blob([workletCode], { type: 'application/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+    await _voiceAudioCtx.audioWorklet.addModule(blobUrl);
+    URL.revokeObjectURL(blobUrl);
+
+    const source = _voiceAudioCtx.createMediaStreamSource(_voiceMediaStream);
+    _voiceWorkletNode = new AudioWorkletNode(_voiceAudioCtx, 'pcm-resampler');
+
+    _voiceWorkletNode.port.onmessage = ev => {
+      if (_voiceWs && _voiceWs.readyState === WebSocket.OPEN) {
+        _voiceWs.send(ev.data);
+      }
+    };
+
+    source.connect(_voiceWorkletNode);
+
+    _isVoiceRecording = true;
+    if (btn) btn.className = 'upstream-btn stop';
+    if (btnLabel) btnLabel.textContent = '停止说话';
+    if (pText) pText.textContent = '正在倾听… 请说话';
+  } catch (err) {
+    toast('启动麦克风失败: ' + (err.message || err), true);
+    stopWebVoiceRecording();
+  }
+}
+
+function stopWebVoiceRecording() {
+  if (!_isVoiceRecording && !_voiceWs) return;
+  _isVoiceRecording = false;
+  const btn = $('#btn-vm-record');
+  const btnLabel = $('#btn-vm-record-label');
+  if (btn) btn.className = 'upstream-btn start';
+  if (btnLabel) btnLabel.textContent = '开始说话';
+
+  if (_voiceWs && _voiceWs.readyState === WebSocket.OPEN) {
+    _voiceWs.send(JSON.stringify({ action: 'stop' }));
+    // 5秒保底超时 (正常情况下由 final 消息触发关闭)
+    setTimeout(() => {
+      if (_voiceWs) {
+        try { _voiceWs.close(); } catch (e) {}
+        _voiceWs = null;
+      }
+    }, 5000);
+  } else {
+    _voiceWs = null;
+  }
+
+  if (_voiceWorkletNode) {
+    try { _voiceWorkletNode.disconnect(); } catch (e) {}
+    _voiceWorkletNode = null;
+  }
+  if (_voiceAudioCtx) {
+    try { _voiceAudioCtx.close(); } catch (e) {}
+    _voiceAudioCtx = null;
+  }
+  if (_voiceMediaStream) {
+    try { _voiceMediaStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    _voiceMediaStream = null;
+  }
+}
+
+const btnVm = $('#btn-voice-modal');
+if (btnVm) btnVm.onclick = openVoiceModal;
+const btnCloseVm = $('#btn-voice-close');
+if (btnCloseVm) btnCloseVm.onclick = closeVoiceModal;
+const btnToggleCapsule = $('#btn-vm-toggle-capsule');
+if (btnToggleCapsule) {
+  btnToggleCapsule.onclick = () => {
+    try {
+      const wsHost = location.hostname || '127.0.0.1';
+      const ws = new WebSocket('ws://' + wsHost + ':8401/ws/voice');
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ action: 'toggle_capsule' }));
+        setTimeout(() => { try { ws.close(); } catch(e){} }, 300);
+        toast('已向语音伴侣发送唤出悬浮胶囊指令');
+      };
+      ws.onerror = () => {
+        toast('语音伴侣服务未响应，请先在顶栏启动语音服务', true);
+      };
+    } catch(e) {
+      toast('调用失败: ' + e.message, true);
+    }
+  };
+}
+const btnRecVm = $('#btn-vm-record');
+if (btnRecVm) btnRecVm.onclick = () => _isVoiceRecording ? stopWebVoiceRecording() : startWebVoiceRecording();
+const btnCopyVm = $('#btn-vm-copy');
+if (btnCopyVm) btnCopyVm.onclick = () => {
+  const cf = $('#vm-confirmed-text');
+  const pt = $('#vm-partial-text');
+  const txt = (cf ? cf.textContent : '') + ' ' + (pt ? pt.textContent : '');
+  if (txt.trim()) {
+    navigator.clipboard.writeText(txt.trim()).then(() => toast('已复制到剪贴板')).catch(() => toast('复制失败', true));
+  }
+};
+const btnClearVm = $('#btn-vm-clear');
+if (btnClearVm) btnClearVm.onclick = () => {
+  const cf = $('#vm-confirmed-text'); if (cf) cf.textContent = '';
+  const pt = $('#vm-partial-text'); if (pt) pt.textContent = '点击下方按钮开始录音听写…';
+};
 
 // ── 流量与指标监控 ──
 async function loadTraffic(snapshot) {
@@ -3799,8 +4804,9 @@ async function loadTraffic(snapshot) {
     const t = snapshot;
     const rows = t.rows || [];
     _sy = window.scrollY;
-    $('#tf-since').textContent = 'Codex: ' + (t.codex_up ? '运行中' : '未启动') +
-      ' ｜ Gemini: ' + (t.antigravity_up ? '运行中' : '未启动');
+    const cxDesc = t.codex_state === 'degraded' ? 'API异常' : (t.codex_up ? '运行中' : '未启动');
+    const gmDesc = t.antigravity_state === 'degraded' ? 'API异常' : (t.antigravity_up ? '运行中' : '未启动');
+    $('#tf-since').textContent = 'Codex: ' + cxDesc + ' ｜ Gemini: ' + gmDesc;
     const body = $('#tf-body');
     const req = rows.reduce((a, r) => a + (r.req || 0), 0);
     const ok = rows.reduce((a, r) => a + (r.ok || 0), 0);
