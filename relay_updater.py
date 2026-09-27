@@ -26,7 +26,7 @@ GITHUB_API_COMMITS_URL = "https://api.github.com/repos/xsneser/cc-relay/commits/
 GITHUB_RAW_UI_URL = "https://raw.githubusercontent.com/xsneser/cc-relay/master/ui.html"
 GITHUB_MASTER_ZIP_URL = "https://github.com/xsneser/cc-relay/archive/refs/heads/master.zip"
 USER_AGENT = "cc-relay-updater/1.0"
-RELAY_VERSION = "2.4.2"
+RELAY_VERSION = "2.4.3"
 VERSION_RE = re.compile(r"v?([0-9]+(?:\.[0-9]+)+)")
 UI_VERSION_RE = re.compile(r'<meta\s+name=["\']ui-version["\']\s+content=["\']([0-9]+(?:\.[0-9]+)*)["\']')
 
@@ -543,6 +543,13 @@ class RelayUpdater:
                     self._snapshot["update_error"] = err
                 return False, err
 
+            # 4.5 依赖随版本无感自愈：自动静默检测并补齐新版本新增依赖
+            try:
+                from tools.voice_input.runtime import ensure_voice_dependencies
+                ensure_voice_dependencies()
+            except Exception:
+                pass
+
             # 5. Success - trigger restart
             new_info = self._get_local_commit()
             new_ver = get_local_ui_version(self.base_dir)
@@ -555,7 +562,10 @@ class RelayUpdater:
                 self._snapshot["update_message"] = "更新已完成，正在重启中转服务..."
 
             if restart_callback:
-                threading.Thread(target=restart_callback, daemon=True).start()
+                def _delayed_restart():
+                    time.sleep(0.8)
+                    restart_callback()
+                threading.Thread(target=_delayed_restart, daemon=True).start()
 
             return True, "更新成功并正在重启"
         finally:

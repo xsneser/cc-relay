@@ -61,15 +61,49 @@ class TestVoiceNormalize(unittest.TestCase):
         )
 
     def test_tech_terms_replacement(self):
-        # 常见技术专有名词口语修正
+        # 常见技术专有名词口语修正（支持紧凑无空格中文）
         self.assertEqual(
-            normalize("使用 派森 编写一个 吉特 钩子脚本"),
+            normalize("使用派森编写一个吉特钩子脚本"),
             "使用 Python 编写一个 Git 钩子脚本",
         )
         self.assertEqual(
-            normalize("用 皮普 安装依赖"),
+            normalize("用皮普安装依赖"),
             "用 pip 安装依赖",
         )
+
+    def test_ai_jargon_replacements(self):
+        # 验证大模型领域常见英文词汇与口语谐音的精准纠正
+        cases = [
+            ("计算这次请求消耗的投肯数量", "计算这次请求消耗的 token 数量"),
+            ("支持上下文最多三十万个透肯斯", "支持上下文最多三十万个 tokens"),
+            ("用查德GPT帮我写一段代码", "用 ChatGPT 帮我写一段代码"),
+            ("调用chad GPT进行总结", "调用 ChatGPT 进行总结"),
+            ("使用柴特GPT分析这个错误", "使用 ChatGPT 分析这个错误"),
+            ("调用扣德斯代码模型", "调用 Codex 代码模型"),
+            ("切换到科德斯全量路由", "切换到 Codex 全量路由"),
+            ("使用code x生成单元测试", "使用 Codex 生成单元测试"),
+            ("在cloud code终端中运行", "在 Claude Code 终端中运行"),
+            ("克劳德code非常强大", "Claude Code 非常强大"),
+            ("配置西西中转的A批I密钥", "配置 CC Relay 的 API Key"),
+            ("启动西西relay服务", "启动 CC Relay 服务"),
+            ("使用深度求索的deepseek模型", "使用 DeepSeek 的 DeepSeek 模型"),
+            ("这个地普seek模型很便宜", "这个 DeepSeek 模型很便宜"),
+            ("生成一个Prompt提示词", "生成一个 Prompt 提示词"),
+        ]
+        for spoken, expected in cases:
+            with self.subTest(spoken=spoken):
+                self.assertEqual(normalize(spoken), expected)
+
+    def test_negative_cases_and_idempotence(self):
+        # 验证前缀/子串负向保护（tokenizer 不能被误替为 tokenizer）
+        self.assertEqual(normalize("使用 tokenizer 分词"), "使用 tokenizer 分词")
+        self.assertEqual(normalize("云计算模式 cloud computing"), "云计算模式 cloud computing")
+
+        # 验证幂等性
+        raw = "用查德GPT或者deepseek帮我分析，计算消耗的投肯数量"
+        first = normalize(raw)
+        second = normalize(first)
+        self.assertEqual(first, second)
 
     def test_newline_safety(self):
         # 严禁在转写结果中保留任何换行符，防止自动回车提交

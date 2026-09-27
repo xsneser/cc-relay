@@ -2,6 +2,7 @@
 - 严格验证候选解释器的可用性 (验证能够 import numpy)，杜绝未装包的空虚拟环境导致闪退
 - 优先选择功能完备的解释器，自动平滑回退
 - 提供毫秒级高效依赖诊断报告 (importlib.util.find_spec)
+- 提供全自动依赖自愈与静默安装 (ensure_voice_dependencies)
 """
 
 import json
@@ -110,3 +111,67 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
 
     # 若子进程探测失败，直接返回全部 False，绝不混淆宿主环境
     return {m: False for m in modules}
+
+
+def check_deps_ready(python_exe: Optional[str] = None) -> bool:
+    """快速检查必要桌面语音依赖是否全部就绪"""
+    diag = diagnose_python_environment(python_exe)
+    required = ["numpy", "sounddevice", "pynput", "websockets", "win32gui"]
+    return all(diag.get(m, False) for m in required)
+
+
+def ensure_voice_dependencies(python_exe: Optional[str] = None, timeout: int = 120) -> bool:
+    """自动自检并静默补齐语音伴侣缺失的桌面依赖 (sounddevice / pynput)
+
+    - 幂等执行：若所有必要依赖已就绪，立即返回 True，零开销；
+    - 智能适配系统代理，确保 pip 下载顺畅；
+    - 仅在确实缺失依赖时触发安装。
+    """
+    py_exe = python_exe or find_voice_python()
+    if check_deps_ready(py_exe):
+        return True
+
+    repo_root = get_repo_root()
+    req_file = repo_root / "tools" / "voice_input" / "requirements-desktop.txt"
+    if not req_file.is_file():
+        req_file = repo_root / "tools" / "voice_input" / "requirements.txt"
+    if not req_file.is_file():
+        return False
+
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    # 自适应代理配置
+    if "127.0.0.1:7900" in os.environ.get("HTTP_PROXY", "") or "127.0.0.1:7900" in os.environ.get("ALL_PROXY", ""):
+        env["HTTP_PROXY"] = "http://127.0.0.1:7900"
+        env["HTTPS_PROXY"] = "http://127.0.0.1:7900"
+
+    cmd = [
+        py_exe,
+        "-m",
+        "pip",
+        "install",
+        "-r",
+        str(req_file),
+    ]
+
+    try:
+        res = subprocess.run(cmd, env=env, capture_output=True, timeout=timeout)
+        if res.returncode == 0:
+            return check_deps_ready(py_exe)
+    except Exception:
+        pass
+    return False
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Voice Runtime Manager")
+    parser.add_argument("--ensure-deps", action="store_true", help="Ensure desktop voice dependencies are installed")
+    args = parser.parse_args()
+    if args.ensure_deps:
+        ok = ensure_voice_dependencies()
+        sys.exit(0 if ok else 1)
+    else:
+        p = find_voice_python()
+        print("Resolved Python:", p)
+        print("Diagnostics:", json.dumps(diagnose_python_environment(p), indent=2))

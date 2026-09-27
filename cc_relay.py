@@ -947,6 +947,13 @@ def voice_start(conf=None):
     engine = v_conf.get("engine", "paraformer_streaming_2pass")
     port = str(v_conf.get("port", 8401))
 
+    # 静默自愈依赖检测
+    try:
+        from tools.voice_input.runtime import ensure_voice_dependencies
+        ensure_voice_dependencies(py_exe, timeout=30)
+    except Exception:
+        pass
+
     cmd = [py_exe, "-u", "-m", "tools.voice_input", "service", "--hotkey", hotkey, "--engine", engine, "--port", port]
     v_out = os.path.join(BASE, "voice.out.log")
     v_err = os.path.join(BASE, "voice.err.log")

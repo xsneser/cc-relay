@@ -10,6 +10,8 @@ from tools.voice_input.runtime import (
     _probe_interpreter,
     find_voice_python,
     diagnose_python_environment,
+    check_deps_ready,
+    ensure_voice_dependencies,
 )
 
 
@@ -52,6 +54,29 @@ class TestVoiceRuntime(unittest.TestCase):
         self.assertIn("numpy", diag)
         self.assertIn("funasr", diag)
         self.assertTrue(diag["numpy"])
+
+    def test_check_deps_ready_system_python(self):
+        # 系统 python 已安装 sounddevice 和 pynput
+        ready = check_deps_ready(sys.executable)
+        self.assertTrue(ready)
+
+    @mock.patch("tools.voice_input.runtime.check_deps_ready")
+    @mock.patch("tools.voice_input.runtime.subprocess.run")
+    def test_ensure_voice_dependencies_no_op_when_ready(self, mock_run, mock_ready):
+        mock_ready.return_value = True
+        self.assertTrue(ensure_voice_dependencies(python_exe=sys.executable))
+        mock_run.assert_not_called()
+
+    @mock.patch("tools.voice_input.runtime.check_deps_ready")
+    @mock.patch("tools.voice_input.runtime.subprocess.run")
+    def test_ensure_voice_dependencies_installs_when_missing(self, mock_run, mock_ready):
+        mock_ready.side_effect = [False, True]
+        mock_run.return_value = mock.Mock(returncode=0)
+        self.assertTrue(ensure_voice_dependencies(python_exe=sys.executable))
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args[0][0]
+        self.assertIn("-m", cmd)
+        self.assertIn("pip", cmd)
 
 
 if __name__ == "__main__":

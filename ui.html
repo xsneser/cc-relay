@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="ui-version" content="2.4.2">
+<meta name="ui-version" content="2.4.3">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -352,13 +352,20 @@
   }
   .cpa-update-badge:hover, .cpa-update-badge:focus-visible { background: rgba(245, 158, 11, 0.22); outline: 2px solid var(--amber); outline-offset: 2px; }
 
-  /* CPA 右上角悬浮更新进度卡片 (Antigravity Tools 风格) */
-  .cpa-progress-card {
+  /* 右上角悬浮更新进度卡片容器 (多组件垂直堆叠) */
+  .update-cards-container {
     position: fixed;
     top: 24px;
     right: 24px;
     width: 330px;
     z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    pointer-events: none;
+  }
+  .cpa-progress-card, .relay-progress-card {
+    width: 100%;
     background: rgba(13, 14, 18, 0.94);
     border: 1px solid var(--glass-border-hover);
     border-radius: 16px;
@@ -370,14 +377,15 @@
     opacity: 0;
     pointer-events: none;
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 10px;
   }
-  .cpa-progress-card.show {
+  .cpa-progress-card.show, .relay-progress-card.show {
     transform: translateY(0) scale(1);
     opacity: 1;
     pointer-events: auto;
+    display: flex;
   }
   .cpa-card-head {
     display: flex;
@@ -643,143 +651,6 @@
     justify-content: center;
   }
 
-  /* AntiTools 风格更新弹窗 */
-  .relay-update-overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.68);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    z-index: 10001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    animation: fadeInBanner 0.2s ease;
-  }
-  .relay-update-modal {
-    background: #ffffff;
-    border-radius: 20px;
-    padding: 32px 34px;
-    max-width: 440px;
-    width: 100%;
-    text-align: center;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.05);
-    color: #1e293b;
-    animation: fadeInBanner 0.25s ease;
-  }
-  .relay-update-icon-wrap {
-    width: 62px;
-    height: 62px;
-    margin: 0 auto 16px;
-    border-radius: 50%;
-    background: #eff6ff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #2563eb;
-  }
-  .relay-update-modal h2 {
-    font-size: 22px;
-    font-weight: 800;
-    color: #0f172a;
-    margin: 0 0 10px;
-    letter-spacing: -0.01em;
-  }
-  .relay-update-modal p {
-    font-size: 13.5px;
-    color: #64748b;
-    line-height: 1.6;
-    margin: 0 0 20px;
-  }
-  .relay-update-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 16px 20px;
-    text-align: left;
-    margin-bottom: 24px;
-  }
-  .relay-update-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 13px;
-    color: #64748b;
-    margin-bottom: 8px;
-  }
-  .relay-update-row:last-child {
-    margin-bottom: 0;
-  }
-  .relay-update-row .val {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-weight: 700;
-    font-size: 14px;
-    color: #0f172a;
-  }
-  .relay-update-row .val.green {
-    color: #16a34a;
-  }
-  .relay-update-caption {
-    text-align: right;
-    font-size: 11px;
-    color: #94a3b8;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    margin-top: 10px;
-    border-top: 1px dashed #e2e8f0;
-    padding-top: 6px;
-  }
-  .relay-update-note {
-    margin-top: 8px;
-    font-size: 12px;
-    color: #dc2626;
-    line-height: 1.4;
-    text-align: left;
-  }
-  .relay-update-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-  }
-  .btn-relay-cancel {
-    flex: 1;
-    height: 44px;
-    background: #f1f5f9;
-    color: #475569;
-    border: none;
-    border-radius: 12px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-  .btn-relay-cancel:hover {
-    background: #e2e8f0;
-  }
-  .btn-relay-confirm {
-    flex: 1.6;
-    height: 44px;
-    background: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 12px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
-    transition: background 0.15s ease, opacity 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-  .btn-relay-confirm:hover:not(:disabled) {
-    background: #1d4ed8;
-  }
-  .btn-relay-confirm:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
   .btn-relay-update {
     --btn-accent: rgba(59, 130, 246, 0.8);
     border-color: rgba(59, 130, 246, 0.45);
@@ -2915,7 +2786,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.2</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.3</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -3025,64 +2896,67 @@
     </button>
   </div>
 
-  <!-- CPA 右上角悬浮进度提示卡片 (Antigravity Tools 风格) -->
-  <div id="cpa-progress-card" class="cpa-progress-card" role="status" aria-live="polite">
-    <div class="cpa-card-head">
-      <div class="cpa-card-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+  <!-- 右上角悬浮更新进度卡片容器 (多组件垂直堆叠) -->
+  <div id="update-cards-container" class="update-cards-container">
+    <!-- CPA 右上角悬浮进度提示卡片 (Antigravity Tools 风格) -->
+    <div id="cpa-progress-card" class="cpa-progress-card" role="status" aria-live="polite">
+      <div class="cpa-card-head">
+        <div class="cpa-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
+        <div class="cpa-card-titles">
+          <div class="cpa-card-title" id="cpa-card-title">CLIProxyAPI 更新</div>
+          <div class="cpa-card-ver" id="cpa-card-ver">v7.3.19</div>
+        </div>
+        <button type="button" class="cpa-card-close" id="cpa-card-close" aria-label="关闭通知">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-      <div class="cpa-card-titles">
-        <div class="cpa-card-title" id="cpa-card-title">CLIProxyAPI 更新</div>
-        <div class="cpa-card-ver" id="cpa-card-ver">v7.3.19</div>
+      <div class="cpa-card-desc" id="cpa-card-desc">正在检查更新…</div>
+      <div class="cpa-card-notes" id="cpa-card-notes" style="display:none;"></div>
+      <div class="cpa-card-track" role="progressbar" id="cpa-card-track" aria-valuemin="0" aria-valuemax="100">
+        <div class="cpa-card-fill" id="cpa-card-fill"></div>
       </div>
-      <button type="button" class="cpa-card-close" id="cpa-card-close" aria-label="关闭通知">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="cpa-card-desc" id="cpa-card-desc">正在检查更新…</div>
-    <div class="cpa-card-notes" id="cpa-card-notes" style="display:none;"></div>
-    <div class="cpa-card-track" role="progressbar" id="cpa-card-track" aria-valuemin="0" aria-valuemax="100">
-      <div class="cpa-card-fill" id="cpa-card-fill"></div>
-    </div>
-    <div class="cpa-card-footer">
-      <span class="cpa-card-pct" id="cpa-card-pct">0%</span>
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span id="cpa-card-bytes"></span>
-        <svg class="cpa-spinner-icon" id="cpa-card-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      <div class="cpa-card-footer">
+        <span class="cpa-card-pct" id="cpa-card-pct">0%</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span id="cpa-card-bytes"></span>
+          <svg class="cpa-spinner-icon" id="cpa-card-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        </div>
+      </div>
+      <div class="cpa-card-actions" id="cpa-card-actions" style="display:none;">
+        <button type="button" class="cpa-card-btn" id="cpa-card-btn-update">立即下载并自动更新</button>
       </div>
     </div>
-    <div class="cpa-card-actions" id="cpa-card-actions" style="display:none;">
-      <button type="button" class="cpa-card-btn" id="cpa-card-btn-update">立即下载并自动更新</button>
-    </div>
-  </div>
 
-  <!-- AntiTools 风格更新弹窗 -->
-  <div id="relay-update-overlay" class="relay-update-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="relay-update-title">
-    <div class="relay-update-modal">
-      <div class="relay-update-icon-wrap" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:32px;height:32px">
-          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-      </div>
-      <h2 id="relay-update-title">发现新版本可用</h2>
-      <p id="relay-update-desc">检测到有新版本发布。是否立即下载更新？客户端将在下载完成后自动热重启以应用更新。</p>
-      <div class="relay-update-card">
-        <div class="relay-update-row">
-          <span>当前版本:</span>
-          <span class="val" id="relay-card-current">...</span>
+    <!-- CC Relay 右上角悬浮进度提示卡片 (Antigravity Tools 风格) -->
+    <div id="relay-progress-card" class="relay-progress-card" role="status" aria-live="polite">
+      <div class="cpa-card-head">
+        <div class="cpa-card-icon" style="background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%);" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
         </div>
-        <div class="relay-update-row">
-          <span>最新版本:</span>
-          <span class="val green" id="relay-card-latest">...</span>
+        <div class="cpa-card-titles">
+          <div class="cpa-card-title" id="relay-card-title">CC Relay 更新</div>
+          <div class="cpa-card-ver" id="relay-card-ver">v2.4.1</div>
         </div>
-        <div class="relay-update-caption">via github: master</div>
-        <div id="relay-card-note" class="relay-update-note" style="display:none;"></div>
+        <button type="button" class="cpa-card-close" id="relay-card-close" aria-label="关闭通知">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-      <div class="relay-update-actions">
-        <button type="button" class="btn-relay-cancel" id="btn-relay-cancel">取消</button>
-        <button type="button" class="btn-relay-confirm" id="btn-relay-confirm">立即下载并自动更新</button>
+      <div class="cpa-card-desc" id="relay-card-desc">正在检查更新…</div>
+      <div class="cpa-card-notes" id="relay-card-notes" style="display:none;"></div>
+      <div class="cpa-card-track" role="progressbar" id="relay-card-track" aria-valuemin="0" aria-valuemax="100">
+        <div class="cpa-card-fill" id="relay-card-fill"></div>
+      </div>
+      <div class="cpa-card-footer">
+        <span class="cpa-card-pct" id="relay-card-pct">0%</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span id="relay-card-bytes"></span>
+          <svg class="cpa-spinner-icon" id="relay-card-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        </div>
+      </div>
+      <div class="cpa-card-actions" id="relay-card-actions" style="display:none;">
+        <button type="button" class="cpa-card-btn" id="relay-card-btn-update">立即下载并自动更新</button>
       </div>
     </div>
   </div>
@@ -3957,6 +3831,182 @@ if (cpaCardBtnUpdate) cpaCardBtnUpdate.addEventListener('click', async () => {
   }
 });
 
+// ── CC Relay 右上角悬浮更新进度卡片 (Antigravity Tools 风格) ──
+let _relayCardTimer = null;
+let _relayFastPollTimer = null;
+let _relayCardDismissedVer = null;
+
+function renderRelayProgressCard(data) {
+  const card = $('#relay-progress-card');
+  if (!card) return;
+  const title = $('#relay-card-title');
+  const ver = $('#relay-card-ver');
+  const desc = $('#relay-card-desc');
+  const track = $('#relay-card-track');
+  const fill = $('#relay-card-fill');
+  const pct = $('#relay-card-pct');
+  const bytes = $('#relay-card-bytes');
+  const spinner = $('#relay-card-spinner');
+  const actions = $('#relay-card-actions');
+  const notesEl = $('#relay-card-notes');
+
+  const curVer = data.current_version || '2.4.1';
+  const latVer = data.latest_version || curVer;
+  const notes = data.latest_subject || '';
+  const checking = !!data.checking;
+  const state = data.update_state || 'idle';
+  const hasUpdate = !!data.has_update;
+  const msg = data.update_message || '';
+  const err = data.update_error || data.check_error || '';
+
+  if (hasUpdate && latVer) {
+    title.textContent = '发现新版本';
+    ver.textContent = 'v' + latVer.replace(/^v/, '');
+    ver.style.display = 'inline';
+  } else {
+    title.textContent = 'CC Relay 更新';
+    ver.textContent = curVer ? ('v' + curVer.replace(/^v/, '')) : '';
+    ver.style.display = curVer ? 'inline' : 'none';
+  }
+
+  let descText = '正在检查更新…';
+  let isIndeterminate = false;
+  let showSpinner = true;
+  let showActions = false;
+
+  if (err) {
+    descText = '更新失败: ' + err;
+    showSpinner = false;
+  } else if (checking) {
+    descText = '正在检查官方主分支最新版本…';
+    isIndeterminate = true;
+  } else if (state === 'queued') {
+    descText = '正在准备更新下载…';
+    isIndeterminate = true;
+    showSpinner = true;
+    showActions = false;
+  } else if (state === 'fetching') {
+    descText = msg || '正在下载官方更新包 (无需 Git)…';
+    isIndeterminate = true;
+  } else if (state === 'applying') {
+    descText = msg || '正在解压并自检代码…';
+    isIndeterminate = true;
+  } else if (state === 'success') {
+    descText = '更新成功！正在自动热重启…';
+    showSpinner = false;
+  } else if (hasUpdate && state === 'idle') {
+    descText = '检测到新版本可用，是否立即更新？';
+    showSpinner = false;
+    showActions = true;
+  } else if (data.last_checked) {
+    descText = '已是最新版本，无需更新。';
+    showSpinner = false;
+  }
+  desc.textContent = descText;
+
+  if (notesEl) {
+    if (hasUpdate && notes && (state === 'idle' || state === 'queued')) {
+      notesEl.textContent = notes;
+      notesEl.style.display = 'block';
+    } else {
+      notesEl.style.display = 'none';
+    }
+  }
+
+  fill.classList.toggle('indeterminate', isIndeterminate);
+  if (state === 'success') {
+    fill.style.width = '100%';
+    pct.textContent = '100%';
+    bytes.textContent = '';
+  } else {
+    fill.style.width = isIndeterminate ? '40%' : (hasUpdate ? '100%' : '0%');
+    pct.textContent = isIndeterminate ? '…' : (hasUpdate ? '可更新' : '—');
+    bytes.textContent = '';
+  }
+
+  spinner.style.display = showSpinner ? 'inline-block' : 'none';
+  actions.style.display = showActions ? 'flex' : 'none';
+
+  const isActive = checking || ['queued', 'fetching', 'applying'].includes(state);
+  const shouldShow = isActive || (hasUpdate && _relayCardDismissedVer !== latVer);
+
+  if (shouldShow) {
+    card.classList.add('show');
+    clearTimeout(_relayCardTimer);
+  }
+
+  if (state === 'success' || (descText.includes('已是最新版本') && !checking)) {
+    clearTimeout(_relayCardTimer);
+    _relayCardTimer = setTimeout(() => {
+      card.classList.remove('show');
+    }, 3500);
+  }
+
+  if (isActive) {
+    startRelayFastPoll();
+  } else if (state !== 'queued') {
+    stopRelayFastPoll();
+  }
+}
+
+function startRelayFastPoll() {
+  if (_relayFastPollTimer) return;
+  _relayFastPollTimer = setInterval(async () => {
+    try {
+      const res = await api('/api/relay/version');
+      if (st) st.relay_update = res;
+      renderRelayProgressCard(res);
+      if (res.update_state === 'success') {
+        stopRelayFastPoll();
+        setTimeout(() => {
+          const card = $('#relay-progress-card');
+          if (card) card.classList.remove('show');
+          const prevInstanceId = (st && st.instance_id) || '';
+          _restartPending = true;
+          showRestartOverlay('更新已完成，正在重启中转服务...', false);
+          startRestartPolling(prevInstanceId);
+        }, 800);
+      } else if (!res.checking && !['queued', 'fetching', 'applying'].includes(res.update_state)) {
+        stopRelayFastPoll();
+      }
+    } catch (_) {
+      // 忽略服务重启中的短暂断连
+    }
+  }, 350);
+}
+
+function stopRelayFastPoll() {
+  if (_relayFastPollTimer) {
+    clearInterval(_relayFastPollTimer);
+    _relayFastPollTimer = null;
+  }
+}
+
+const relayCardClose = $('#relay-card-close');
+if (relayCardClose) relayCardClose.addEventListener('click', () => {
+  const card = $('#relay-progress-card');
+  if (card) card.classList.remove('show');
+  const ru = (st && st.relay_update) || {};
+  if (ru.latest_version) _relayCardDismissedVer = ru.latest_version;
+});
+
+const relayCardBtnUpdate = $('#relay-card-btn-update');
+if (relayCardBtnUpdate) relayCardBtnUpdate.addEventListener('click', async () => {
+  relayCardBtnUpdate.disabled = true;
+  try {
+    const ru = (st && st.relay_update) || {};
+    renderRelayProgressCard({ ...ru, update_state: 'queued', checking: false });
+    startRelayFastPoll();
+    await api('/api/relay/update', {});
+  } catch (e) {
+    toast('升级失败: ' + (e && e.message ? e.message : e), true);
+    stopRelayFastPoll();
+    relayCardBtnUpdate.disabled = false;
+    const ru = (st && st.relay_update) || {};
+    renderRelayProgressCard({ ...ru, update_state: 'idle', update_error: String(e) });
+  }
+});
+
 // ── 下拉模型选择器 ──
 function buildSel(sel, models, curModel, curEff) {
   const btn = sel.querySelector('.sel-btn');
@@ -4647,32 +4697,8 @@ function renderStatus() {
     }
   }
 
-  const cardCur = $('#relay-card-current');
-  const cardLat = $('#relay-card-latest');
-  const cardNote = $('#relay-card-note');
-  const btnConfirm = $('#btn-relay-confirm');
-  if (cardCur) cardCur.textContent = ru.current_version || '未知';
-  if (cardLat) cardLat.textContent = ru.latest_version || (ru.checking ? '检查中…' : '未知');
-  if (cardNote) {
-    if (ru.blocked_reason) {
-      cardNote.textContent = ru.blocked_reason;
-      cardNote.style.display = 'block';
-    } else {
-      cardNote.style.display = 'none';
-    }
-  }
-  if (btnConfirm) {
-    btnConfirm.disabled = !ru.has_update || !ru.can_update || ['queued', 'fetching', 'applying'].includes(ru.update_state);
-  }
-
-  // 发现更新时自动弹出 AntiTools 风格更新框 (每轮 session 只对该 SHA 自动弹一次，关闭后不再骚扰)
-  if (ru.has_update && ru.latest_sha) {
-    let dismissed = '';
-    try { dismissed = sessionStorage.getItem('cc_relay_dismissed_sha') || ''; } catch (e) {}
-    const overlay = $('#relay-update-overlay');
-    if (dismissed !== ru.latest_sha && overlay && overlay.style.display === 'none') {
-      openRelayUpdateModal();
-    }
+  if (!_relayFastPollTimer) {
+    renderRelayProgressCard(ru);
   }
 
   const route = st.route || st.mode || 'hybrid';
@@ -5024,37 +5050,25 @@ if (restartCloseBtn) restartCloseBtn.onclick = () => {
   }
 };
 
-// ── CC Relay 自动更新控制 ──
-function openRelayUpdateModal() {
-  const overlay = $('#relay-update-overlay');
-  if (overlay) overlay.style.display = 'flex';
-}
-
-function closeRelayUpdateModal(userDismissed) {
-  const overlay = $('#relay-update-overlay');
-  if (overlay) overlay.style.display = 'none';
-  if (userDismissed) {
-    const ru = (st && st.relay_update) || {};
-    if (ru.latest_sha) {
-      try { sessionStorage.setItem('cc_relay_dismissed_sha', ru.latest_sha); } catch (e) {}
-    }
-  }
-}
-
+// ── CC Relay 自动更新控制 (复用右上角悬浮进度卡片) ──
 const relayVersionBadge = $('#relay-version-badge');
 if (relayVersionBadge) {
   relayVersionBadge.onclick = () => {
-    openRelayUpdateModal();
+    const card = $('#relay-progress-card');
+    if (card) {
+      card.classList.add('show');
+      renderRelayProgressCard((st && st.relay_update) || {});
+    }
   };
 }
 
 const relayUpdateBtn = $('#btn-relay-update');
 if (relayUpdateBtn) {
   relayUpdateBtn.onclick = async () => {
-    const ru = (st && st.relay_update) || {};
-    if (ru.has_update) {
-      openRelayUpdateModal();
-      return;
+    const card = $('#relay-progress-card');
+    if (card) {
+      card.classList.add('show');
+      renderRelayProgressCard({ checking: true, current_version: (st && st.relay_update && st.relay_update.current_version) || '2.4.1' });
     }
     const btn = $('#btn-relay-update');
     const btnTxt = $('#relay-update-btn-txt');
@@ -5068,67 +5082,20 @@ if (relayUpdateBtn) {
       });
       const data = await resp.json();
       if (st) st.relay_update = data;
+      renderRelayProgressCard(data);
       if (data.has_update) {
         if (btn) btn.classList.add('has-update');
         if (btnTxt) btnTxt.textContent = '发现新版本';
-        openRelayUpdateModal();
       } else {
         if (btn) btn.classList.remove('has-update');
         if (btnTxt) btnTxt.textContent = '检查更新';
-        const v = data.current_version ? ('v' + data.current_version) : '最新';
-        toast('当前已是最新版本 (' + v + ')');
       }
     } catch (e) {
       if (btnTxt) btnTxt.textContent = '检查更新';
-      toast('检查更新失败: ' + (e && e.message ? e.message : e), true);
+      renderRelayProgressCard({ check_error: String(e) });
     } finally {
       if (btn) btn.disabled = false;
       await refresh();
-    }
-  };
-}
-
-const relayCancelBtn = $('#btn-relay-cancel');
-if (relayCancelBtn) {
-  relayCancelBtn.onclick = () => closeRelayUpdateModal(true);
-}
-
-const relayOverlay = $('#relay-update-overlay');
-if (relayOverlay) {
-  relayOverlay.onclick = (e) => {
-    if (e.target === relayOverlay) closeRelayUpdateModal(true);
-  };
-}
-
-const relayConfirmBtn = $('#btn-relay-confirm');
-if (relayConfirmBtn) {
-  relayConfirmBtn.onclick = async () => {
-    const btn = $('#btn-relay-confirm');
-    btn.disabled = true;
-    btn.textContent = '正在更新…';
-    try {
-      const resp = await fetch('/api/relay/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CC-Relay-UI': '1' },
-        body: JSON.stringify({})
-      });
-      const res = await resp.json();
-      if (!resp.ok || res.error) {
-        throw new Error(res.error || '更新失败');
-      }
-      closeRelayUpdateModal(false);
-      const prevInstanceId = (st && st.instance_id) || '';
-      _restartPending = true;
-      showRestartOverlay('更新已完成，正在重启中转服务...', false);
-      startRestartPolling(prevInstanceId);
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = '立即下载并自动更新';
-      const note = $('#relay-card-note');
-      if (note) {
-        note.textContent = '更新失败: ' + (err && err.message ? err.message : err);
-        note.style.display = 'block';
-      }
     }
   };
 }

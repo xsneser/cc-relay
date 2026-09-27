@@ -148,7 +148,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
 
                 ok, msg = updater.apply_update(restart_callback=lambda: restart_called.set())
                 self.assertTrue(ok)
-                self.assertTrue(restart_called.is_set())
+                self.assertTrue(restart_called.wait(timeout=2.0))
                 st = updater.status()
                 self.assertEqual(st["update_state"], "success")
                 self.assertEqual(st["current_sha"], "new12345")
@@ -186,7 +186,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
 
                 ok, res_msg = updater.apply_update(restart_callback=lambda: restart_called.set())
                 self.assertTrue(ok)
-                self.assertTrue(restart_called.is_set())
+                self.assertTrue(restart_called.wait(timeout=2.0))
                 mock_dl.assert_called_once()
                 st = updater.status()
                 self.assertEqual(st["update_state"], "success")
