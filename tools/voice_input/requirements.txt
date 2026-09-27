@@ -1,6 +1,9 @@
-# Claude Code Voice Companion requirements (isolated venv)
-sherpa-onnx>=1.10.0
+# Claude Code Voice Companion requirements
 sounddevice>=0.4.6
-numpy>=1.20.0
 pynput>=1.7.6
+numpy>=1.20.0
+websockets>=11.0
+webrtcvad>=2.0.10
 pywin32>=306
+funasr>=1.0.0
+sherpa-onnx>=1.10.0

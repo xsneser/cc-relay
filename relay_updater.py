@@ -12,20 +12,97 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from urllib.parse import urlparse
 
 DEFAULT_REPO = "https://github.com/xsneser/cc-relay.git"
 DEFAULT_BRANCH = "master"
 GITHUB_API_COMMITS_URL = "https://api.github.com/repos/xsneser/cc-relay/commits/master"
 GITHUB_RAW_UI_URL = "https://raw.githubusercontent.com/xsneser/cc-relay/master/ui.html"
+GITHUB_MASTER_ZIP_URL = "https://github.com/xsneser/cc-relay/archive/refs/heads/master.zip"
 USER_AGENT = "cc-relay-updater/1.0"
-RELAY_VERSION = "2.4.1"
+RELAY_VERSION = "2.4.2"
 VERSION_RE = re.compile(r"v?([0-9]+(?:\.[0-9]+)+)")
 UI_VERSION_RE = re.compile(r'<meta\s+name=["\']ui-version["\']\s+content=["\']([0-9]+(?:\.[0-9]+)*)["\']')
+
+PROTECTED_PATHS = {
+    "config.json",
+    "records.jsonl",
+    "prompts.json",
+    "relay-status.json",
+    ".relay-update-state.json",
+    ".update-status.json",
+}
+
+
+def is_protected_path(rel_path):
+    norm = rel_path.replace("\\", "/").strip("/")
+    if norm in PROTECTED_PATHS:
+        return True
+    if norm.startswith(".git/") or norm == ".git":
+        return True
+    base = os.path.basename(norm)
+    if base.endswith(".log") or base.endswith(".pid") or base.endswith(".tmp"):
+        return True
+    if base.startswith("records") and base.endswith(".jsonl"):
+        return True
+    return False
+
+
+def _download_and_extract_zip(url, target_dir, proxy="", retries=2):
+    """Download master zip from GitHub and safely extract/overwrite into target_dir without Git."""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    tmp_fd, tmp_zip = tempfile.mkstemp(suffix=".zip")
+    os.close(tmp_fd)
+    last_error = None
+    try:
+        downloaded = False
+        for opener in _openers(proxy):
+            for attempt in range(retries):
+                try:
+                    with opener.open(req, timeout=60) as resp, open(tmp_zip, "wb") as out:
+                        shutil.copyfileobj(resp, out)
+                    if os.path.getsize(tmp_zip) > 1024:
+                        downloaded = True
+                        break
+                except Exception as exc:
+                    last_error = exc
+                    time.sleep(1)
+            if downloaded:
+                break
+        if not downloaded:
+            raise RuntimeError(f"下载更新包失败: {last_error}")
+
+        with zipfile.ZipFile(tmp_zip, "r") as zf:
+            namelist = zf.namelist()
+            if not namelist:
+                raise RuntimeError("下载的更新包为空")
+            # GitHub zip archives have a root directory like 'cc-relay-master/'
+            root_prefix = namelist[0].split("/")[0] + "/" if "/" in namelist[0] else ""
+            for item in namelist:
+                if not item.startswith(root_prefix) or item == root_prefix:
+                    continue
+                rel_path = item[len(root_prefix):].lstrip("/")
+                if not rel_path or rel_path.endswith("/"):
+                    continue
+                if is_protected_path(rel_path):
+                    continue
+                dest_path = os.path.join(target_dir, rel_path)
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                with zf.open(item) as src, open(dest_path, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+        return True
+    finally:
+        try:
+            if os.path.exists(tmp_zip):
+                os.unlink(tmp_zip)
+        except OSError:
+            pass
 
 
 def parse_version_tuple(val):
@@ -199,7 +276,7 @@ class RelayUpdater:
     def _check_dirty(self):
         """Check whether there are untracked or modified files that prevent clean updates."""
         if not _is_git_repo(self.base_dir):
-            return True, "非 Git 仓库，无法直接更新"
+            return False, ""
         res = _run_git(["status", "--porcelain", "--untracked-files=all"], self.base_dir)
         if res.returncode != 0:
             return True, "无法检查 Git 状态: " + res.stderr.strip()
@@ -370,17 +447,8 @@ class RelayUpdater:
                         else:
                             self._snapshot["behind_count"] = 1
 
-                        # Check if local is allowed to auto-update
-                        dirty, dirty_msg = self._check_dirty()
-                        if dirty:
-                            self._snapshot["can_update"] = False
-                            self._snapshot["blocked_reason"] = dirty_msg
-                        elif loc_branch != DEFAULT_BRANCH:
-                            self._snapshot["can_update"] = False
-                            self._snapshot["blocked_reason"] = f"当前处于分支 '{loc_branch}'，自动更新仅支持 '{DEFAULT_BRANCH}' 分支"
-                        else:
-                            self._snapshot["can_update"] = True
-                            self._snapshot["blocked_reason"] = None
+                        self._snapshot["can_update"] = True
+                        self._snapshot["blocked_reason"] = None
                     else:
                         self._snapshot["has_update"] = False
                         self._snapshot["behind_count"] = 0
@@ -417,7 +485,7 @@ class RelayUpdater:
             return False, str(exc)
 
     def apply_update(self, restart_callback=None):
-        """Safely fetch and fast-forward merge master branch, compile-check, and trigger restart."""
+        """Safely update via Git ff-merge if git repo is available, or via HTTP master.zip extraction."""
         if not self._update_lock.acquire(blocking=False):
             return False, "已有更新任务正在运行中"
         try:
@@ -426,55 +494,50 @@ class RelayUpdater:
                 self._snapshot["update_error"] = None
                 self._snapshot["update_message"] = "准备更新..."
 
-            # 1. Preflight check
-            dirty, dirty_msg = self._check_dirty()
-            if dirty:
-                with self._lock:
-                    self._snapshot["update_state"] = "error"
-                    self._snapshot["update_error"] = dirty_msg
-                return False, dirty_msg
-
             local_info = self._get_local_commit()
             old_sha = local_info.get("sha")
-            if local_info.get("branch") != DEFAULT_BRANCH:
-                err = f"当前处于分支 '{local_info.get('branch')}'，无法自动合并到 master"
+            used_git = False
+
+            # If local is a git repo on master branch with no uncommitted changes, try git pull
+            if _is_git_repo(self.base_dir) and local_info.get("branch") == DEFAULT_BRANCH:
+                dirty, dirty_msg = self._check_dirty()
+                if not dirty:
+                    with self._lock:
+                        self._snapshot["update_state"] = "fetching"
+                        self._snapshot["update_message"] = "正在从 GitHub 获取更新 (Git)..."
+                    fetch_res = _run_git(["fetch", "origin", DEFAULT_BRANCH], self.base_dir, timeout=60)
+                    if fetch_res.returncode == 0:
+                        with self._lock:
+                            self._snapshot["update_state"] = "applying"
+                            self._snapshot["update_message"] = "正在应用更新文件..."
+                        merge_res = _run_git(["merge", "--ff-only", f"origin/{DEFAULT_BRANCH}"], self.base_dir, timeout=30)
+                        if merge_res.returncode == 0:
+                            used_git = True
+
+            # If not updated via git (no git, not a git repo, git pull failed, etc.), use HTTP ZIP download:
+            if not used_git:
                 with self._lock:
-                    self._snapshot["update_state"] = "error"
-                    self._snapshot["update_error"] = err
-                return False, err
-
-            # 2. Fetch master
-            with self._lock:
-                self._snapshot["update_state"] = "fetching"
-                self._snapshot["update_message"] = "正在从 GitHub 获取更新..."
-
-            fetch_res = _run_git(["fetch", "origin", DEFAULT_BRANCH], self.base_dir, timeout=60)
-            if fetch_res.returncode != 0:
-                err = "Git fetch 失败: " + fetch_res.stderr.strip()[:200]
+                    self._snapshot["update_state"] = "fetching"
+                    self._snapshot["update_message"] = "正在下载官方更新包 (无需 Git)..."
+                proxy = _proxy_url_from_config(self.config_path)
+                try:
+                    _download_and_extract_zip(GITHUB_MASTER_ZIP_URL, self.base_dir, proxy=proxy)
+                except Exception as exc:
+                    err = f"下载或解压更新包失败: {exc}"
+                    with self._lock:
+                        self._snapshot["update_state"] = "error"
+                        self._snapshot["update_error"] = err
+                    return False, err
                 with self._lock:
-                    self._snapshot["update_state"] = "error"
-                    self._snapshot["update_error"] = err
-                return False, err
-
-            # 3. Fast-forward merge
-            with self._lock:
-                self._snapshot["update_state"] = "applying"
-                self._snapshot["update_message"] = "正在应用更新文件..."
-
-            merge_res = _run_git(["merge", "--ff-only", f"origin/{DEFAULT_BRANCH}"], self.base_dir, timeout=30)
-            if merge_res.returncode != 0:
-                err = "Fast-forward 合并失败: " + merge_res.stderr.strip()[:200]
-                with self._lock:
-                    self._snapshot["update_state"] = "error"
-                    self._snapshot["update_error"] = err
-                return False, err
+                    self._snapshot["update_state"] = "applying"
+                    self._snapshot["update_message"] = "已解压并安全应用新版本文件..."
 
             # 4. Compile check
             ok, compile_err = self._compile_check()
             if not ok:
-                # Rollback on syntax error
-                _run_git(["reset", "--hard", old_sha], self.base_dir, timeout=30)
-                err = f"更新后代码编译失败，已安全回滚: {compile_err}"
+                if used_git and old_sha:
+                    _run_git(["reset", "--hard", old_sha], self.base_dir, timeout=30)
+                err = f"更新后代码编译失败: {compile_err}"
                 with self._lock:
                     self._snapshot["update_state"] = "error"
                     self._snapshot["update_error"] = err
@@ -482,11 +545,13 @@ class RelayUpdater:
 
             # 5. Success - trigger restart
             new_info = self._get_local_commit()
+            new_ver = get_local_ui_version(self.base_dir)
             with self._lock:
                 self._snapshot["update_state"] = "success"
                 self._snapshot["has_update"] = False
+                self._snapshot["current_version"] = new_ver
+                self._snapshot["latest_version"] = new_ver
                 self._snapshot["current_sha"] = new_info.get("sha") or ""
-                self._snapshot["current_version"] = (new_info.get("sha") or "")[:7]
                 self._snapshot["update_message"] = "更新已完成，正在重启中转服务..."
 
             if restart_callback:

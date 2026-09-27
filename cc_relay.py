@@ -1027,7 +1027,7 @@ def voice_start(conf=None):
     return "timeout"
 
 
-def voice_stop():
+def voice_stop(conf=None):
     """安全停止语音服务：仅停止确认归属于本服务的 voice 进程"""
     global _VOICE_PROCESS, _VOICE_LAST_ERROR
     _VOICE_LAST_ERROR = None
@@ -1048,6 +1048,8 @@ def voice_stop():
 
         if not pid_to_kill:
             _VOICE_PROCESS = None
+            if voice_up(conf):
+                return "not-managed"
             return "not-running"
 
         try:
@@ -2165,6 +2167,7 @@ def stats_snapshot():
             'cpa_update_state': cpa_status.get('update_state', 'idle'),
             'cpa_update_message': cpa_status.get('update_message'),
             'cpa_update_error': cpa_status.get('update_error'),
+            'cpa_release_notes': cpa_status.get('release_notes', ''),
             'cpa_download_progress': cpa_status.get('download_progress', 0.0),
             'cpa_downloaded_bytes': cpa_status.get('downloaded_bytes', 0),
             'cpa_total_bytes': cpa_status.get('total_bytes', 0),
@@ -2945,7 +2948,7 @@ class UIHandler(BaseHTTPRequestHandler):
             elif name == "voice" and act == "start":
                 self._json({"result": voice_start(conf), "status": voice_status_dict(conf)})
             elif name == "voice" and act == "stop":
-                self._json({"result": voice_stop(), "status": voice_status_dict(conf)})
+                self._json({"result": voice_stop(conf), "status": voice_status_dict(conf)})
             else:
                 self._json({"error": "unsupported upstream action"}, 400)
             return

@@ -298,6 +298,11 @@ class DesktopVoiceWidget:
         elif state == SessionState.INJECTING:
             self.status_label.configure(text="⚡ 正在自动输入到目标窗口…", fg="#58a6ff")
 
+        elif state == SessionState.ERROR:
+            self.btn_cancel.pack_forget()
+            err_msg = getattr(self.coordinator, "last_error", "") or "录音启动失败"
+            self.set_feedback(f"✕ {err_msg}", color="#ff7b72")
+
         elif state == SessionState.IDLE:
             self.btn_cancel.pack_forget()
             self._draw_mic_icon(color="#00ffc4", state="idle")

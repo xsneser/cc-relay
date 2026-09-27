@@ -93,9 +93,16 @@ class VoiceAutoStartTests(unittest.TestCase):
     def test_voice_stop_does_not_kill_when_not_running(self):
         with mock.patch.object(cc_relay, "_VOICE_PROCESS", None), \
                 mock.patch.object(os.path, "isfile", return_value=False), \
+                mock.patch.object(cc_relay, "voice_up", return_value=False), \
                 mock.patch.object(cc_relay.subprocess, "run") as run:
             self.assertEqual(cc_relay.voice_stop(), "not-running")
         run.assert_not_called()
+
+    def test_voice_stop_returns_not_managed_when_unowned_but_up(self):
+        with mock.patch.object(cc_relay, "_VOICE_PROCESS", None), \
+                mock.patch.object(os.path, "isfile", return_value=False), \
+                mock.patch.object(cc_relay, "voice_up", return_value=True):
+            self.assertEqual(cc_relay.voice_stop(), "not-managed")
 
     def test_voice_stop_kills_only_tracked_pid(self):
         proc = mock.Mock(pid=5678)

@@ -1,0 +1,2 @@
+sounddevice>=0.4.6
+pynput>=1.7.6

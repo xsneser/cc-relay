@@ -21,6 +21,19 @@ class CPAUpdaterTests(unittest.TestCase):
         self.assertGreater(cpa_updater.version_tuple("7.3.19"), cpa_updater.version_tuple("7.2.155"))
         self.assertIsNone(cpa_updater.version_tuple("7.3.19-rc1"))
 
+    def test_clean_release_notes(self):
+        raw = ("<!-- cliproxyapi-linux-release-assets:start -->\n"
+               "## Linux release assets\n- `CLIProxyAPI.tar.gz`\n"
+               "<!-- cliproxyapi-linux-release-assets:end -->\n"
+               "## Changelog\n"
+               "- fix(config): preserve unknown legacy sections as comments (4a2c8186)\n"
+               "**Full Changelog**: https://example.com\n")
+        cleaned = cpa_updater.clean_release_notes(raw)
+        self.assertIn("fix(config): preserve unknown legacy sections as comments", cleaned)
+        self.assertNotIn("Linux release assets", cleaned)
+        self.assertNotIn("Full Changelog", cleaned)
+        self.assertNotIn("4a2c8186", cleaned)
+
     def test_local_version_reads_stdout_and_stderr_and_caches_by_fingerprint(self):
         with tempfile.TemporaryDirectory() as directory:
             exe = os.path.join(directory, "cpa.exe")

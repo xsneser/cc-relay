@@ -84,6 +84,13 @@ class TestDesktopVoiceWidget(unittest.TestCase):
         self.widget._on_cancel_click()
         self.assertFalse(self.coord.is_recording)
 
+    def test_error_state_shows_feedback(self):
+        from tools.voice_input.session import SessionState
+        self.widget.create_window()
+        self.coord.last_error = "麦克风设备未就绪"
+        self.widget._apply_state_change(SessionState.ERROR, None)
+        self.assertIn("麦克风设备未就绪", self.widget.status_label.cget("text"))
+
 
 if __name__ == "__main__":
     unittest.main()

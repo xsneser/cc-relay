@@ -54,6 +54,20 @@ class VoiceServer:
             pass
         return False
 
+    def _build_capabilities(self) -> Dict[str, Any]:
+        caps = dict(self.engine.get_capabilities()) if hasattr(self.engine, "get_capabilities") else {}
+        try:
+            import sounddevice
+            caps["microphone"] = True
+        except Exception:
+            caps["microphone"] = False
+        try:
+            import pynput
+            caps["hotkey"] = True
+        except Exception:
+            caps["hotkey"] = False
+        return caps
+
     def process_request(self, conn: ServerConnection, req: Any):
         """处理 HTTP 探测请求 (如 /health)"""
         origin = req.headers.get("Origin")
@@ -63,7 +77,7 @@ class VoiceServer:
             return resp
 
         if req.path in ("/health", "/api/health"):
-            caps = self.engine.get_capabilities() if hasattr(self.engine, "get_capabilities") else {}
+            caps = self._build_capabilities()
             coord_state = self.coordinator.state.value if self.coordinator else "unknown"
             body = json.dumps(
                 {
@@ -88,7 +102,7 @@ class VoiceServer:
     async def handle_connection(self, websocket: ServerConnection):
         """处理 WebSocket /ws/voice 双向长连接"""
         # 1. 握手阶段下发 Hello
-        caps = self.engine.get_capabilities() if hasattr(self.engine, "get_capabilities") else {}
+        caps = self._build_capabilities()
         hello_msg = {
             "type": "hello",
             "service": "voice",

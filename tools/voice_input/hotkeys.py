@@ -36,6 +36,31 @@ MOUSE_BUTTON_ALIASES = {
     "mouse_middle": "middle",
 }
 
+KEY_ALIASES = {
+    "capslock": "caps_lock",
+    "right_ctrl": "ctrl_r",
+    "right_shift": "shift_r",
+    "right_alt": "alt_r",
+    "left_ctrl": "ctrl_l",
+    "left_shift": "shift_l",
+    "left_alt": "alt_l",
+}
+
+
+def key_to_name(key) -> Optional[str]:
+    """将 pynput 按键对象规范化为小写字符串名称"""
+    if key is None:
+        return None
+    if hasattr(key, "name") and key.name:
+        name = str(key.name).lower().strip()
+        return KEY_ALIASES.get(name, name)
+    if hasattr(key, "char") and key.char:
+        return str(key.char).lower().strip()
+    if hasattr(key, "vk") and key.vk:
+        if 0x70 <= key.vk <= 0x87:
+            return f"f{key.vk - 0x70 + 1}"
+    return str(key).lower().strip().replace("key.", "")
+
 
 class HotkeyController:
     def __init__(
@@ -77,9 +102,24 @@ class HotkeyController:
                 return "鼠标前侧键 (X2 / 前进键)"
             elif m_key == "middle":
                 return "鼠标滚轮中键"
-        elif self.hotkey_name in ("caps_lock", "capslock"):
+            return f"鼠标按键 [{self.hotkey_name}]"
+
+        target = KEY_ALIASES.get(self.hotkey_name, self.hotkey_name)
+        if target in ("caps_lock", "capslock"):
             return "键盘 CapsLock 键 (长按说话，短按切换大小写)"
-        return f"键盘 {self.hotkey_name.upper()} 键"
+        elif target == "ctrl_r":
+            return "键盘 右Ctrl 键"
+        elif target == "shift_r":
+            return "键盘 右Shift 键"
+        elif target == "alt_r":
+            return "键盘 右Alt 键"
+        elif target.startswith("f") and target[1:].isdigit():
+            return f"键盘 {target.upper()} 键"
+        elif target == "space":
+            return "键盘 空格 (Space) 键"
+        elif target == "tab":
+            return "键盘 Tab 键"
+        return f"键盘 [{target.upper()}] 键"
 
     def set_processing(self) -> None:
         with self._lock:
@@ -104,15 +144,16 @@ class HotkeyController:
 
     def _match_keyboard_key(self, key) -> bool:
         """检查键盘按键是否匹配目标热键"""
-        if keyboard is None:
+        if key is None:
             return False
-        if self.hotkey_name in ("f8", "f9", "f10", "f7"):
-            target_attr = getattr(keyboard.Key, self.hotkey_name, None)
-            return key == target_attr
-        elif self.hotkey_name in ("caps_lock", "capslock"):
-            return key == keyboard.Key.caps_lock
-        elif self.hotkey_name in ("ctrl_r", "right_ctrl"):
-            return key == keyboard.Key.ctrl_r
+        k_name = key_to_name(key)
+        target = KEY_ALIASES.get(self.hotkey_name, self.hotkey_name)
+        if k_name == target:
+            return True
+        if keyboard is not None:
+            target_attr = getattr(keyboard.Key, target, None)
+            if target_attr is not None and key == target_attr:
+                return True
         return False
 
     def _on_threshold_reached(self):

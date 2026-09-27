@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="ui-version" content="2.4.1">
+<meta name="ui-version" content="2.4.2">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -436,6 +436,22 @@
     color: var(--text-muted);
     line-height: 1.4;
   }
+  .cpa-card-notes {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 8px 10px;
+    max-height: 80px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--font-sans);
+  }
+  .cpa-card-notes::-webkit-scrollbar { width: 4px; }
+  .cpa-card-notes::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 99px; }
   .cpa-card-track {
     height: 6px;
     background: rgba(255, 255, 255, 0.08);
@@ -2899,7 +2915,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.1</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.2</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -3024,6 +3040,7 @@
       </button>
     </div>
     <div class="cpa-card-desc" id="cpa-card-desc">正在检查更新…</div>
+    <div class="cpa-card-notes" id="cpa-card-notes" style="display:none;"></div>
     <div class="cpa-card-track" role="progressbar" id="cpa-card-track" aria-valuemin="0" aria-valuemax="100">
       <div class="cpa-card-fill" id="cpa-card-fill"></div>
     </div>
@@ -3772,9 +3789,11 @@ function renderCpaProgressCard(data) {
   const bytes = $('#cpa-card-bytes');
   const spinner = $('#cpa-card-spinner');
   const actions = $('#cpa-card-actions');
+  const notesEl = $('#cpa-card-notes');
 
   const curVer = data.current_version || data.cpa_version || '';
   const latVer = data.latest_version || data.cpa_latest_version || '';
+  const notes = data.release_notes || data.cpa_release_notes || '';
   const checking = !!(data.checking || data.cpa_update_checking);
   const state = data.update_state || data.cpa_update_state || 'idle';
   const hasUpdate = !!(data.has_update || data.cpa_has_update);
@@ -3836,6 +3855,15 @@ function renderCpaProgressCard(data) {
     showSpinner = false;
   }
   desc.textContent = descText;
+
+  if (notesEl) {
+    if (hasUpdate && notes && (state === 'idle' || state === 'queued')) {
+      notesEl.textContent = notes;
+      notesEl.style.display = 'block';
+    } else {
+      notesEl.style.display = 'none';
+    }
+  }
 
   fill.classList.toggle('indeterminate', isIndeterminate);
   if (state === 'downloading') {
@@ -4264,6 +4292,7 @@ function secretField(labelText, cls, placeholder) {
   return { field, input };
 }
 function renderConfig(cfg) {
+  window._currentVoiceHotkey = (cfg.tools && cfg.tools.voice && cfg.tools.voice.hotkey) || 'mouse_x1';
   const root = $('#cfg-upstreams'); root.innerHTML = '';
   const ups = cfg.upstreams || {};
   const names = Object.keys(ups);
@@ -4305,22 +4334,126 @@ function renderConfig(cfg) {
   const autoChecked = vConf.auto_start ? 'checked' : '';
   const selH = vConf.hotkey || 'mouse_x1';
   const selE = vConf.engine || 'paraformer_streaming_2pass';
+  const formatHotkeyLabel = k => {
+    k = String(k || 'mouse_x1').toLowerCase().trim();
+    if (k === 'mouse_x1' || k === 'x1') return '🖱️ 鼠标侧键1 (后退键 · 默认)';
+    if (k === 'mouse_x2' || k === 'x2') return '🖱️ 鼠标侧键2 (前进键)';
+    if (k === 'middle' || k === 'mouse_middle') return '🖱️ 鼠标滚轮中键';
+    if (k === 'caps_lock' || k === 'capslock') return '⌨️ CapsLock 大写锁定键';
+    if (k === 'ctrl_r' || k === 'right_ctrl') return '⌨️ 右 Ctrl 键';
+    if (k === 'shift_r' || k === 'right_shift') return '⌨️ 右 Shift 键';
+    if (k === 'alt_r' || k === 'right_alt') return '⌨️ 右 Alt 键';
+    if (/^f\d{1,2}$/.test(k)) return '⌨️ ' + k.toUpperCase() + ' 键';
+    if (k === 'space') return '⌨️ Space 空格键';
+    if (k === 'tab') return '⌨️ Tab 键';
+    return '⌨️ 按键 [' + k.toUpperCase() + ']';
+  };
+
   vCard.innerHTML = '<div class="upstream-title"><b>voice (语音输入伴侣)</b><code>服务端口: ' + (vConf.port || 8401) + ' · 2-Pass 流式因果识别</code></div>' +
     '<div class="config-grid">' +
     '  <div class="config-field"><label>随 CC Relay 自启动</label><div style="display:flex;align-items:center;height:34px;gap:8px;">' +
     '    <input type="checkbox" id="cfg-voice-autostart" ' + autoChecked + ' style="cursor:pointer;width:16px;height:16px;">' +
     '    <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起</span></div></div>' +
-    '  <div class="config-field"><label>全局对讲触发热键</label><select id="cfg-voice-hotkey" class="cfg-base" style="cursor:pointer;">' +
-    '    <option value="mouse_x1"' + (selH === 'mouse_x1' ? ' selected' : '') + '>mouse_x1 (鼠标侧后退键 · 推荐)</option>' +
-    '    <option value="mouse_x2"' + (selH === 'mouse_x2' ? ' selected' : '') + '>mouse_x2 (鼠标侧前进键)</option>' +
-    '    <option value="f8"' + (selH === 'f8' ? ' selected' : '') + '>F8 键</option>' +
-    '    <option value="caps_lock"' + (selH === 'caps_lock' ? ' selected' : '') + '>CapsLock 大写锁定键</option>' +
-    '  </select></div>' +
+    '  <div class="config-field"><label>全局对讲触发热键 (点击录制按键)</label>' +
+    '    <div style="display:flex;align-items:center;gap:8px;">' +
+    '      <input type="hidden" id="cfg-voice-hotkey" value="' + selH + '">' +
+    '      <button type="button" id="btn-record-hotkey" class="cfg-base" style="flex:1;text-align:left;cursor:pointer;padding:6px 12px;font-family:var(--font-mono);display:flex;align-items:center;justify-content:space-between;">' +
+    '        <span id="txt-record-hotkey">' + formatHotkeyLabel(selH) + '</span>' +
+    '        <span style="font-size:11px;color:var(--text-muted);border:1px solid var(--glass-border);padding:1px 6px;border-radius:4px;">点击录制</span>' +
+    '      </button>' +
+    '      <button type="button" id="btn-reset-hotkey" class="btn-action" style="font-size:12px;padding:6px 10px;" title="重置为默认鼠标侧键">默认</button>' +
+    '    </div>' +
+    '  </div>' +
     '  <div class="config-field"><label>ASR 引擎模式</label><select id="cfg-voice-engine" class="cfg-base" style="cursor:pointer;">' +
     '    <option value="paraformer_streaming_2pass"' + (selE === 'paraformer_streaming_2pass' ? ' selected' : '') + '>paraformer_streaming_2pass (2-Pass 流式 · 推荐)</option>' +
     '    <option value="sensevoice_offline"' + (selE === 'sensevoice_offline' ? ' selected' : '') + '>sensevoice_offline (SenseVoice 离线保底)</option>' +
     '  </select></div>' +
     '</div>';
+
+  const btnRecHk = vCard.querySelector('#btn-record-hotkey');
+  const txtRecHk = vCard.querySelector('#txt-record-hotkey');
+  const inputHk = vCard.querySelector('#cfg-voice-hotkey');
+  const btnResetHk = vCard.querySelector('#btn-reset-hotkey');
+  if (btnRecHk && inputHk) {
+    let listening = false;
+    const stopListening = () => {
+      listening = false;
+      window.removeEventListener('keydown', onHkKeyDown, true);
+      window.removeEventListener('pointerdown', onHkMouseDown, true);
+      btnRecHk.style.borderColor = '';
+      btnRecHk.style.background = '';
+      txtRecHk.textContent = formatHotkeyLabel(inputHk.value);
+    };
+    const applyHk = (captured) => {
+      inputHk.value = captured;
+      txtRecHk.textContent = formatHotkeyLabel(captured);
+      stopListening();
+      markConfigDirty();
+      toast('已录制热键: ' + formatHotkeyLabel(captured));
+    };
+    const onHkKeyDown = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === 'Escape') { stopListening(); toast('已取消按键录制'); return; }
+      const code = e.code || '';
+      const key = e.key || '';
+      let k = '';
+      if (/^F\d{1,2}$/i.test(key) || /^F\d{1,2}$/i.test(code)) {
+        k = (key || code).toLowerCase();
+      } else if (code === 'CapsLock' || key === 'CapsLock') {
+        k = 'caps_lock';
+      } else if (code === 'ControlRight') {
+        k = 'ctrl_r';
+      } else if (code === 'ShiftRight') {
+        k = 'shift_r';
+      } else if (code === 'AltRight') {
+        k = 'alt_r';
+      } else if (code === 'Space' || key === ' ') {
+        k = 'space';
+      } else if (code === 'Tab') {
+        k = 'tab';
+      } else if (code.startsWith('Key')) {
+        k = code.slice(3).toLowerCase();
+      } else if (code.startsWith('Digit')) {
+        k = code.slice(5).toLowerCase();
+      } else if (key && key.length === 1) {
+        k = key.toLowerCase();
+      } else {
+        k = (code || key).toLowerCase();
+      }
+      applyHk(k);
+    };
+    const onHkMouseDown = (e) => {
+      if (e.button === 3) {
+        e.preventDefault(); e.stopPropagation();
+        applyHk('mouse_x1');
+      } else if (e.button === 4) {
+        e.preventDefault(); e.stopPropagation();
+        applyHk('mouse_x2');
+      } else if (e.button === 1) {
+        e.preventDefault(); e.stopPropagation();
+        applyHk('middle');
+      } else if (e.button === 0 && !btnRecHk.contains(e.target)) {
+        stopListening();
+      }
+    };
+    btnRecHk.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (listening) { stopListening(); return; }
+      listening = true;
+      btnRecHk.style.borderColor = 'var(--accent)';
+      btnRecHk.style.background = 'rgba(0,255,196,0.1)';
+      txtRecHk.innerHTML = '<span style="color:var(--accent);">● 请按键盘任意键或鼠标侧键… (Esc 取消)</span>';
+      window.addEventListener('keydown', onHkKeyDown, true);
+      window.addEventListener('pointerdown', onHkMouseDown, true);
+    });
+    if (btnResetHk) {
+      btnResetHk.addEventListener('click', (e) => {
+        e.preventDefault();
+        applyHk('mouse_x1');
+      });
+    }
+  }
+
   vCard.querySelectorAll('input, select').forEach(el => el.addEventListener('change', markConfigDirty));
   root.appendChild(vCard);
   const cpaAuto = $('#cfg-codex-auto-update');
@@ -4391,11 +4524,27 @@ $('#cfg-save').addEventListener('click', async () => {
   if (!_configLoaded || busy) return;
   const btn = $('#cfg-save'); btn.disabled = true; btn.textContent = '保存中…';
   try {
-    const r = await api('/api/config', collectConfig());
+    const oldHk = (window._currentVoiceHotkey || '');
+    const newCfg = collectConfig();
+    const newHk = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.hotkey) || '';
+    const r = await api('/api/config', newCfg);
     if (r.error) throw new Error(r.error);
     renderConfig(r.config || {}); toast('连接配置已保存，下一次请求立即生效');
+
+    // 若热键发生变化且语音服务正在运行，自动重启语音服务使新热键生效
+    if (oldHk && newHk && oldHk !== newHk && isUpstreamRunning('voice')) {
+      toast('热键已变更，正在自动重启语音伴侣…');
+      try {
+        await api('/api/upstream', { name: 'voice', action: 'stop' });
+        await new Promise(res => setTimeout(res, 800));
+        await api('/api/upstream', { name: 'voice', action: 'start' });
+        toast('语音伴侣已重启，新热键立即生效！');
+      } catch(err) {
+        toast('自动重启语音服务异常: ' + err, true);
+      }
+    }
   } catch (e) { toast('保存配置失败: ' + e, true); }
-  finally { btn.disabled = false; btn.textContent = '保存连接配置'; }
+  finally { btn.disabled = false; btn.textContent = '保存连接配置'; refresh(); }
 });
 $('#cfg-reload').addEventListener('click', async () => {
   if (_configDirty && !confirm('有未保存的修改，确定放弃并刷新吗？')) return;
@@ -5055,9 +5204,9 @@ async function controlUpstream(provider) {
     const res = await api('/api/upstream', { name: meta.apiName, action });
     if (res.error || res.ok === false) throw new Error(res.error || res.result || '操作失败');
     if (res.result === 'not-managed') {
-      toast('Gemini 代理不是由当前 Relay 启动，未执行停止操作', true);
+      toast(meta.label + ' 不是由当前 Relay 启动，未执行停止操作', true);
     } else if (res.result === 'not-running') {
-      toast('Gemini 代理已经停止');
+      toast(meta.label + ' 已经停止');
     } else if (typeof res.result === 'string' && (res.result.startsWith('start-failed') || ['no-exe', 'stop-failed', 'timeout'].includes(res.result))) {
       const errDetail = res.result.startsWith('start-failed') ? (res.result.replace(/^start-failed:?\s*/, '') || '启动失败') : res.result;
       throw new Error(errDetail);

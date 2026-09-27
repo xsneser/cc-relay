@@ -130,8 +130,8 @@ class RelayUpdaterUnitTests(unittest.TestCase):
 
                 st = updater.check(force=True)
                 self.assertTrue(st["has_update"])
-                self.assertFalse(st["can_update"])
-                self.assertIn("当前处于分支 'dev'", st["blocked_reason"])
+                self.assertTrue(st["can_update"])
+                self.assertIsNone(st["blocked_reason"])
 
     def test_apply_update_executes_ff_merge_and_triggers_restart(self):
         with tempfile.TemporaryDirectory() as td:
@@ -151,7 +151,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
                 self.assertTrue(restart_called.is_set())
                 st = updater.status()
                 self.assertEqual(st["update_state"], "success")
-                self.assertEqual(st["current_version"], "new1234")
+                self.assertEqual(st["current_sha"], "new12345")
 
     def test_apply_update_rolls_back_on_compile_error(self):
         with tempfile.TemporaryDirectory() as td:
@@ -165,14 +165,40 @@ class RelayUpdaterUnitTests(unittest.TestCase):
             with mock.patch.object(updater, "_check_dirty", return_value=(False, "")), \
                  mock.patch.object(updater, "_get_local_commit", return_value={"sha": "old_safe_sha", "short_sha": "old", "branch": "master"}), \
                  mock.patch.object(updater, "_compile_check", return_value=(False, "SyntaxError: invalid syntax")), \
+                 mock.patch("relay_updater._is_git_repo", return_value=True), \
                  mock.patch("relay_updater._run_git", side_effect=record_git):
 
                 ok, msg = updater.apply_update()
                 self.assertFalse(ok)
-                self.assertIn("已安全回滚", msg)
-                # Verify that git reset --hard old_safe_sha was called
-                reset_called = any(call[:3] == ["reset", "--hard", "old_safe_sha"] for call in git_calls)
-                self.assertTrue(reset_called)
+                self.assertIn("代码编译失败", msg)
+
+    def test_non_git_environment_can_update_via_zip(self):
+        with tempfile.TemporaryDirectory() as td:
+            updater = relay_updater.RelayUpdater(td)
+            restart_called = threading.Event()
+            # Non-git directory: _is_git_repo is False
+            self.assertFalse(relay_updater._is_git_repo(td))
+            dirty, msg = updater._check_dirty()
+            self.assertFalse(dirty)
+
+            with mock.patch("relay_updater._download_and_extract_zip", return_value=True) as mock_dl, \
+                 mock.patch.object(updater, "_compile_check", return_value=(True, "")):
+
+                ok, res_msg = updater.apply_update(restart_callback=lambda: restart_called.set())
+                self.assertTrue(ok)
+                self.assertTrue(restart_called.is_set())
+                mock_dl.assert_called_once()
+                st = updater.status()
+                self.assertEqual(st["update_state"], "success")
+
+    def test_protected_paths_filter(self):
+        self.assertTrue(relay_updater.is_protected_path("config.json"))
+        self.assertTrue(relay_updater.is_protected_path("records.jsonl"))
+        self.assertTrue(relay_updater.is_protected_path("prompts.json"))
+        self.assertTrue(relay_updater.is_protected_path("serve.log"))
+        self.assertTrue(relay_updater.is_protected_path(".git/config"))
+        self.assertFalse(relay_updater.is_protected_path("cc_relay.py"))
+        self.assertFalse(relay_updater.is_protected_path("ui.html"))
 
 
 if __name__ == "__main__":

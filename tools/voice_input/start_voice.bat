@@ -2,10 +2,9 @@
 title Claude Code Voice Companion
 cd /d "%~dp0..\.."
 
-if not exist "tools\voice_input\.venv\Scripts\python.exe" (
-    echo [!] Virtual environment not found. Running setup first...
-    python tools\voice_input\install_voice.py
-)
+for /f "delims=" %%i in ('python -c "from tools.voice_input.runtime import find_voice_python; print(find_voice_python())" 2^>nul') do set "PY_EXE=%%i"
+if "%PY_EXE%"=="" set "PY_EXE=python"
 
-tools\voice_input\.venv\Scripts\python.exe -m tools.voice_input listen --hotkey mouse_x1
+echo [*] Launching Voice Companion with: %PY_EXE%
+"%PY_EXE%" -m tools.voice_input service %*
 if errorlevel 1 pause

@@ -36,6 +36,32 @@ def version_tuple(value):
         return None
 
 
+def clean_release_notes(body):
+    """Clean GitHub release markdown: remove HTML comments, asset sections, and keep actual changelog items."""
+    if not body:
+        return ""
+    # Strip HTML comments
+    s = re.sub(r"<!--.*?-->", "", str(body), flags=re.DOTALL)
+    # Strip Linux/FreeBSD asset sections
+    s = re.sub(r"##\s+(?:Linux|FreeBSD)\s+release\s+assets.*?(?=##|\Z)", "", s, flags=re.DOTALL | re.IGNORECASE)
+    # Strip Full Changelog link
+    s = re.sub(r"\*\*Full\s+Changelog\*\*:[^\n]+", "", s)
+    lines = []
+    for l in s.splitlines():
+        line = l.strip()
+        if not line:
+            continue
+        if line.startswith("## Changelog") or line.startswith("## What"):
+            continue
+        if line.startswith(("- ", "* ")):
+            # Strip commit sha hash e.g. (4a2c8186)
+            line = re.sub(r"\s*\([0-9a-f]{7,40}\)", "", line)
+            lines.append(line)
+        elif not line.startswith("#"):
+            lines.append(line)
+    return "\n".join(lines).strip()[:2000]
+
+
 def _proxy_url(config_path):
     try:
         with open(config_path, "r", encoding="utf-8") as handle:
@@ -172,7 +198,7 @@ class CPAUpdater:
                             "latest_version": tag.lstrip("v"), "release_url": asset["browser_download_url"],
                             "asset_name": asset.get("name"), "asset_digest": asset.get("digest"),
                             "asset_size": int(asset.get("size") or 0),
-                            "release_notes": str(payload.get("body") or "")[:4000],
+                            "release_notes": clean_release_notes(payload.get("body") or ""),
                             "etag": response.headers.get("ETag"), "last_checked": time.time(),
                             "check_error": None,
                         })

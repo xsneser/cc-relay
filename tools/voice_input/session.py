@@ -94,6 +94,7 @@ class SessionCoordinator:
         # 缓存最近一次识别完成的内容（供焦点丢失时手动补录）
         self.last_transcript: str = ""
         self.last_target: Optional[TargetWindowSnapshot] = None
+        self.last_error: str = ""
 
     @property
     def state(self) -> SessionState:
@@ -187,6 +188,7 @@ class SessionCoordinator:
                 self.engine.create_session(sid)
             except Exception as e:
                 logger.error(f"[Session] 创建 ASR 会话失败: {e}")
+                self.last_error = f"ASR创建失败: {e}"
                 self._set_state(SessionState.ERROR)
                 self._current_session = None
                 return False
@@ -196,6 +198,7 @@ class SessionCoordinator:
                 self.recorder.start()
             except Exception as e:
                 logger.error(f"[Session] 启动麦克风录音设备失败: {e}")
+                self.last_error = f"麦克风错误: {e}"
                 self.engine.cancel_session(sid)
                 self._set_state(SessionState.ERROR)
                 self._current_session = None
