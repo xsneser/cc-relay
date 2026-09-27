@@ -26,7 +26,7 @@ GITHUB_API_COMMITS_URL = "https://api.github.com/repos/xsneser/cc-relay/commits/
 GITHUB_RAW_UI_URL = "https://raw.githubusercontent.com/xsneser/cc-relay/master/ui.html"
 GITHUB_MASTER_ZIP_URL = "https://github.com/xsneser/cc-relay/archive/refs/heads/master.zip"
 USER_AGENT = "cc-relay-updater/1.0"
-RELAY_VERSION = "2.4.4"
+RELAY_VERSION = "2.4.5"
 VERSION_RE = re.compile(r"v?([0-9]+(?:\.[0-9]+)+)")
 UI_VERSION_RE = re.compile(r'<meta\s+name=["\']ui-version["\']\s+content=["\']([0-9]+(?:\.[0-9]+)*)["\']')
 
@@ -54,7 +54,7 @@ def is_protected_path(rel_path):
     return False
 
 
-def _download_and_extract_zip(url, target_dir, proxy="", retries=2):
+def _download_and_extract_zip(url, target_dir, proxy="", retries=2, progress_cb=None):
     """Download master zip from GitHub and safely extract/overwrite into target_dir without Git."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     tmp_fd, tmp_zip = tempfile.mkstemp(suffix=".zip")
@@ -66,7 +66,18 @@ def _download_and_extract_zip(url, target_dir, proxy="", retries=2):
             for attempt in range(retries):
                 try:
                     with opener.open(req, timeout=60) as resp, open(tmp_zip, "wb") as out:
-                        shutil.copyfileobj(resp, out)
+                        cl = resp.headers.get("Content-Length")
+                        expected_total = int(cl) if cl and cl.isdigit() else 0
+                        down = 0
+                        while True:
+                            block = resp.read(64 * 1024)
+                            if not block:
+                                break
+                            out.write(block)
+                            down += len(block)
+                            if progress_cb:
+                                pct = round((down / expected_total) * 100.0, 1) if expected_total > 0 else 0.0
+                                progress_cb(down, expected_total, pct)
                     if os.path.getsize(tmp_zip) > 1024:
                         downloaded = True
                         break
@@ -233,9 +244,12 @@ class RelayUpdater:
             "last_checked": None,
             "check_error": None,
             "checking": False,
-            "update_state": "idle",  # idle, checking, queued, fetching, applying, success, error
+            "update_state": "idle",  # idle, checking, queued, downloading, fetching, applying, success, error
             "update_error": None,
             "update_message": None,
+            "downloaded_bytes": 0,
+            "total_bytes": 0,
+            "download_progress": 0.0,
             "etag": None,
             "retry_after": 0.0,
         }
@@ -517,11 +531,24 @@ class RelayUpdater:
             # If not updated via git (no git, not a git repo, git pull failed, etc.), use HTTP ZIP download:
             if not used_git:
                 with self._lock:
-                    self._snapshot["update_state"] = "fetching"
+                    self._snapshot["update_state"] = "downloading"
                     self._snapshot["update_message"] = "正在下载官方更新包 (无需 Git)..."
+                    self._snapshot["downloaded_bytes"] = 0
+                    self._snapshot["total_bytes"] = 0
+                    self._snapshot["download_progress"] = 0.0
+
                 proxy = _proxy_url_from_config(self.config_path)
+
+                def _progress_cb(down, tot, pct):
+                    with self._lock:
+                        self._snapshot["update_state"] = "downloading"
+                        self._snapshot["downloaded_bytes"] = down
+                        self._snapshot["total_bytes"] = tot
+                        self._snapshot["download_progress"] = pct
+                        self._snapshot["update_message"] = f"正在下载官方更新包 ({pct:.1f}%)..." if pct > 0 else "正在下载官方更新包..."
+
                 try:
-                    _download_and_extract_zip(GITHUB_MASTER_ZIP_URL, self.base_dir, proxy=proxy)
+                    _download_and_extract_zip(GITHUB_MASTER_ZIP_URL, self.base_dir, proxy=proxy, progress_cb=_progress_cb)
                 except Exception as exc:
                     err = f"下载或解压更新包失败: {exc}"
                     with self._lock:
@@ -530,6 +557,7 @@ class RelayUpdater:
                     return False, err
                 with self._lock:
                     self._snapshot["update_state"] = "applying"
+                    self._snapshot["download_progress"] = 100.0
                     self._snapshot["update_message"] = "已解压并安全应用新版本文件..."
 
             # 4. Compile check

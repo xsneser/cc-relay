@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="ui-version" content="2.4.4">
+<meta name="ui-version" content="2.4.5">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -2786,7 +2786,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.4</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.5</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -3850,6 +3850,9 @@ function renderRelayProgressCard(data) {
   const actions = $('#relay-card-actions');
   const notesEl = $('#relay-card-notes');
 
+  const progress = Number(data.download_progress ?? 0);
+  const downBytes = Number(data.downloaded_bytes ?? 0);
+  const totBytes = Number(data.total_bytes ?? 0);
   const curVer = data.current_version || '2.4.1';
   const latVer = data.latest_version || curVer;
   const notes = data.latest_subject || '';
@@ -3885,6 +3888,9 @@ function renderRelayProgressCard(data) {
     isIndeterminate = true;
     showSpinner = true;
     showActions = false;
+  } else if (state === 'downloading') {
+    descText = msg || '正在下载官方更新包…';
+    if (progress === 0 && downBytes === 0) isIndeterminate = true;
   } else if (state === 'fetching') {
     descText = msg || '正在下载官方更新包 (无需 Git)…';
     isIndeterminate = true;
@@ -3914,7 +3920,20 @@ function renderRelayProgressCard(data) {
   }
 
   fill.classList.toggle('indeterminate', isIndeterminate);
-  if (state === 'success') {
+  if (state === 'downloading') {
+    fill.style.width = Math.max(0, Math.min(100, progress)) + '%';
+    pct.textContent = progress > 0 ? (progress.toFixed(1) + '%') : '下载中…';
+    track.setAttribute('aria-valuenow', progress.toFixed(0));
+    if (totBytes > 0) {
+      const mbDown = (downBytes / 1048576).toFixed(1);
+      const mbTot = (totBytes / 1048576).toFixed(1);
+      bytes.textContent = mbDown + ' MB / ' + mbTot + ' MB';
+    } else if (downBytes > 0) {
+      bytes.textContent = (downBytes / 1048576).toFixed(1) + ' MB';
+    } else {
+      bytes.textContent = '';
+    }
+  } else if (state === 'success' || state === 'complete') {
     fill.style.width = '100%';
     pct.textContent = '100%';
     bytes.textContent = '';
@@ -3927,7 +3946,7 @@ function renderRelayProgressCard(data) {
   spinner.style.display = showSpinner ? 'inline-block' : 'none';
   actions.style.display = showActions ? 'flex' : 'none';
 
-  const isActive = checking || ['queued', 'fetching', 'applying'].includes(state);
+  const isActive = checking || ['queued', 'downloading', 'fetching', 'applying'].includes(state);
   const shouldShow = isActive || (hasUpdate && _relayCardDismissedVer !== latVer);
 
   if (shouldShow) {
@@ -3966,7 +3985,7 @@ function startRelayFastPoll() {
           showRestartOverlay('更新已完成，正在重启中转服务...', false);
           startRestartPolling(prevInstanceId);
         }, 800);
-      } else if (!res.checking && !['queued', 'fetching', 'applying'].includes(res.update_state)) {
+      } else if (!res.checking && !['queued', 'downloading', 'fetching', 'applying'].includes(res.update_state)) {
         stopRelayFastPoll();
       }
     } catch (_) {
