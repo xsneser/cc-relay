@@ -74,7 +74,8 @@ class CPAUpdater:
             "current_version": None, "latest_version": None, "has_update": False,
             "last_checked": None, "check_error": None, "checking": False,
             "update_state": "idle", "update_error": None, "update_message": None,
-            "etag": None, "retry_after": 0.0,
+            "downloaded_bytes": 0, "total_bytes": 0, "download_progress": 0.0,
+            "asset_size": 0, "etag": None, "retry_after": 0.0,
         }
         self._version_fingerprint = None
         self._thread = None
@@ -170,6 +171,7 @@ class CPAUpdater:
                         self._snapshot.update({
                             "latest_version": tag.lstrip("v"), "release_url": asset["browser_download_url"],
                             "asset_name": asset.get("name"), "asset_digest": asset.get("digest"),
+                            "asset_size": int(asset.get("size") or 0),
                             "release_notes": str(payload.get("body") or "")[:4000],
                             "etag": response.headers.get("ETag"), "last_checked": time.time(),
                             "check_error": None,
@@ -242,24 +244,53 @@ class CPAUpdater:
                 url = self._snapshot.get("release_url")
                 latest = self._snapshot.get("latest_version")
                 digest = self._snapshot.get("asset_digest") or ""
+                asset_size = int(self._snapshot.get("asset_size") or 0)
             if not url or not latest:
                 raise RuntimeError("check for updates first")
             os.makedirs(self.staging_dir, exist_ok=True)
             archive_path = os.path.join(self.staging_dir, "cpa-update.zip")
             staged_path = os.path.join(self.staging_dir, "cli-proxy-api.exe.staged")
-            with self._lock:
-                self._snapshot.update({"update_state": "downloading", "update_error": None, "update_message": None})
             response = self._request(url, {"User-Agent": USER_AGENT, "Accept": "application/octet-stream"}, 60)
-            total = 0
+            cl = getattr(response, "headers", {}).get("Content-Length") if hasattr(response, "headers") else None
+            try:
+                expected_total = int(cl) if cl else asset_size
+            except (ValueError, TypeError):
+                expected_total = asset_size
+            if expected_total > MAX_ARCHIVE_BYTES:
+                raise ValueError("CPA update archive exceeds size limit")
+
+            with self._lock:
+                self._snapshot.update({
+                    "update_state": "downloading",
+                    "update_error": None,
+                    "update_message": "正在下载更新…",
+                    "downloaded_bytes": 0,
+                    "total_bytes": expected_total,
+                    "download_progress": 0.0,
+                })
+
+            downloaded = 0
             with response, open(archive_path, "wb") as out:
                 while True:
-                    block = response.read(1024 * 1024)
+                    block = response.read(128 * 1024)
                     if not block:
                         break
-                    total += len(block)
-                    if total > MAX_ARCHIVE_BYTES:
+                    downloaded += len(block)
+                    if downloaded > MAX_ARCHIVE_BYTES:
                         raise ValueError("CPA update archive exceeds size limit")
                     out.write(block)
+                    pct = round((downloaded / expected_total) * 100.0, 1) if expected_total > 0 else 0.0
+                    with self._lock:
+                        self._snapshot["downloaded_bytes"] = downloaded
+                        self._snapshot["download_progress"] = min(100.0, pct)
+
+            with self._lock:
+                self._snapshot["download_progress"] = 100.0
+                if expected_total == 0:
+                    self._snapshot["total_bytes"] = downloaded
+                self._snapshot["update_state"] = "verifying"
+                self._snapshot["update_message"] = "正在校验并解压…"
+
             if digest:
                 import hashlib
                 alg, _, expected = digest.partition(":")
@@ -282,6 +313,7 @@ class CPAUpdater:
                 raise ValueError("staged version is not newer than the installed CPA version")
             with self._lock:
                 self._snapshot["update_state"] = "staged"
+                self._snapshot["update_message"] = "更新已暂存，准备安装…"
             return staged_path
         except Exception as exc:
             with self._lock:
@@ -301,18 +333,26 @@ class CPAUpdater:
 
     def request_update(self, installer, automatic=False):
         with self._lock:
-            if self._snapshot.get("update_state") in ("queued", "downloading", "staged", "installing", "rolling_back"):
+            if self._snapshot.get("update_state") in ("queued", "downloading", "verifying", "staged", "installing", "rolling_back"):
                 return self.status()
             if not self._snapshot.get("has_update"):
                 raise RuntimeError("no CPA update is available")
-            self._snapshot.update({"update_state": "queued", "update_error": None, "update_message": None})
+            self._snapshot.update({
+                "update_state": "queued",
+                "update_error": None,
+                "update_message": "等待安装准备…",
+                "downloaded_bytes": 0,
+                "total_bytes": int(self._snapshot.get("asset_size") or 0),
+                "download_progress": 0.0,
+            })
         def run():
             try:
                 staged = self.stage_latest()
                 with self._lock:
                     self._snapshot["update_state"] = "installing"
+                    self._snapshot["update_message"] = "正在重启与验证…"
                 installer(staged, automatic)
-                self.set_update_state("complete", "CPA updated successfully")
+                self.set_update_state("complete", "CPA 更新成功")
             except Exception as exc:
                 self.set_update_state("failed", error=str(exc)[:400])
         threading.Thread(target=run, name="cpa-update-install", daemon=True).start()

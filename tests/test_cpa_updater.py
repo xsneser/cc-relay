@@ -75,6 +75,15 @@ class CPAUpdaterTests(unittest.TestCase):
                 updater._snapshot["etag"] = "opaque-etag"
             self.assertNotIn("etag", updater.status())
 
+    def test_status_contains_progress_metrics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            updater = cpa_updater.CPAUpdater(directory, os.path.join(directory, "missing.exe"), "")
+            status = updater.status()
+            self.assertIn("downloaded_bytes", status)
+            self.assertIn("total_bytes", status)
+            self.assertIn("download_progress", status)
+            self.assertEqual(status["download_progress"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

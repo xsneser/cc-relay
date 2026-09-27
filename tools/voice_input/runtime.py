@@ -1,9 +1,10 @@
 """运行环境与 Python 解释器智能探测器：
-- 优先发现 tools/voice_input/.venv/Scripts/python.exe 专属虚拟环境
-- 保证全局热键 (pynput)、麦克风 (sounddevice) 及流式 ASR (funasr) 环境隔离且完整
-- 提供快速依赖探测与能力报告
+- 严格验证候选解释器的可用性 (验证能够 import numpy)，杜绝未装包的空虚拟环境导致闪退
+- 优先选择功能完备的解释器，自动平滑回退
+- 提供毫秒级高效依赖诊断报告 (importlib.util.find_spec)
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -15,38 +16,68 @@ def get_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def _probe_interpreter(py_path: str) -> bool:
+    """验证目标解释器是否能正常启动并具备基础运行库 (numpy)"""
+    if not py_path:
+        return False
+    try:
+        # 执行微型标准库探针，验证 numpy 可用且解释器无缺失运行时
+        res = subprocess.run(
+            [py_path, "-c", "import numpy"],
+            capture_output=True,
+            timeout=3,
+        )
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 def find_voice_python(repo_root: Optional[Path] = None) -> str:
-    """按优先级智能寻找最适宜运行语音伴侣的 Python 解释器路径"""
+    """按优先级智能寻找能够正常运行语音伴侣的 Python 解释器路径"""
     if repo_root is None:
         repo_root = get_repo_root()
 
+    candidates = []
+
     # 1. 优先检查环境变量显式覆盖
     env_py = os.environ.get("CC_VOICE_PYTHON")
-    if env_py and os.path.isfile(env_py):
-        return env_py
+    if env_py:
+        candidates.append(env_py)
 
-    # 2. 优先检查 tools/voice_input/.venv 专属独立虚拟环境
+    # 2. 检查 tools/voice_input/.venv 专属独立虚拟环境
     venv_py_win = repo_root / "tools" / "voice_input" / ".venv" / "Scripts" / "python.exe"
     if venv_py_win.is_file():
-        return str(venv_py_win.resolve())
+        candidates.append(str(venv_py_win.resolve()))
 
     venv_py_nix = repo_root / "tools" / "voice_input" / ".venv" / "bin" / "python"
     if venv_py_nix.is_file():
-        return str(venv_py_nix.resolve())
+        candidates.append(str(venv_py_nix.resolve()))
 
-    # 3. 回退至当前运行的 sys.executable (非打包环境)
+    # 3. 检查当前主进程的 sys.executable (非打包环境)
+    if not getattr(sys, "frozen", False) and sys.executable:
+        candidates.append(sys.executable)
+
+    # 4. 检查全局 python 命令
+    candidates.append("python")
+
+    # 逐一探针测试候选者
+    for cand in candidates:
+        if _probe_interpreter(cand):
+            return cand
+
+    # 若所有候选探针都未完全通过，回退至当前 sys.executable 或 python
     if not getattr(sys, "frozen", False) and sys.executable:
         return sys.executable
-
-    # 4. 默认系统 python
     return "python"
 
 
 def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, bool]:
-    """探测指定解释器中各项核心语音依赖的就绪状态"""
+    """探测指定解释器中各项核心语音依赖的就绪状态 (毫秒级 find_spec 探测)"""
     py_exe = python_exe or find_voice_python()
     modules = [
         "funasr",
+        "torch",
+        "torchaudio",
         "webrtcvad",
         "websockets",
         "sounddevice",
@@ -56,12 +87,13 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
         "tkinter",
     ]
 
-    code = "import json; " + "; ".join(
-        [
-            f"try:\n __import__('{m}')\n r_{m}=True\nexcept Exception:\n r_{m}=False"
-            for m in modules
-        ]
-    ) + "; print(json.dumps({" + ", ".join([f"'{m}': r_{m}" for m in modules]) + "}))"
+    code = (
+        "import importlib.util, json\n"
+        "mods = ['funasr', 'torch', 'torchaudio', 'webrtcvad', 'websockets', "
+        "'sounddevice', 'numpy', 'pynput', 'win32gui', 'tkinter']\n"
+        "res = {m: importlib.util.find_spec(m) is not None for m in mods}\n"
+        "print('__JSON_START__' + json.dumps(res))\n"
+    )
 
     try:
         res = subprocess.run(
@@ -70,18 +102,11 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
             text=True,
             timeout=5,
         )
-        if res.returncode == 0:
-            import json
-            return json.loads(res.stdout.strip())
+        if res.returncode == 0 and "__JSON_START__" in res.stdout:
+            json_part = res.stdout.split("__JSON_START__")[-1].strip()
+            return json.loads(json_part)
     except Exception:
         pass
 
-    # 降级：检查当前进程内模块导入
-    status = {}
-    for m in modules:
-        try:
-            __import__(m)
-            status[m] = True
-        except Exception:
-            status[m] = False
-    return status
+    # 若子进程探测失败，直接返回全部 False，绝不混淆宿主环境
+    return {m: False for m in modules}

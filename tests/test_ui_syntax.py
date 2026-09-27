@@ -143,14 +143,12 @@ class TestUISyntax(unittest.TestCase):
         self.assertIn("<th>分流规则</th>", self.html)
 
     def test_header_status_and_action_affordance(self):
-        # 1. 状态展示组、分隔线与操作组必须按顺序独立分组
-        structure = re.compile(
-            r'<div class="status-group"[^>]*>.*?'
-            r'<span class="header-divider"[^>]*>.*?'
-            r'<div class="action-group"[^>]*>',
-            re.DOTALL,
-        )
-        self.assertRegex(self.html, structure)
+        # 1. 顶栏采用双层清晰功能分区架构: header-top (品牌/版本/操作/导航) 与 header-sub (路由状态/上游服务)
+        self.assertIn('class="header-top"', self.html)
+        self.assertIn('class="header-sub"', self.html)
+        self.assertIn('id="relay-version-badge"', self.html)
+        self.assertIn('class="status-group"', self.html)
+        self.assertIn('class="action-group"', self.html)
 
         # 2. 操作按钮使用独立 .btn-action 类, 保留既有 ID 兼容性
         self.assertIn('class="btn-action btn-traffic"', self.html)

@@ -107,6 +107,24 @@ class VoiceAutoStartTests(unittest.TestCase):
         run.assert_called_once()
         self.assertEqual(run.call_args.args[0][-2:], ["/PID", "5678"])
 
+    def test_voice_start_returns_already_when_up(self):
+        with mock.patch.object(cc_relay, "voice_up", return_value=True):
+            self.assertEqual(cc_relay.voice_start(), "already")
+
+    def test_voice_start_reports_child_exit_as_start_failed(self):
+        proc = mock.Mock(pid=9999)
+        proc.poll.return_value = 1  # 模拟子进程闪退
+        conf = {"tools": {"voice": {}}}
+        with mock.patch.object(cc_relay, "voice_up", return_value=False), \
+                mock.patch.object(cc_relay.subprocess, "Popen", return_value=proc), \
+                mock.patch("builtins.open", mock.mock_open()), \
+                mock.patch.object(cc_relay, "_get_voice_job", return_value=False), \
+                mock.patch.object(cc_relay.os.path, "isfile", return_value=False):
+            res = cc_relay.voice_start(conf=conf)
+            self.assertTrue(res.startswith("start-failed"))
+            self.assertIn("exit code 1", res)
+            self.assertNotEqual(res, "timeout")
+
 
 class RequestAutoStartGateTests(unittest.TestCase):
     def test_request_gate_does_not_enable_implicit_start(self):

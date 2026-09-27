@@ -14,7 +14,7 @@ CC 统一中转 (unified relay)
     python cc_relay.py stats | last [n] | dump <idx>
     python cc_relay.py startproxy | stopproxy     # 手动管理 codex 上游
 """
-import os, sys, json, time, threading, argparse, subprocess, socket, re
+import os, sys, json, time, threading, argparse, subprocess, socket, re, shutil
 import urllib.request, urllib.error
 from urllib.parse import urlsplit
 from cpa_updater import CPAUpdater
@@ -828,6 +828,7 @@ def _install_cpa_update(staged_path, automatic=False):
 
 _VOICE_PROCESS = None
 _VOICE_PROCESS_LOCK = threading.Lock()
+_VOICE_LAST_ERROR = None
 _VOICE_JOB = None
 _VOICE_JOB_LOCK = threading.Lock()
 VOICE_PID_FILE = os.path.join(BASE, ".voice.pid")
@@ -880,7 +881,7 @@ def voice_status_dict(conf=None):
         "owned": voice_owned(),
         "hotkey": v_conf.get("hotkey", "mouse_x1"),
         "engine": v_conf.get("engine", "paraformer_streaming_2pass"),
-        "last_error": None,
+        "last_error": _VOICE_LAST_ERROR,
     }
     if not _tcp(port, t=0.08):
         with _VOICE_PROCESS_LOCK:
@@ -889,7 +890,9 @@ def voice_status_dict(conf=None):
                     status_info["status"] = "starting"
                     status_info["pid"] = _VOICE_PROCESS.pid
                 else:
-                    status_info["status"] = "stopped"
+                    status_info["status"] = "error" if _VOICE_LAST_ERROR else "stopped"
+            elif _VOICE_LAST_ERROR:
+                status_info["status"] = "error"
         return status_info
 
     try:
@@ -926,17 +929,17 @@ def voice_auto_start_enabled(conf=None):
 
 def voice_start(conf=None):
     """启动语音伴侣子进程并写入 .voice.pid 与绑定 Job Object"""
-    global _VOICE_PROCESS
+    global _VOICE_PROCESS, _VOICE_LAST_ERROR
     conf = conf or load_conf()
     if voice_up(conf):
+        _VOICE_LAST_ERROR = None
         return "already"
 
-    venv_py = os.path.join(BASE, "tools", "voice_input", ".venv", "Scripts", "python.exe")
-    if os.path.isfile(venv_py):
-        py_exe = venv_py
-    elif getattr(sys, "frozen", False):
-        py_exe = "pythonw"
-    else:
+    try:
+        from tools.voice_input.runtime import find_voice_python
+        from pathlib import Path
+        py_exe = find_voice_python(Path(BASE))
+    except Exception:
         py_exe = sys.executable
 
     v_conf = conf.get("tools", {}).get("voice", {})
@@ -947,6 +950,8 @@ def voice_start(conf=None):
     cmd = [py_exe, "-u", "-m", "tools.voice_input", "service", "--hotkey", hotkey, "--engine", engine, "--port", port]
     v_out = os.path.join(BASE, "voice.out.log")
     v_err = os.path.join(BASE, "voice.err.log")
+    err_offset = os.path.getsize(v_err) if os.path.isfile(v_err) else 0
+
     try:
         out_f = open(v_out, "a", encoding="utf-8", errors="replace")
         err_f = open(v_err, "a", encoding="utf-8", errors="replace")
@@ -957,7 +962,13 @@ def voice_start(conf=None):
             stderr=err_f,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
+        try:
+            out_f.close()
+            err_f.close()
+        except Exception:
+            pass
     except Exception as e:
+        _VOICE_LAST_ERROR = str(e)
         return f"start-failed: {e}"
 
     with _VOICE_PROCESS_LOCK:
@@ -985,19 +996,41 @@ def voice_start(conf=None):
     for _ in range(50):
         time.sleep(0.5)
         if voice_up(conf):
+            _VOICE_LAST_ERROR = None
             return "started"
         if proc.poll() is not None:
-            break
+            # 捕获真实闪退原因
+            err_line = ""
+            try:
+                if os.path.isfile(v_err):
+                    with open(v_err, "r", encoding="utf-8", errors="replace") as ef:
+                        ef.seek(err_offset)
+                        lines = [line.strip() for line in ef if line.strip()]
+                        if lines:
+                            err_line = lines[-1]
+            except Exception:
+                pass
+            with _VOICE_PROCESS_LOCK:
+                if _VOICE_PROCESS is proc:
+                    _VOICE_PROCESS = None
+            try:
+                if os.path.isfile(VOICE_PID_FILE):
+                    os.remove(VOICE_PID_FILE)
+            except Exception:
+                pass
+            ret = proc.poll()
+            reason = f": {err_line}" if err_line else f" (exit code {ret})"
+            _VOICE_LAST_ERROR = f"exited with code {ret}{': ' + err_line if err_line else ''}"
+            return f"start-failed{reason}"
 
-    with _VOICE_PROCESS_LOCK:
-        if _VOICE_PROCESS is proc:
-            _VOICE_PROCESS = None
+    _VOICE_LAST_ERROR = "Startup wait timed out (25s)"
     return "timeout"
 
 
 def voice_stop():
     """安全停止语音服务：仅停止确认归属于本服务的 voice 进程"""
-    global _VOICE_PROCESS
+    global _VOICE_PROCESS, _VOICE_LAST_ERROR
+    _VOICE_LAST_ERROR = None
     with _VOICE_PROCESS_LOCK:
         proc = _VOICE_PROCESS
         pid_to_kill = None
@@ -2130,7 +2163,11 @@ def stats_snapshot():
             'cpa_update_check_error': cpa_status.get('check_error'),
             'cpa_update_checked_at': cpa_status.get('last_checked'),
             'cpa_update_state': cpa_status.get('update_state', 'idle'),
+            'cpa_update_message': cpa_status.get('update_message'),
             'cpa_update_error': cpa_status.get('update_error'),
+            'cpa_download_progress': cpa_status.get('download_progress', 0.0),
+            'cpa_downloaded_bytes': cpa_status.get('downloaded_bytes', 0),
+            'cpa_total_bytes': cpa_status.get('total_bytes', 0),
             'relay_update': relay_update_status,
             'upstreams_status': {
                 'deepseek': {'available': True, 'state': 'online'},
@@ -2210,7 +2247,7 @@ def _calls_snapshot(n):
 
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "cc-relay/2.0"
+    server_version = f"cc-relay/{getattr(relay_updater, 'RELAY_VERSION', '2.4.1')}"
 
     def log_message(self, *a):
         pass

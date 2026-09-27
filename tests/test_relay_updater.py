@@ -79,6 +79,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
             }
 
             with mock.patch.object(updater, "_request_github_api", return_value=(200, payload, "etag-123")), \
+                 mock.patch.object(updater, "_fetch_remote_ui_version", return_value="2.4.2"), \
                  mock.patch.object(updater, "_get_local_commit", return_value={"sha": "1111111222222233333334444444555555556666", "short_sha": "1111111", "branch": "master"}), \
                  mock.patch("relay_updater._run_git") as mock_git:
 
@@ -96,7 +97,8 @@ class RelayUpdaterUnitTests(unittest.TestCase):
 
                 st = updater.check(force=True)
                 self.assertTrue(st["has_update"])
-                self.assertEqual(st["latest_version"], "9999999")
+                self.assertEqual(st["latest_version"], "2.4.2")
+                self.assertEqual(st["latest_sha"], "9999999888888877777776666666555555554444")
                 self.assertEqual(st["behind_count"], 3)
                 self.assertEqual(st["latest_subject"], "feat: cool update")
                 self.assertTrue(st["can_update"])

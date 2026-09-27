@@ -21,7 +21,39 @@ from urllib.parse import urlparse
 DEFAULT_REPO = "https://github.com/xsneser/cc-relay.git"
 DEFAULT_BRANCH = "master"
 GITHUB_API_COMMITS_URL = "https://api.github.com/repos/xsneser/cc-relay/commits/master"
+GITHUB_RAW_UI_URL = "https://raw.githubusercontent.com/xsneser/cc-relay/master/ui.html"
 USER_AGENT = "cc-relay-updater/1.0"
+RELAY_VERSION = "2.4.1"
+VERSION_RE = re.compile(r"v?([0-9]+(?:\.[0-9]+)+)")
+UI_VERSION_RE = re.compile(r'<meta\s+name=["\']ui-version["\']\s+content=["\']([0-9]+(?:\.[0-9]+)*)["\']')
+
+
+def parse_version_tuple(val):
+    if not val:
+        return None
+    m = VERSION_RE.search(str(val).strip())
+    if not m:
+        return None
+    try:
+        return tuple(int(p) for p in m.group(1).split("."))
+    except Exception:
+        return None
+
+
+def extract_ui_version(content):
+    if not content:
+        return None
+    m = UI_VERSION_RE.search(content)
+    return m.group(1) if m else None
+
+
+def get_local_ui_version(base_dir):
+    ui_path = os.path.join(base_dir, "ui.html")
+    try:
+        with open(ui_path, "r", encoding="utf-8") as f:
+            return extract_ui_version(f.read(4096)) or "2.4.1"
+    except Exception:
+        return "2.4.1"
 
 # Paths that are ignored during dirty check if untracked/modified
 IGNORED_DIRTY_PATHS = {
@@ -102,14 +134,18 @@ class RelayUpdater:
         running_info = self._get_local_commit()
         self._running_sha = running_info.get("sha")
         self._running_short = running_info.get("short_sha")
+        self._local_version = get_local_ui_version(self.base_dir)
 
         self._snapshot = {
             "is_git": _is_git_repo(self.base_dir),
             "branch": DEFAULT_BRANCH,
             "local_branch": running_info.get("branch", "unknown"),
-            "current_version": self._running_short or "unknown",
+            "release_version": self._local_version or RELAY_VERSION,
+            "running_short": self._running_short or "",
+            "running_version_display": f"v{self._local_version} ({self._running_short})" if self._running_short else f"v{self._local_version}",
+            "current_version": self._local_version,
             "current_sha": self._running_sha or "",
-            "latest_version": self._running_short or "unknown",
+            "latest_version": self._local_version,
             "latest_sha": self._running_sha or "",
             "latest_subject": "",
             "latest_date": "",
@@ -128,6 +164,26 @@ class RelayUpdater:
         }
         self._thread = None
         self._stop_event = threading.Event()
+
+    def _fetch_remote_ui_version(self):
+        """Fetch remote ui-version from git origin/master or raw github URL."""
+        if _is_git_repo(self.base_dir):
+            res = _run_git(["show", f"origin/{DEFAULT_BRANCH}:ui.html"], self.base_dir, timeout=10)
+            if res.returncode == 0 and res.stdout:
+                v = extract_ui_version(res.stdout[:4096])
+                if v:
+                    return v
+        proxy = _proxy_url_from_config(self.config_path)
+        req = urllib.request.Request(GITHUB_RAW_UI_URL, headers={"User-Agent": USER_AGENT})
+        for opener in _openers(proxy):
+            try:
+                resp = opener.open(req, timeout=8)
+                v = extract_ui_version(resp.read(4096).decode("utf-8", "replace"))
+                if v:
+                    return v
+            except Exception:
+                pass
+        return None
 
     def _get_local_commit(self):
         """Query local git repository for current HEAD info."""
@@ -275,7 +331,6 @@ class RelayUpdater:
 
                 if remote_sha:
                     self._snapshot["latest_sha"] = remote_sha
-                    self._snapshot["latest_version"] = remote_sha[:7]
                     self._snapshot["latest_subject"] = subject
                     self._snapshot["latest_date"] = date_str
 
@@ -284,55 +339,61 @@ class RelayUpdater:
                     loc_sha = local_info.get("sha")
                     loc_branch = local_info.get("branch")
                     self._snapshot["current_sha"] = loc_sha or ""
-                    self._snapshot["current_version"] = loc_sha[:7] if loc_sha else "unknown"
                     self._snapshot["local_branch"] = loc_branch
 
-                    if not loc_sha or loc_sha == remote_sha:
+                    # Compare versions from ui.html
+                    local_ver = get_local_ui_version(self.base_dir)
+                    remote_ver = self._fetch_remote_ui_version() or (remote_sha[:7] if remote_sha else local_ver)
+                    self._snapshot["current_version"] = local_ver
+                    self._snapshot["latest_version"] = remote_ver
+
+                    local_tup = parse_version_tuple(local_ver)
+                    remote_tup = parse_version_tuple(remote_ver)
+
+                    # Determine has_update:
+                    # 1. If remote semantic version is strictly newer:
+                    has_newer_ver = bool(remote_tup and local_tup and remote_tup > local_tup)
+                    # 2. Or if remote commit is ahead of local commit:
+                    commit_ahead = False
+                    if loc_sha and remote_sha and loc_sha != remote_sha:
+                        is_anc = _run_git(["merge-base", "--is-ancestor", remote_sha, loc_sha], self.base_dir).returncode == 0
+                        commit_ahead = not is_anc
+
+                    if has_newer_ver or commit_ahead:
+                        self._snapshot["has_update"] = True
+                        behind_res = _run_git(["rev-list", "--count", f"HEAD..{remote_sha}"], self.base_dir)
+                        if behind_res.returncode == 0:
+                            try:
+                                self._snapshot["behind_count"] = int(behind_res.stdout.strip())
+                            except ValueError:
+                                self._snapshot["behind_count"] = 1
+                        else:
+                            self._snapshot["behind_count"] = 1
+
+                        # Check if local is allowed to auto-update
+                        dirty, dirty_msg = self._check_dirty()
+                        if dirty:
+                            self._snapshot["can_update"] = False
+                            self._snapshot["blocked_reason"] = dirty_msg
+                        elif loc_branch != DEFAULT_BRANCH:
+                            self._snapshot["can_update"] = False
+                            self._snapshot["blocked_reason"] = f"当前处于分支 '{loc_branch}'，自动更新仅支持 '{DEFAULT_BRANCH}' 分支"
+                        else:
+                            self._snapshot["can_update"] = True
+                            self._snapshot["blocked_reason"] = None
+                    else:
                         self._snapshot["has_update"] = False
                         self._snapshot["behind_count"] = 0
                         self._snapshot["can_update"] = True
                         self._snapshot["blocked_reason"] = None
-                    else:
-                        # Test if remote_sha is ancestor of local (local ahead / dev branch)
-                        is_anc = _run_git(["merge-base", "--is-ancestor", remote_sha, loc_sha], self.base_dir).returncode == 0
-                        if is_anc:
-                            # Local already contains remote_sha
-                            self._snapshot["has_update"] = False
-                            self._snapshot["behind_count"] = 0
-                            self._snapshot["can_update"] = True
-                            self._snapshot["blocked_reason"] = None
-                        else:
-                            # Remote has commits not in local HEAD
-                            self._snapshot["has_update"] = True
-                            behind_res = _run_git(["rev-list", "--count", f"HEAD..{remote_sha}"], self.base_dir)
-                            if behind_res.returncode == 0:
-                                try:
-                                    self._snapshot["behind_count"] = int(behind_res.stdout.strip())
-                                except ValueError:
-                                    self._snapshot["behind_count"] = 1
-                            else:
-                                self._snapshot["behind_count"] = 1
-
-                            # Check if local is allowed to auto-update
-                            dirty, dirty_msg = self._check_dirty()
-                            if dirty:
-                                self._snapshot["can_update"] = False
-                                self._snapshot["blocked_reason"] = dirty_msg
-                            elif loc_branch != DEFAULT_BRANCH:
-                                self._snapshot["can_update"] = False
-                                self._snapshot["blocked_reason"] = f"当前处于分支 '{loc_branch}'，自动更新仅支持 '{DEFAULT_BRANCH}' 分支"
-                            else:
-                                self._snapshot["can_update"] = True
-                                self._snapshot["blocked_reason"] = None
 
             return self.status()
         finally:
             self._check_lock.release()
 
     def request_check(self, force=True):
-        """Asynchronously trigger an update check and return current snapshot."""
-        threading.Thread(target=self.check, args=(force,), daemon=True).start()
-        return self.status()
+        """Perform an update check synchronously and return the updated snapshot."""
+        return self.check(force=force)
 
     def _compile_check(self):
         """Validate python syntax for key entry files before completing update."""
@@ -444,28 +505,23 @@ class RelayUpdater:
         return self.status()
 
     def start(self, auto_check=True):
-        """Start periodic background check."""
+        """Run a single check in the background shortly after startup, without periodic loop."""
+        if not auto_check:
+            return
         with self._lock:
             if self._thread and self._thread.is_alive():
                 return
             self._stop_event.clear()
 
             def _worker():
-                # Initial check shortly after startup
-                time.sleep(3)
-                if auto_check and not self._stop_event.is_set():
+                time.sleep(2)
+                if not self._stop_event.is_set():
                     try:
                         self.check(force=False)
                     except Exception:
                         pass
-                while not self._stop_event.wait(self.interval):
-                    if auto_check:
-                        try:
-                            self.check(force=False)
-                        except Exception:
-                            pass
 
-            self._thread = threading.Thread(target=_worker, daemon=True, name="relay-updater")
+            self._thread = threading.Thread(target=_worker, daemon=True, name="relay-updater-startup")
             self._thread.start()
 
     def stop(self):

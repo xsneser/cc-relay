@@ -61,16 +61,27 @@
     padding: 24px 20px 60px;
   }
 
-  /* ── 顶栏 (Antigravity-Tools-LS Header) ── */
+  /* ── 顶栏 (Antigravity-Tools-LS Header 2-Tier Architecture) ── */
   header {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  .header-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
-    margin-bottom: 24px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--glass-border);
+  }
+  .header-top-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
   .brand {
     display: flex;
@@ -106,12 +117,13 @@
   .titles {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
   }
   .title-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
   }
   h1 {
     font-size: 20px;
@@ -129,6 +141,41 @@
     color: rgba(59, 130, 246, 0.85);
     line-height: 1;
   }
+  .version-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 3px 9px;
+    border-radius: 99px;
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    vertical-align: middle;
+  }
+  .version-badge:hover, .version-badge:focus-visible {
+    background: rgba(59, 130, 246, 0.22);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: #ffffff;
+    box-shadow: 0 0 14px rgba(59, 130, 246, 0.35);
+    outline: none;
+    transform: translateY(-1px);
+  }
+  .version-badge.has-update {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: rgba(245, 158, 11, 0.14);
+    color: #fde68a;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+    animation: pulseDot 2s infinite ease-in-out;
+  }
   .sub {
     color: var(--text-dim);
     font-size: 11px;
@@ -145,7 +192,46 @@
     font-weight: 700;
   }
 
-  /* 顶栏右侧状态与导航组 */
+  /* 顶栏第二层：状态监控与上游服务条 */
+  .header-sub {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 7px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(16px);
+  }
+  .header-sub .status-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .header-sub .status-group .badge {
+    max-width: 520px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header-sub .upstream-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 0;
+  }
+
+  /* 兼容旧式顶栏右侧状态与导航组 */
   .header-actions {
     display: flex;
     align-items: center;
@@ -265,6 +351,152 @@
     white-space: nowrap;
   }
   .cpa-update-badge:hover, .cpa-update-badge:focus-visible { background: rgba(245, 158, 11, 0.22); outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  /* CPA 右上角悬浮更新进度卡片 (Antigravity Tools 风格) */
+  .cpa-progress-card {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    width: 330px;
+    z-index: 10000;
+    background: rgba(13, 14, 18, 0.94);
+    border: 1px solid var(--glass-border-hover);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 24px rgba(59, 130, 246, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    transform: translateY(-20px) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .cpa-progress-card.show {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .cpa-card-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .cpa-card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  }
+  .cpa-card-titles {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .cpa-card-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.2;
+  }
+  .cpa-card-ver {
+    font-size: 11px;
+    color: var(--blue);
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+  .cpa-card-close {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .cpa-card-close:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .cpa-card-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .cpa-card-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 99px;
+    overflow: hidden;
+    position: relative;
+  }
+  .cpa-card-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+    transition: width 0.3s ease-out;
+  }
+  .cpa-card-fill.indeterminate {
+    width: 40% !important;
+    animation: cpaIndeterminate 1.5s infinite ease-in-out;
+    background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+  }
+  @keyframes cpaIndeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(280%); }
+  }
+  .cpa-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+  }
+  .cpa-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .cpa-card-btn {
+    flex: 1;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--blue);
+    background: var(--blue);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .cpa-card-btn:hover {
+    background: #2563eb;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  }
+  .cpa-spinner-icon {
+    width: 13px;
+    height: 13px;
+    animation: spinRestart 1s linear infinite;
+    display: inline-block;
+    color: var(--blue);
+  }
   @keyframes pulseDot {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.55; transform: scale(0.9); }
@@ -2586,8 +2818,14 @@
     .tf-mdl {
       max-width: 120px;
     }
-    /* 顶栏控制区在窄屏下独占一行, 避免挤压品牌与导航 */
-    header { align-items: flex-start; }
+    /* 顶栏控制区在窄屏下自适应, 避免挤压品牌与导航 */
+    header { align-items: stretch; }
+    .header-top { flex-direction: column; align-items: stretch; gap: 12px; }
+    .header-top-right { width: 100%; justify-content: space-between; }
+    .header-sub { flex-direction: column; align-items: stretch; gap: 10px; }
+    .header-sub .status-group { width: 100%; }
+    .header-sub .upstream-group { width: 100%; justify-content: flex-start; }
+    .upstream-provider { flex: 1 1 200px; }
     .header-actions { width: 100%; justify-content: flex-start; }
   }
 
@@ -2613,6 +2851,7 @@
       width: 100% !important;
     }
     /* 窄屏下状态组与操作组各占一行, 竖向分隔线转为横向 */
+    .header-top-right { flex-direction: column; align-items: stretch; gap: 10px; }
     .header-actions { flex-direction: column; align-items: stretch; gap: 10px; }
     .status-group, .upstream-group, .action-group { width: 100%; }
     .status-group .badge { flex: 1 1 200px; }
@@ -2644,28 +2883,65 @@
 </head>
 <body>
 <div class="wrap">
-  <!-- 顶栏 Header -->
+  <!-- 顶栏 Header (2-Tier Architecture) -->
   <header>
-    <div class="brand">
-      <div class="logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 3v3m0 12v3M3 12h3m12 0h3"/>
-          <path d="m5.6 5.6 2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/>
-        </svg>
-      </div>
-      <div class="titles">
-        <div class="title-row">
-          <h1>CC Relay</h1>
-          <span class="brand-sub">Matrix Core</span>
+    <!-- 第一层：品牌、当前版本号、快捷操作与页面导航 -->
+    <div class="header-top">
+      <div class="brand">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 3v3m0 12v3M3 12h3m12 0h3"/>
+            <path d="m5.6 5.6 2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/>
+          </svg>
         </div>
-        <div class="sub">
-          CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
+        <div class="titles">
+          <div class="title-row">
+            <h1>CC Relay</h1>
+            <span class="brand-sub">Matrix Core</span>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.1</button>
+          </div>
+          <div class="sub">
+            CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-top-right">
+        <!-- 可点击操作区 -->
+        <div class="action-group" role="group" aria-label="快捷操作">
+          <button type="button" class="btn-action btn-voice-modal" id="btn-voice-modal" title="打开在线实时语音听写测试面板">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+            <b>实时听写</b>
+          </button>
+          <button type="button" class="btn-action btn-traffic" id="btn-traffic-toggle" title="点击手动启停所有上游流量">
+            <span class="dot on" id="traffic-dot" aria-hidden="true"></span>流量 <b id="traffic-txt">运行中</b><span class="traffic-action" id="traffic-action">暂停</span>
+          </button>
+          <button type="button" class="btn-action btn-restart" id="btn-restart" title="一键重启 CC Relay 核心服务">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+            <b>重启服务</b>
+          </button>
+          <button type="button" class="btn-action btn-relay-update" id="btn-relay-update" title="检查与更新 CC Relay 服务">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span id="relay-update-btn-txt">检查更新</span>
+            <span id="relay-update-badge-dot" class="update-pulse-dot" style="display:none;" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="nav-tabs">
+          <button type="button" class="nav-tab active" id="tab-dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            控制台
+          </button>
+          <button type="button" class="nav-tab" id="tab-config">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            连接配置
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="header-actions">
+    <!-- 第二层：当前路由监控与独立上游代理服务栏 -->
+    <div class="header-sub">
       <!-- 只读状态展示区 -->
       <div class="status-group" role="group" aria-label="当前路由状态">
         <div class="badge" id="bd-route" role="status"><span class="dot" id="routedot" aria-hidden="true"></span>路由 <b id="routetxt">…</b></div>
@@ -2714,40 +2990,8 @@
           </div>
         </div>
       </div>
-
-      <!-- 状态与操作的分隔线 -->
-      <span class="header-divider" aria-hidden="true"></span>
-
-      <!-- 可点击操作区 -->
-      <div class="action-group" role="group" aria-label="快捷操作">
-        <button type="button" class="btn-action btn-voice-modal" id="btn-voice-modal" title="打开在线实时语音听写测试面板">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-          <b>实时听写</b>
-        </button>
-        <button type="button" class="btn-action btn-traffic" id="btn-traffic-toggle" title="点击手动启停所有上游流量">
-          <span class="dot on" id="traffic-dot" aria-hidden="true"></span>流量 <b id="traffic-txt">运行中</b><span class="traffic-action" id="traffic-action">暂停</span>
-        </button>
-        <button type="button" class="btn-action btn-restart" id="btn-restart" title="一键重启 CC Relay 核心服务">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-          <b>重启服务</b>
-        </button>
-        <button type="button" class="btn-action btn-relay-update" id="btn-relay-update" title="检查与更新 CC Relay 服务">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span id="relay-update-btn-txt">检查更新</span>
-          <span id="relay-update-badge-dot" class="update-pulse-dot" style="display:none;" aria-hidden="true"></span>
-        </button>
-      </div>
-      <div class="nav-tabs">
-        <button type="button" class="nav-tab active" id="tab-dashboard">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-          控制台
-        </button>
-        <button type="button" class="nav-tab" id="tab-config">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          连接配置
-        </button>
-      </div>
     </div>
+  </header>
   </header>
 
   <!-- 全局流量暂停警示横幅 -->
@@ -2763,6 +3007,36 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       恢复流量
     </button>
+  </div>
+
+  <!-- CPA 右上角悬浮进度提示卡片 (Antigravity Tools 风格) -->
+  <div id="cpa-progress-card" class="cpa-progress-card" role="status" aria-live="polite">
+    <div class="cpa-card-head">
+      <div class="cpa-card-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </div>
+      <div class="cpa-card-titles">
+        <div class="cpa-card-title" id="cpa-card-title">CLIProxyAPI 更新</div>
+        <div class="cpa-card-ver" id="cpa-card-ver">v7.3.19</div>
+      </div>
+      <button type="button" class="cpa-card-close" id="cpa-card-close" aria-label="关闭通知">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="cpa-card-desc" id="cpa-card-desc">正在检查更新…</div>
+    <div class="cpa-card-track" role="progressbar" id="cpa-card-track" aria-valuemin="0" aria-valuemax="100">
+      <div class="cpa-card-fill" id="cpa-card-fill"></div>
+    </div>
+    <div class="cpa-card-footer">
+      <span class="cpa-card-pct" id="cpa-card-pct">0%</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span id="cpa-card-bytes"></span>
+        <svg class="cpa-spinner-icon" id="cpa-card-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      </div>
+    </div>
+    <div class="cpa-card-actions" id="cpa-card-actions" style="display:none;">
+      <button type="button" class="cpa-card-btn" id="cpa-card-btn-update">立即下载并自动更新</button>
+    </div>
   </div>
 
   <!-- AntiTools 风格更新弹窗 -->
@@ -3481,6 +3755,174 @@ if (cpaBadgeButton) cpaBadgeButton.addEventListener('click', async () => {
   if (updateButton) updateButton.focus();
 });
 
+// ── CPA 右上角悬浮更新进度卡片 (Antigravity Tools 风格) ──
+let _cpaCardTimer = null;
+let _cpaFastPollTimer = null;
+let _cpaCardDismissedVer = null;
+
+function renderCpaProgressCard(data) {
+  const card = $('#cpa-progress-card');
+  if (!card) return;
+  const title = $('#cpa-card-title');
+  const ver = $('#cpa-card-ver');
+  const desc = $('#cpa-card-desc');
+  const track = $('#cpa-card-track');
+  const fill = $('#cpa-card-fill');
+  const pct = $('#cpa-card-pct');
+  const bytes = $('#cpa-card-bytes');
+  const spinner = $('#cpa-card-spinner');
+  const actions = $('#cpa-card-actions');
+
+  const curVer = data.current_version || data.cpa_version || '';
+  const latVer = data.latest_version || data.cpa_latest_version || '';
+  const checking = !!(data.checking || data.cpa_update_checking);
+  const state = data.update_state || data.cpa_update_state || 'idle';
+  const hasUpdate = !!(data.has_update || data.cpa_has_update);
+  const progress = Number(data.download_progress ?? data.cpa_download_progress ?? 0);
+  const downBytes = Number(data.downloaded_bytes ?? data.cpa_downloaded_bytes ?? 0);
+  const totBytes = Number(data.total_bytes ?? data.cpa_total_bytes ?? 0);
+  const msg = data.update_message || data.cpa_update_message || '';
+  const err = data.update_error || data.cpa_update_error || data.check_error || data.cpa_update_check_error || '';
+
+  if (hasUpdate && latVer) {
+    title.textContent = '发现新版本';
+    ver.textContent = 'v' + latVer.replace(/^v/, '');
+    ver.style.display = 'inline';
+  } else {
+    title.textContent = 'CLIProxyAPI 更新';
+    ver.textContent = curVer ? ('v' + curVer.replace(/^v/, '')) : '';
+    ver.style.display = curVer ? 'inline' : 'none';
+  }
+
+  let descText = '正在检查更新…';
+  let isIndeterminate = false;
+  let showSpinner = true;
+  let showActions = false;
+
+  if (err) {
+    descText = '更新失败: ' + err;
+    showSpinner = false;
+  } else if (checking) {
+    descText = '正在检查最新版本…';
+    isIndeterminate = true;
+  } else if (state === 'downloading') {
+    descText = '正在下载更新…';
+  } else if (state === 'verifying') {
+    descText = '正在校验并解压安装包…';
+    isIndeterminate = true;
+  } else if (state === 'staged') {
+    descText = '安装包已就绪，准备重启…';
+    isIndeterminate = true;
+  } else if (state === 'installing') {
+    descText = msg || '正在重启并验证服务…';
+    isIndeterminate = true;
+  } else if (state === 'rolling_back') {
+    descText = '更新异常，正在自动回滚…';
+    isIndeterminate = true;
+  } else if (state === 'complete') {
+    descText = '更新成功！CPA 已就绪。';
+    showSpinner = false;
+  } else if (hasUpdate) {
+    descText = '检测到新版本可用，是否立即更新？';
+    showSpinner = false;
+    showActions = true;
+  } else if (data.last_checked || data.cpa_update_checked_at) {
+    descText = '已是最新版本，无需更新。';
+    showSpinner = false;
+  }
+  desc.textContent = descText;
+
+  fill.classList.toggle('indeterminate', isIndeterminate);
+  if (state === 'downloading') {
+    fill.style.width = Math.max(0, Math.min(100, progress)) + '%';
+    pct.textContent = progress.toFixed(1) + '%';
+    track.setAttribute('aria-valuenow', progress.toFixed(0));
+    if (totBytes > 0) {
+      const mbDown = (downBytes / 1048576).toFixed(1);
+      const mbTot = (totBytes / 1048576).toFixed(1);
+      bytes.textContent = mbDown + ' MB / ' + mbTot + ' MB';
+    } else if (downBytes > 0) {
+      bytes.textContent = (downBytes / 1048576).toFixed(1) + ' MB';
+    } else {
+      bytes.textContent = '';
+    }
+  } else if (state === 'complete') {
+    fill.style.width = '100%';
+    pct.textContent = '100%';
+    bytes.textContent = '';
+  } else {
+    fill.style.width = isIndeterminate ? '40%' : (hasUpdate ? '100%' : '0%');
+    pct.textContent = isIndeterminate ? '…' : (hasUpdate ? '可更新' : '—');
+    bytes.textContent = '';
+  }
+
+  spinner.style.display = showSpinner ? 'inline-block' : 'none';
+  actions.style.display = showActions ? 'flex' : 'none';
+
+  const isActive = checking || ['queued', 'downloading', 'verifying', 'staged', 'installing', 'rolling_back'].includes(state);
+  const shouldShow = isActive || (hasUpdate && _cpaCardDismissedVer !== latVer);
+
+  if (shouldShow) {
+    card.classList.add('show');
+    clearTimeout(_cpaCardTimer);
+  }
+
+  if (state === 'complete' || (descText.includes('已是最新版本') && !checking)) {
+    clearTimeout(_cpaCardTimer);
+    _cpaCardTimer = setTimeout(() => {
+      card.classList.remove('show');
+    }, 3500);
+  }
+
+  if (isActive) {
+    startCpaFastPoll();
+  } else {
+    stopCpaFastPoll();
+  }
+}
+
+function startCpaFastPoll() {
+  if (_cpaFastPollTimer) return;
+  _cpaFastPollTimer = setInterval(async () => {
+    try {
+      const res = await api('/api/cpa/version');
+      renderCpaProgressCard(res);
+      if (!res.checking && !['queued', 'downloading', 'verifying', 'staged', 'installing', 'rolling_back'].includes(res.update_state)) {
+        stopCpaFastPoll();
+        refresh();
+      }
+    } catch (_) {
+      stopCpaFastPoll();
+    }
+  }, 350);
+}
+
+function stopCpaFastPoll() {
+  if (_cpaFastPollTimer) {
+    clearInterval(_cpaFastPollTimer);
+    _cpaFastPollTimer = null;
+  }
+}
+
+const cpaCardClose = $('#cpa-card-close');
+if (cpaCardClose) cpaCardClose.addEventListener('click', () => {
+  const card = $('#cpa-progress-card');
+  if (card) card.classList.remove('show');
+  if (st && st.cpa_latest_version) _cpaCardDismissedVer = st.cpa_latest_version;
+});
+
+const cpaCardBtnUpdate = $('#cpa-card-btn-update');
+if (cpaCardBtnUpdate) cpaCardBtnUpdate.addEventListener('click', async () => {
+  cpaCardBtnUpdate.disabled = true;
+  try {
+    await api('/api/cpa/update', {});
+    renderCpaProgressCard({ ...(typeof st !== 'undefined' ? st : {}), update_state: 'downloading', checking: false });
+    startCpaFastPoll();
+  } catch (e) {
+    toast('升级失败: ' + e, true);
+  }
+});
+
 // ── 下拉模型选择器 ──
 function buildSel(sel, models, curModel, curEff) {
   const btn = sel.querySelector('.sel-btn');
@@ -3886,9 +4328,12 @@ function renderConfig(cfg) {
   });
   const cpaInstall = $('#cpa-install-update');
   if (cpaInstall) cpaInstall.addEventListener('click', async () => {
-    if (!confirm('升级会短暂重启 Codex 代理。当前请求会先完成，失败时自动回滚。继续吗？')) return;
     cpaInstall.disabled = true;
-    try { await api('/api/cpa/update', {}); toast('升级任务已排队'); }
+    try {
+      await api('/api/cpa/update', {});
+      renderCpaProgressCard({ ...(typeof st !== 'undefined' ? st : {}), update_state: 'downloading', checking: false });
+      startCpaFastPoll();
+    }
     catch (e) { toast('升级失败: ' + e, true); }
     finally { refresh(); }
   });
@@ -4002,9 +4447,28 @@ function renderStatus() {
     cpaMessage.textContent = st.cpa_update_error || st.cpa_update_check_error || stateText[st.cpa_update_state] || (st.cpa_update_checking ? '正在检查更新…' : (st.cpa_has_update ? '发现新版本，可手动升级。' : '自动更新默认关闭；升级时 Codex 将短暂重启。'));
   }
   if (cpaInstall) cpaInstall.disabled = !st.cpa_has_update || ['queued', 'downloading', 'staged', 'installing', 'rolling_back'].includes(st.cpa_update_state);
+  renderCpaProgressCard(st);
 
   // CC Relay 自身更新检测状态与自动弹窗
   const ru = st.relay_update || {};
+  const vBadge = $('#relay-version-badge');
+  if (vBadge) {
+    const relVer = ru.release_version || ru.current_version || '2.4.1';
+    const shortSha = ru.running_short || (ru.current_sha ? ru.current_sha.slice(0, 7) : '');
+    const branch = ru.local_branch || ru.branch || '';
+    const vText = shortSha ? `v${relVer} (${shortSha})` : `v${relVer}`;
+    vBadge.textContent = vText;
+
+    let tip = `CC Relay v${relVer}\nCommit: ${ru.current_sha || shortSha || '未知'}\n分支: ${branch || '未知'}`;
+    if (ru.has_update) {
+      tip += `\n✨ 发现新版本: ${ru.latest_version || ru.latest_sha} (点击查看)`;
+      vBadge.classList.add('has-update');
+    } else {
+      vBadge.classList.remove('has-update');
+    }
+    vBadge.title = tip;
+  }
+
   const ruBtn = $('#btn-relay-update');
   const ruBtnTxt = $('#relay-update-btn-txt');
   const ruBadgeDot = $('#relay-update-badge-dot');
@@ -4418,32 +4882,49 @@ function closeRelayUpdateModal(userDismissed) {
   }
 }
 
+const relayVersionBadge = $('#relay-version-badge');
+if (relayVersionBadge) {
+  relayVersionBadge.onclick = () => {
+    openRelayUpdateModal();
+  };
+}
+
 const relayUpdateBtn = $('#btn-relay-update');
 if (relayUpdateBtn) {
   relayUpdateBtn.onclick = async () => {
     const ru = (st && st.relay_update) || {};
     if (ru.has_update) {
       openRelayUpdateModal();
-    } else {
-      const btnTxt = $('#relay-update-btn-txt');
-      if (btnTxt) btnTxt.textContent = '检查中…';
-      try {
-        const resp = await fetch('/api/relay/check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CC-Relay-UI': '1' },
-          body: JSON.stringify({ force: true })
-        });
-        const data = await resp.json();
-        if (data.has_update) {
-          openRelayUpdateModal();
-        } else {
-          toast('当前已是最新版本 (' + (data.current_version || 'master') + ')');
-        }
-      } catch (e) {
-        toast('检查更新失败: ' + (e && e.message ? e.message : e), true);
-      } finally {
-        await refresh();
+      return;
+    }
+    const btn = $('#btn-relay-update');
+    const btnTxt = $('#relay-update-btn-txt');
+    if (btn) btn.disabled = true;
+    if (btnTxt) btnTxt.textContent = '检查中…';
+    try {
+      const resp = await fetch('/api/relay/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CC-Relay-UI': '1' },
+        body: JSON.stringify({ force: true })
+      });
+      const data = await resp.json();
+      if (st) st.relay_update = data;
+      if (data.has_update) {
+        if (btn) btn.classList.add('has-update');
+        if (btnTxt) btnTxt.textContent = '发现新版本';
+        openRelayUpdateModal();
+      } else {
+        if (btn) btn.classList.remove('has-update');
+        if (btnTxt) btnTxt.textContent = '检查更新';
+        const v = data.current_version ? ('v' + data.current_version) : '最新';
+        toast('当前已是最新版本 (' + v + ')');
       }
+    } catch (e) {
+      if (btnTxt) btnTxt.textContent = '检查更新';
+      toast('检查更新失败: ' + (e && e.message ? e.message : e), true);
+    } finally {
+      if (btn) btn.disabled = false;
+      await refresh();
     }
   };
 }
@@ -4567,8 +5048,9 @@ async function controlUpstream(provider) {
       toast('Gemini 代理不是由当前 Relay 启动，未执行停止操作', true);
     } else if (res.result === 'not-running') {
       toast('Gemini 代理已经停止');
-    } else if (['no-exe', 'start-failed', 'stop-failed', 'timeout'].includes(res.result)) {
-      throw new Error(res.result);
+    } else if (typeof res.result === 'string' && (res.result.startsWith('start-failed') || ['no-exe', 'stop-failed', 'timeout'].includes(res.result))) {
+      const errDetail = res.result.startsWith('start-failed') ? (res.result.replace(/^start-failed:?\s*/, '') || '启动失败') : res.result;
+      throw new Error(errDetail);
     } else {
       toast(meta.label + (action === 'start' ? ' 代理启动请求已发送' : ' 代理已停止'));
     }
