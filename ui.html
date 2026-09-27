@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="ui-version" content="2.4.3">
+<meta name="ui-version" content="2.4.4">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -2786,7 +2786,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.3</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.4</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -3594,7 +3594,7 @@ async function api(path, body) {
     const r = await fetch(path, {
       method: body ? 'POST' : 'GET',
       headers: { 'Content-Type': 'application/json',
-        ...((path.startsWith('/api/codex/login') || path.startsWith('/api/upstream') || path.startsWith('/api/proxy') || path.startsWith('/api/cpa/'))
+        ...((path.startsWith('/api/codex/login') || path.startsWith('/api/upstream') || path.startsWith('/api/proxy') || path.startsWith('/api/cpa/') || path.startsWith('/api/relay/'))
           ? { 'X-CC-Relay-UI': '1' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal
