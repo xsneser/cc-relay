@@ -92,6 +92,7 @@ class FunASR2PassEngine(BaseStreamingASR):
     def __init__(self, config: Optional[VoiceConfig] = None):
         self.config = config or VoiceConfig()
         self._is_loaded = False
+        self._fallback_engine: Optional[BaseStreamingASR] = None
         self._lock = threading.Lock()
         self._inference_lock = threading.Lock()
         self._sessions: Dict[str, SessionContext] = {}
@@ -105,6 +106,8 @@ class FunASR2PassEngine(BaseStreamingASR):
         self.stride_bytes = int(self.config.sample_rate * 2 * 0.6)
 
     def get_capabilities(self) -> Dict[str, Any]:
+        if self._fallback_engine is not None:
+            return self._fallback_engine.get_capabilities()
         return {
             "engine": "paraformer_streaming_2pass",
             "is_loaded": self._is_loaded,
@@ -118,6 +121,8 @@ class FunASR2PassEngine(BaseStreamingASR):
 
     @property
     def is_loaded(self) -> bool:
+        if self._fallback_engine is not None:
+            return self._fallback_engine.is_loaded
         return self._is_loaded
 
     def load(self) -> None:
@@ -298,20 +303,25 @@ class FunASR2PassEngine(BaseStreamingASR):
 
 
 class SenseVoiceOfflineEngine(BaseStreamingASR):
-    """SenseVoice 单句离线保底引擎 (兼容原有极速轻量模式)"""
+    """SenseVoice 单句离线保底引擎 (兼容原有极速轻量模式，内置 FunASR 2-Pass 平滑回退)"""
 
     def __init__(self, config: Optional[VoiceConfig] = None):
         self.config = config or VoiceConfig()
         self._is_loaded = False
         self._recognizer = None
+        self._fallback_engine: Optional[BaseStreamingASR] = None
         self._lock = threading.Lock()
         self._sessions: Dict[str, SessionContext] = {}
 
     @property
     def is_loaded(self) -> bool:
+        if self._fallback_engine is not None:
+            return self._fallback_engine.is_loaded
         return self._is_loaded
 
     def get_capabilities(self) -> Dict[str, Any]:
+        if self._fallback_engine is not None:
+            return self._fallback_engine.get_capabilities()
         return {
             "engine": "sensevoice_offline",
             "is_loaded": self._is_loaded,
@@ -325,44 +335,75 @@ class SenseVoiceOfflineEngine(BaseStreamingASR):
         with self._lock:
             if self._is_loaded:
                 return
+
+            # 1. 优先尝试使用 sherpa_onnx 运行 SenseVoice ONNX
+            has_sherpa = False
             try:
                 import sherpa_onnx
+                has_sherpa = True
             except ImportError:
-                # 尝试 FunASR 方式加载 SenseVoice
+                has_sherpa = False
+
+            if has_sherpa and self.config.is_sensevoice_installed():
                 try:
-                    from funasr import AutoModel
-                    self._recognizer = AutoModel(model="iic/SenseVoiceSmall", device=self.config.device)
+                    self._recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+                        model=str(self.config.sensevoice_model_path),
+                        tokens=str(self.config.sensevoice_tokens_path),
+                        num_threads=self.config.num_threads,
+                        use_itn=self.config.use_itn,
+                        language=self.config.language,
+                        debug=False,
+                    )
                     self._is_loaded = True
                     return
-                except Exception as e:
-                    raise RuntimeError(f"SenseVoice 依赖缺失: {e}") from e
+                except Exception as ex:
+                    print(f"[!] sherpa-onnx 加载 SenseVoice 异常: {ex}")
 
-            if not self.config.is_sensevoice_installed():
-                raise FileNotFoundError(f"SenseVoice 模型不存在: {self.config.sensevoice_model_path}")
+            # 2. 智能平滑回退：若本地已具备 FunASR 且存在已缓存的 Paraformer 2-Pass 模型
+            try:
+                if _find_local_model_dir("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch"):
+                    import funasr
+                    print("[*] SenseVoice (sherpa-onnx) 未就绪，检测到本地已安装 FunASR 2-Pass 模型，自动平滑切换至 Paraformer 引擎！")
+                    self._fallback_engine = FunASR2PassEngine(self.config)
+                    self._fallback_engine.load()
+                    self._is_loaded = True
+                    return
+            except Exception:
+                pass
 
-            self._recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
-                model=str(self.config.sensevoice_model_path),
-                tokens=str(self.config.sensevoice_tokens_path),
-                num_threads=self.config.num_threads,
-                use_itn=self.config.use_itn,
-                language=self.config.language,
-                debug=False,
-            )
-            self._is_loaded = True
+            # 3. 尝试使用 FunASR 直接加载 SenseVoice
+            try:
+                from funasr import AutoModel
+                self._recognizer = AutoModel(model="SenseVoiceSmall", device=self.config.device, disable_update=True)
+                self._is_loaded = True
+                return
+            except Exception:
+                pass
+
+            # 4. 若两者均不可用，给出清晰指引
+            if not has_sherpa:
+                raise RuntimeError("SenseVoice 依赖缺失 (未安装 sherpa-onnx，请运行 setup_voice.bat 安装)")
+            raise FileNotFoundError(f"SenseVoice 离线模型文件不存在 (请运行 setup_voice.bat 下载): {self.config.sensevoice_model_path}")
 
     def create_session(self, session_id: str) -> SessionContext:
+        if self._fallback_engine is not None:
+            return self._fallback_engine.create_session(session_id)
         with self._lock:
             ctx = SessionContext(session_id=session_id)
             self._sessions[session_id] = ctx
             return ctx
 
     def feed_chunk(self, session_id: str, pcm_bytes: bytes) -> Tuple[str, str]:
+        if self._fallback_engine is not None:
+            return self._fallback_engine.feed_chunk(session_id, pcm_bytes)
         ctx = self._sessions.get(session_id)
         if ctx is not None and ctx.is_active:
             ctx.accumulated_pcm.extend(pcm_bytes)
         return ("", "正在说话...")
 
     def finalize_session(self, session_id: str) -> str:
+        if self._fallback_engine is not None:
+            return self._fallback_engine.finalize_session(session_id)
         with self._lock:
             ctx = self._sessions.pop(session_id, None)
         if ctx is None or len(ctx.accumulated_pcm) == 0:
@@ -381,6 +422,13 @@ class SenseVoiceOfflineEngine(BaseStreamingASR):
             if res and len(res) > 0:
                 return res[0].get("text", "").strip()
         return ""
+
+    def cancel_session(self, session_id: str) -> None:
+        if self._fallback_engine is not None:
+            self._fallback_engine.cancel_session(session_id)
+            return
+        with self._lock:
+            self._sessions.pop(session_id, None)
 
     def cancel_session(self, session_id: str) -> None:
         with self._lock:

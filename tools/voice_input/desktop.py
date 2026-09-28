@@ -284,7 +284,15 @@ class DesktopVoiceWidget:
             if self.status_label:
                 self.status_label.configure(text="✕ 模型加载失败", fg="#ff7b72")
             if self.partial_label:
-                self.partial_label.configure(text=err_msg[:24] if err_msg else "请检查依赖与模型目录", fg="#ff7b72")
+                # 提炼友好简洁的短文案展示，避免截断出现半截词
+                disp = "请检查依赖与模型目录"
+                if "依赖缺失" in err_msg or "No module" in err_msg:
+                    disp = "核心依赖缺失 (请运行 setup)"
+                elif "模型不存在" in err_msg or "未在本地找到" in err_msg:
+                    disp = "未找到离线模型文件"
+                elif err_msg:
+                    disp = err_msg.splitlines()[0][:26]
+                self.partial_label.configure(text=disp, fg="#ff7b72")
             self._draw_mic_icon(color="#ff7b72", state="idle")
         self.root.after(0, _update)
 

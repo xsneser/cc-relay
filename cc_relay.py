@@ -19,6 +19,7 @@ import urllib.request, urllib.error
 from urllib.parse import urlsplit
 from cpa_updater import CPAUpdater
 import relay_updater
+import antigravity_updater
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 BASE = os.environ.get("CC_RELAY_DIR") or os.path.dirname(os.path.abspath(__file__))
@@ -757,6 +758,40 @@ def antigravity_stop():
 def antigravity_owned():
     with _ANTIGRAVITY_PROCESS_LOCK:
         return _ANTIGRAVITY_PROCESS is not None and _ANTIGRAVITY_PROCESS.poll() is None
+
+
+def antigravity_open_ui(conf=None):
+    """Wake up or launch Antigravity Tools window so user can access its native update interface."""
+    conf = conf or load_conf()
+    exe = (conf.get("antigravity_exe") or "").strip()
+    if not exe:
+        exe = os.path.expandvars(r"%LOCALAPPDATA%\Antigravity Tools\antigravity-tools.exe")
+    if not os.path.exists(exe):
+        return {"ok": False, "error": f"未找到 Antigravity Tools 可执行文件: {exe}"}
+
+    # 1. Launch/wake up via process execution (Tauri single-instance triggers window restore & focus)
+    try:
+        subprocess.Popen([exe], cwd=os.path.dirname(exe))
+    except Exception as e:
+        return {"ok": False, "error": f"启动 Antigravity Tools 失败: {e}"}
+
+    # 2. As an extra assist on Windows, bring its window to foreground via PowerShell AppActivate
+    try:
+        ps_cmd = (
+            "$w = (Get-Process -Name 'antigravity-tools' -ErrorAction SilentlyContinue | "
+            "Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1); "
+            "if ($w) { (New-Object -ComObject WScript.Shell).AppActivate($w.Id) }"
+        )
+        subprocess.Popen(["powershell.exe", "-NoProfile", "-Command", ps_cmd],
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "message": "已调出 Antigravity Tools 界面，请在软件中进行更新（设置 → 关于 → 检查更新）",
+        "open_mode": "main_window"
+    }
 
 
 def codex_stop():
@@ -2261,6 +2296,7 @@ def stats_snapshot():
     vc_health = get_upstream_health(conf, "voice", running=voice_available)
     cpa_status = _get_cpa_updater(conf).status()
     relay_update_status = _get_relay_updater(conf).status()
+    ag_update_status = antigravity_updater.get_antigravity_updater(conf).status()
     # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶。
     res = {'route': route, 'mode': route,
             'traffic_paused': traffic_paused(conf),
@@ -2341,6 +2377,10 @@ def stats_snapshot():
             'cpa_downloaded_bytes': cpa_status.get('downloaded_bytes', 0),
             'cpa_total_bytes': cpa_status.get('total_bytes', 0),
             'relay_update': relay_update_status,
+            'antigravity_version': ag_update_status.get('current_version'),
+            'antigravity_latest_version': ag_update_status.get('latest_version'),
+            'antigravity_has_update': ag_update_status.get('has_update', False),
+            'antigravity_update': ag_update_status,
             'upstreams_status': {
                 'deepseek': {'available': True, 'state': 'online'},
                 'codex': {
@@ -2838,7 +2878,7 @@ class UIHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
-        if self.path.split("?")[0].startswith(("/api/codex/login", "/api/cpa/", "/api/restart", "/api/relay/")):
+        if self.path.split("?")[0].startswith(("/api/codex/login", "/api/cpa/", "/api/restart", "/api/relay/", "/api/antigravity/")):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
@@ -2935,6 +2975,11 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json(_get_relay_updater(load_conf()).status())
             except Exception as e:
                 self._json({"error": str(e)}, 500)
+        elif self.path.split("?")[0] == "/api/antigravity/version":
+            try:
+                self._json(antigravity_updater.get_antigravity_updater(load_conf()).status())
+            except Exception as e:
+                self._json({"error": str(e)}, 500)
         elif self.path.startswith("/api/config"):
             try:
                 self._json(_config_public_view(load_conf()))
@@ -3019,6 +3064,31 @@ class UIHandler(BaseHTTPRequestHandler):
                     self._json(updater.request_check(force=True))
                 else:
                     self._json(updater.request_update(restart_callback=schedule_restart))
+            except Exception as e:
+                self._json({"error": str(e)}, 500)
+            return
+        elif p in ("/api/antigravity/check", "/api/antigravity/open"):
+            if not self._local_ui_allowed(write=True, error_message="Antigravity operation requires the local relay UI"):
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("invalid request body size")
+                self.connection.settimeout(10)
+                raw = self.rfile.read(length)
+                if len(raw) != length or not isinstance(json.loads(raw or b"{}"), dict):
+                    raise ValueError("invalid request body")
+            except (ValueError, OSError, json.JSONDecodeError):
+                self.close_connection = True
+                self._json({"error": "Invalid request body"}, 400)
+                return
+            try:
+                conf = load_conf()
+                if p == "/api/antigravity/check":
+                    updater = antigravity_updater.get_antigravity_updater(conf)
+                    self._json(updater.request_check(force=True))
+                else:
+                    self._json(antigravity_open_ui(conf))
             except Exception as e:
                 self._json({"error": str(e)}, 500)
             return
@@ -3356,6 +3426,9 @@ def serve(a):
     ru_conf = (conf.get("tools") or {}).get("relay_update") or {}
     if ru_conf.get("auto_check", True):
         _get_relay_updater(conf).start(auto_check=True)
+    ag_conf = (conf.get("tools") or {}).get("antigravity") or {}
+    if ag_conf.get("auto_check", True):
+        antigravity_updater.get_antigravity_updater(conf).start(auto_check=True)
     host = conf.get("listen_host", "127.0.0.1")
     if not is_loopback_host(host):
         raise ValueError(f"Refusing to bind relay to non-loopback host '{host}'.")

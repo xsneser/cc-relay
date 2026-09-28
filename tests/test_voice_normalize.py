@@ -89,6 +89,12 @@ class TestVoiceNormalize(unittest.TestCase):
             ("使用深度求索的deepseek模型", "使用 DeepSeek 的 DeepSeek 模型"),
             ("这个地普seek模型很便宜", "这个 DeepSeek 模型很便宜"),
             ("生成一个Prompt提示词", "生成一个 Prompt 提示词"),
+            ("编写一段优化的普朗普特", "编写一段优化的 Prompt"),
+            ("查看当前的吉特状态", "查看当前的 git status"),
+            ("执行吉特克米特提交变更", "执行 git commit 提交变更"),
+            ("从远程执行git拉取", "从远程执行 git pull"),
+            ("向主分支吉特推送", "向主分支 git push"),
+            ("服务正在监听老口厚斯特端口", "服务正在监听 localhost 端口"),
         ]
         for spoken, expected in cases:
             with self.subTest(spoken=spoken):

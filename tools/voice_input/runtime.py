@@ -22,7 +22,6 @@ def _probe_interpreter(py_path: str) -> bool:
     if not py_path:
         return False
     try:
-        # 执行微型标准库探针，验证 numpy 可用且解释器无缺失运行时
         res = subprocess.run(
             [py_path, "-c", "import numpy"],
             capture_output=True,
@@ -33,8 +32,26 @@ def _probe_interpreter(py_path: str) -> bool:
         return False
 
 
+def _score_interpreter(py_path: str) -> int:
+    """评估候选解释器的语音核心依赖就绪度（得分越高越完备，优先选择可用依赖最多的环境）"""
+    if not py_path:
+        return -1
+    code = (
+        "import importlib.util\n"
+        "mods = ['numpy', 'sounddevice', 'pynput', 'websockets', 'funasr', 'sherpa_onnx']\n"
+        "print(sum(1 for m in mods if importlib.util.find_spec(m) is not None))\n"
+    )
+    try:
+        res = subprocess.run([py_path, "-c", code], capture_output=True, text=True, timeout=3)
+        if res.returncode == 0 and res.stdout.strip().isdigit():
+            return int(res.stdout.strip())
+    except Exception:
+        pass
+    return -1
+
+
 def find_voice_python(repo_root: Optional[Path] = None) -> str:
-    """按优先级智能寻找能够正常运行语音伴侣的 Python 解释器路径"""
+    """按依赖完备度与优先级智能寻找能够正常运行语音伴侣的 Python 解释器路径"""
     if repo_root is None:
         repo_root = get_repo_root()
 
@@ -61,12 +78,20 @@ def find_voice_python(repo_root: Optional[Path] = None) -> str:
     # 4. 检查全局 python 命令
     candidates.append("python")
 
-    # 逐一探针测试候选者
-    for cand in candidates:
+    # 去重保留顺序
+    unique_candidates = []
+    seen = set()
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
+
+    # 逐一按优先级探针测试候选者（.venv 优先于系统全局 python）
+    for cand in unique_candidates:
         if _probe_interpreter(cand):
             return cand
 
-    # 若所有候选探针都未完全通过，回退至当前 sys.executable 或 python
+    # 最终保底
     if not getattr(sys, "frozen", False) and sys.executable:
         return sys.executable
     return "python"

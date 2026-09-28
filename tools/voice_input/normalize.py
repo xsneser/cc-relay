@@ -78,16 +78,56 @@ TECH_TERMS_REPLACEMENTS = [
     (re.compile(rf"{_L}api\s*key{_R}|(?:A批I|A皮I|诶皮爱|a\s*p\s*i)\s*(?:key|Key|密钥|秘钥)", re.IGNORECASE), "API Key"),
     (re.compile(rf"{_L}(?:a\s*p\s*i|api){_R}|(?:A批I|A皮I|诶皮爱)", re.IGNORECASE), "API"),
 
-    # 9. Prompt
+    # 9. Prompt & Context & Agent 系列
     (re.compile(rf"{_L}prompts?{_R}|(?:普朗普特|泼朗谱特|庞普特)", re.IGNORECASE), "Prompt"),
+    (re.compile(rf"{_L}context{_R}|(?:康泰克斯特)", re.IGNORECASE), "context"),
+    (re.compile(rf"{_L}embedding(?:s)?{_R}|(?:恩贝丁|嵌入手册)", re.IGNORECASE), "embedding"),
+    (re.compile(rf"{_L}agents?{_R}|(?:艾金特|智能体)", re.IGNORECASE), "Agent"),
+    (re.compile(rf"{_L}(?:streaming|stream){_R}|(?:流式输出|串流)", re.IGNORECASE), "streaming"),
+    (re.compile(rf"{_L}fine\s*tune|fine\s*tuning{_R}|(?:微调)", re.IGNORECASE), "fine-tuning"),
+    (re.compile(rf"{_L}inference{_R}", re.IGNORECASE), "inference"),
 
-    # 10. 编程开发词汇
+    # 10. Git 与版本控制
     (re.compile(rf"{_L}github{_R}|(?:吉特哈布|基特哈布|计特哈布)", re.IGNORECASE), "GitHub"),
+    (re.compile(rf"{_L}(?:git\s*status){_R}|(?:吉特状态|git状态)", re.IGNORECASE), "git status"),
+    (re.compile(rf"{_L}(?:git\s*pull){_R}|(?:吉特普尔|吉特拉取|git拉取|git普尔)", re.IGNORECASE), "git pull"),
+    (re.compile(rf"{_L}(?:git\s*push){_R}|(?:吉特普许|吉特推送|git推送|git普许)", re.IGNORECASE), "git push"),
+    (re.compile(rf"{_L}(?:git\s*commit){_R}|(?:吉特提交|吉特克米特|git提交|git克米特)", re.IGNORECASE), "git commit"),
+    (re.compile(rf"{_L}(?:git\s*branch){_R}|(?:吉特分支|git分支)", re.IGNORECASE), "git branch"),
+    (re.compile(rf"{_L}(?:git\s*checkout){_R}|(?:吉特检出|git检出)", re.IGNORECASE), "git checkout"),
+    (re.compile(rf"{_L}(?:git\s*diff){_R}|(?:吉特差异|git差异)", re.IGNORECASE), "git diff"),
+    (re.compile(rf"{_L}(?:git\s*clone){_R}|(?:吉特克隆|git克隆)", re.IGNORECASE), "git clone"),
+    (re.compile(rf"{_L}(?:pull\s*request|pr){_R}|(?:批阿|披阿)", re.IGNORECASE), "PR"),
+    (re.compile(rf"{_L}commit{_R}|(?:克米特)", re.IGNORECASE), "commit"),
+    (re.compile(rf"{_L}branch{_R}|(?:布兰奇)", re.IGNORECASE), "branch"),
+    (re.compile(rf"{_L}rebase{_R}|(?:瑞贝斯)", re.IGNORECASE), "rebase"),
     (re.compile(r"(?:吉特|记特)"), "Git"),
+
+    # 11. 编程语言、框架与环境
     (re.compile(rf"{_L}python{_R}|(?:派森|拍森)", re.IGNORECASE), "Python"),
+    (re.compile(rf"{_L}(?:javascript|js){_R}|(?:杰斯)", re.IGNORECASE), "JavaScript"),
+    (re.compile(rf"{_L}(?:typescript|ts){_R}|(?:梯斯)", re.IGNORECASE), "TypeScript"),
+    (re.compile(rf"{_L}docker{_R}|(?:道克|杜克)", re.IGNORECASE), "Docker"),
+    (re.compile(rf"{_L}node(?:\.js)?{_R}|(?:诺德)", re.IGNORECASE), "Node"),
+    (re.compile(rf"{_L}npm{_R}|(?:恩皮姆)", re.IGNORECASE), "npm"),
+    (re.compile(rf"{_L}pnpm{_R}|(?:皮恩皮姆)", re.IGNORECASE), "pnpm"),
     (re.compile(r"(?:皮普|批普)"), "pip"),
     (re.compile(rf"{_L}json{_R}|(?:杰森)", re.IGNORECASE), "JSON"),
+    (re.compile(rf"{_L}yaml{_R}|(?:雅沫)", re.IGNORECASE), "YAML"),
+    (re.compile(rf"{_L}html{_R}", re.IGNORECASE), "HTML"),
+    (re.compile(rf"{_L}css{_R}", re.IGNORECASE), "CSS"),
+    (re.compile(rf"{_L}markdown{_R}|(?:马克当)", re.IGNORECASE), "Markdown"),
     (re.compile(rf"{_L}c\s*l\s*i{_R}|(?:西艾勒爱|西里)", re.IGNORECASE), "CLI"),
+    (re.compile(rf"{_L}s\s*d\s*k{_R}|(?:艾斯第凯)", re.IGNORECASE), "SDK"),
+
+    # 12. 常用开发调试词汇
+    (re.compile(rf"{_L}localhost{_R}|(?:老口厚斯特|本地主机)", re.IGNORECASE), "localhost"),
+    (re.compile(rf"{_L}proxy{_R}|(?:普洛克西)", re.IGNORECASE), "proxy"),
+    (re.compile(rf"{_L}debug{_R}|(?:滴八哥|地八哥|地霸哥)", re.IGNORECASE), "debug"),
+    (re.compile(rf"{_L}bugs?{_R}|(?:八阿哥|巴格)", re.IGNORECASE), "bug"),
+    (re.compile(rf"{_L}async{_R}|(?:阿辛克)", re.IGNORECASE), "async"),
+    (re.compile(rf"{_L}await{_R}|(?:阿维特)", re.IGNORECASE), "await"),
+    (re.compile(rf"{_L}boolean{_R}|(?:布尔值|布尔)", re.IGNORECASE), "boolean"),
 ]
 
 # SenseVoice 特殊标记清理
