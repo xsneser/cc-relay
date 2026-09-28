@@ -94,6 +94,7 @@ class VoiceAutoStartTests(unittest.TestCase):
         with mock.patch.object(cc_relay, "_VOICE_PROCESS", None), \
                 mock.patch.object(os.path, "isfile", return_value=False), \
                 mock.patch.object(cc_relay, "voice_up", return_value=False), \
+                mock.patch.object(cc_relay, "_tcp", return_value=False), \
                 mock.patch.object(cc_relay.subprocess, "run") as run:
             self.assertEqual(cc_relay.voice_stop(), "not-running")
         run.assert_not_called()
@@ -101,13 +102,36 @@ class VoiceAutoStartTests(unittest.TestCase):
     def test_voice_stop_returns_not_managed_when_unowned_but_up(self):
         with mock.patch.object(cc_relay, "_VOICE_PROCESS", None), \
                 mock.patch.object(os.path, "isfile", return_value=False), \
-                mock.patch.object(cc_relay, "voice_up", return_value=True):
+                mock.patch.object(cc_relay, "_probe_voice_service", return_value=None), \
+                mock.patch.object(cc_relay, "_tcp", return_value=True):
             self.assertEqual(cc_relay.voice_stop(), "not-managed")
+
+    def test_voice_stop_adopts_pid_from_probe_when_untracked(self):
+        # 模拟 Relay 重启后无 _VOICE_PROCESS 也无 .voice.pid，但探针返回了有效 PID
+        with mock.patch.object(cc_relay, "_VOICE_PROCESS", None), \
+                mock.patch.object(os.path, "isfile", return_value=False), \
+                mock.patch.object(cc_relay, "_probe_voice_service", return_value={"service": "voice", "pid": 7890}), \
+                mock.patch.object(cc_relay, "_tcp", return_value=False), \
+                mock.patch.object(cc_relay.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            self.assertEqual(cc_relay.voice_stop(), "stopped")
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0][-2:], ["/PID", "7890"])
+
+    def test_voice_status_dict_auto_adopts_pid(self):
+        with mock.patch.object(cc_relay, "_probe_voice_service", return_value={"service": "voice", "status": "ready", "ready": True, "pid": 4321}), \
+                mock.patch.object(os.path, "isfile", return_value=False), \
+                mock.patch.object(cc_relay, "_write_voice_pid") as mock_write:
+            st = cc_relay.voice_status_dict()
+            self.assertTrue(st["owned"])
+            self.assertEqual(st["pid"], 4321)
+            mock_write.assert_called_once_with(4321)
 
     def test_voice_stop_kills_only_tracked_pid(self):
         proc = mock.Mock(pid=5678)
         proc.poll.return_value = None
         with mock.patch.object(cc_relay, "_VOICE_PROCESS", proc), \
+                mock.patch.object(cc_relay, "_tcp", return_value=False), \
                 mock.patch.object(cc_relay.subprocess, "run") as run:
             run.return_value.returncode = 0
             self.assertEqual(cc_relay.voice_stop(), "stopped")

@@ -34,6 +34,8 @@ class VoiceServer:
         self.coordinator = None
         self.widget = None
         self.status = "starting"
+        self.on_ready: Optional[Callable[[], None]] = None
+        self.on_error: Optional[Callable[[str], None]] = None
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="VoiceInference")
         self._stop_event = asyncio.Event()
 
@@ -144,7 +146,16 @@ class VoiceServer:
 
                     action = data.get("action")
                     if action == "hello":
-                        await websocket.send(json.dumps(hello_msg, ensure_ascii=False))
+                        fresh_hello = {
+                            "type": "hello",
+                            "service": "voice",
+                            "protocol_version": "1.1",
+                            "ready": self.engine.is_loaded,
+                            "status": self.status,
+                            "engine": self.config.engine,
+                            "capabilities": self._build_capabilities(),
+                        }
+                        await websocket.send(json.dumps(fresh_hello, ensure_ascii=False))
 
                     elif action in ("show_capsule", "hide_capsule", "toggle_capsule"):
                         if self.widget and self.widget.root:
@@ -162,6 +173,19 @@ class VoiceServer:
                         )
 
                     elif action == "start":
+                        if not self.engine.is_loaded:
+                            await websocket.send(
+                                json.dumps(
+                                    {
+                                        "type": "error",
+                                        "error": "not_ready",
+                                        "message": "ASR 模型仍在加载中，请稍候...",
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            )
+                            continue
+
                         sid = data.get("session_id") or f"sess_{int(time.time()*1000)}"
                         current_session = sid
                         self._conn_sessions[websocket] = sid
@@ -236,9 +260,19 @@ class VoiceServer:
                 self.engine.load()
                 self.status = "ready"
                 print("[+] ASR 模型载入成功，引擎完全就绪！")
+                if self.on_ready:
+                    try:
+                        self.on_ready()
+                    except Exception as ex:
+                        print(f"[!] on_ready 调度异常: {ex}")
             except Exception as e:
                 self.status = "error"
                 print(f"[-] ASR 模型载入失败: {e}")
+                if self.on_error:
+                    try:
+                        self.on_error(str(e))
+                    except Exception:
+                        pass
 
         # 异步触发，不阻塞 serve
         loop.run_in_executor(self._executor, _load_task)

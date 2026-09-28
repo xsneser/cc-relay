@@ -305,12 +305,13 @@ python update_antigravity.py install
 ## 🎙️ Claude Code CLI 中文语音输入伴侣 (可选扩展)
 
 针对 Windows 终端下使用 Claude Code CLI 时 `Win + H` 体验差、官方 `/voice` 依赖海外网络且不支持第三方代理的问题，本项目在 `tools/voice_input/` 提供了基于 **SenseVoice-Small + sherpa-onnx** 的独立中文语音伴侣：
-- **按住热键说话（默认 F8，支持 CapsLock），松开即在毫秒内转写并安全填入终端**；
-- 纯本地 CPU 离线推理，极低延迟，中英文代码术语友好；
-- 口述斜杠命令智能转换（例如“*斜杠 cost*”自动转为 `/cost`）；
-- 独立虚拟环境隔离，不侵入主服务零 pip 依赖架构。
+- **两步极速上手**：首次双击根目录 `setup_voice.bat` 自动完成环境与模型初始化，之后双击 `start_voice.bat`（或在 Web 控制台一键启动）即可使用；
+- **对讲输入**：在任意终端或编辑器中按住热键说话（默认鼠标后侧键 `mouse_x1`，支持 `F8`、`CapsLock` 等），松开即在毫秒内转写并安全填入光标位置；
+- **纯本地 CPU 离线推理**：开箱即用，无需 Visual C++ 编译器或 PyTorch，极低延迟，中英文代码术语友好；
+- **口述斜杠命令智能转换**：例如“*斜杠 cost*”自动转为 `/cost`；
+- **独立虚拟环境隔离**：完全隔离在 `tools/voice_input/.venv` 中，绝不侵入主服务零 pip 依赖架构。
 
-使用指南详见：[tools/voice_input/README.md](tools/voice_input/README.md)
+使用指南与进阶配置详见：[tools/voice_input/README.md](tools/voice_input/README.md)
 
 ---
 

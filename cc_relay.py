@@ -306,12 +306,15 @@ def _config_public_view(conf):
             "has_key": bool(key),
         }
     tools_conf = conf.get("tools") or {}
-    codex_view = {"auto_update": ((tools_conf.get("codex") or {}).get("auto_update") is True)}
+    codex_view = {
+        "auto_update": ((tools_conf.get("codex") or {}).get("auto_update") is True),
+        "outbound_proxy": _read_codex_outbound_proxy(conf),
+    }
     v_conf = tools_conf.get("voice") or {}
     voice_view = {
         "auto_start": bool(v_conf.get("auto_start", False)),
         "hotkey": str(v_conf.get("hotkey") or "mouse_x1"),
-        "engine": str(v_conf.get("engine") or "paraformer_streaming_2pass"),
+        "engine": str(v_conf.get("engine") or "sensevoice_offline"),
         "port": int(v_conf.get("port") or 8401),
         "restore_clipboard": bool(v_conf.get("restore_clipboard", True)),
     }
@@ -378,6 +381,12 @@ def _apply_config_update(conf, data):
                 if not isinstance(c_patch["auto_update"], bool):
                     raise ValueError("tools.codex.auto_update must be a boolean")
                 tools.setdefault("codex", {})["auto_update"] = c_patch["auto_update"]
+            if "outbound_proxy" in c_patch:
+                raw_proxy = str(c_patch["outbound_proxy"]).strip()
+                if raw_proxy and raw_proxy.lower() not in ("direct", "none"):
+                    if not (raw_proxy.startswith("http://") or raw_proxy.startswith("https://") or raw_proxy.startswith("socks5://")):
+                        raise ValueError("Codex 外部代理必须以 http://、https:// 或 socks5:// 开头，或填 direct/留空")
+                _write_codex_outbound_proxy(candidate, raw_proxy)
         if "antigravity" in tools_update:
             ag = tools.setdefault("antigravity", {})
             if "auto_start" in tools_update["antigravity"]:
@@ -487,8 +496,15 @@ def _tcp(port, host="127.0.0.1", t=0.6):
         return False
 
 
-def codex_up():
-    return _tcp(8317)
+def codex_up(conf=None):
+    """CLIProxyAPI health check; port derives from configured base when possible."""
+    try:
+        import urllib.parse as _urlparse
+        base = (_upstream_conf(conf or load_conf(), "codex").get("base") or "http://127.0.0.1:8317")
+        u = _urlparse.urlparse(base)
+        return _tcp(u.port or (443 if u.scheme == "https" else 80), u.hostname or "127.0.0.1")
+    except Exception:
+        return _tcp(8317)
 
 
 def antigravity_up(conf=None):
@@ -522,6 +538,61 @@ _CODEX_PROXY_CHECK_CACHE = {"ts": 0.0, "ok": True, "port": None}
 _CODEX_PROXY_CHECK_LOCK = threading.Lock()
 
 
+def _read_codex_outbound_proxy(conf=None):
+    """读取 codex-proxy/config.yaml 中顶层配置的外发 proxy-url。"""
+    try:
+        cfg_path = (conf or {}).get("codex_config") or os.path.join(BASE, "codex-proxy", "config.yaml")
+        if os.path.isfile(cfg_path):
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith(" ") or line.startswith("\t"):
+                        continue
+                    m = re.match(r'^proxy-url:\s*["\']?([^"\'\s]+)["\']?', line)
+                    if m:
+                        return m.group(1).strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _write_codex_outbound_proxy(conf, new_proxy):
+    """原子更新 codex-proxy/config.yaml 中顶层 proxy-url 配置，并重置健康探活缓存。"""
+    cfg_path = (conf or {}).get("codex_config") or os.path.join(BASE, "codex-proxy", "config.yaml")
+    if not os.path.isfile(cfg_path):
+        return False
+    val = (new_proxy or "").strip()
+    if not val:
+        val = "direct"
+    target_line = f'proxy-url: "{val}"\n'
+
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    replaced = False
+    new_lines = []
+    for line in lines:
+        if not replaced and not line.startswith(" ") and not line.startswith("\t") and re.match(r'^proxy-url:\s*', line):
+            new_lines.append(target_line)
+            replaced = True
+        else:
+            new_lines.append(line)
+
+    if not replaced:
+        new_lines.append("\n" + target_line)
+
+    tmp = cfg_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+    os.replace(tmp, cfg_path)
+
+    with _CODEX_PROXY_TARGET_LOCK:
+        _CODEX_PROXY_TARGET_CACHE["ts"] = 0.0
+        _CODEX_PROXY_TARGET_CACHE["target"] = None
+    with _CODEX_PROXY_CHECK_LOCK:
+        _CODEX_PROXY_CHECK_CACHE["ts"] = 0.0
+    return True
+
+
 def _get_codex_proxy_target(conf=None):
     now = time.time()
     with _CODEX_PROXY_TARGET_LOCK:
@@ -529,18 +600,13 @@ def _get_codex_proxy_target(conf=None):
             return _CODEX_PROXY_TARGET_CACHE["target"]
     target = None
     try:
-        import urllib.parse as _urlparse
-        cfg_path = (conf or {}).get("codex_config") or os.path.join(BASE, "codex-proxy", "config.yaml")
-        if os.path.isfile(cfg_path):
-            with open(cfg_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    m = re.match(r'^\s*proxy-url:\s*["\']?(http://[^"\'\s]+)["\']?', line)
-                    if m:
-                        raw = m.group(1).strip()
-                        if raw.lower() != "direct":
-                            u = _urlparse.urlparse(raw)
-                            target = (u.hostname or "127.0.0.1", u.port or 80)
-                        break
+        raw = _read_codex_outbound_proxy(conf)
+        if raw and raw.lower() not in ("direct", "none"):
+            import urllib.parse as _urlparse
+            u = _urlparse.urlparse(raw)
+            if u.hostname:
+                port = u.port or (443 if u.scheme == "https" else 80)
+                target = (u.hostname, port)
     except Exception:
         pass
     with _CODEX_PROXY_TARGET_LOCK:
@@ -851,22 +917,69 @@ def _get_voice_job():
         return _VOICE_JOB
 
 
-def voice_up(conf=None):
-    """探测语音 RPC 端口 (8401) 并通过 /health 握手验证是否确为 voice 服务"""
+def _probe_voice_service(conf=None, timeout=1.5):
+    """向语音伴侣 HTTP /health 探针发起查询，成功则返回解析后的字典，否则返回 None。"""
     conf = conf or load_conf()
     port = conf.get("tools", {}).get("voice", {}).get("port", 8401)
     if not _tcp(port, t=0.08):
-        return False
+        return None
     try:
         import urllib.request as _urllib
         req = _urllib.Request(f"http://127.0.0.1:{port}/health", headers={"Origin": "http://127.0.0.1:8610"})
-        with _urllib.urlopen(req, timeout=1.5) as resp:
+        with _urllib.urlopen(req, timeout=timeout) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
-                return data.get("service") == "voice"
+                if data.get("service") == "voice":
+                    return data
     except Exception:
         pass
-    return False
+    return None
+
+
+def voice_up(conf=None):
+    """探测语音 RPC 端口 (8401) 并通过 /health 握手验证是否确为 voice 服务"""
+    return _probe_voice_service(conf) is not None
+
+
+def _write_voice_pid(pid):
+    """安全写出 .voice.pid 文件"""
+    if not pid or not isinstance(pid, int) or pid <= 0:
+        return
+    try:
+        tmp = VOICE_PID_FILE + f".tmp_{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({
+                "pid": pid,
+                "create_time": time.time(),
+                "cmdline_marker": "tools.voice_input",
+            }, f)
+        os.replace(tmp, VOICE_PID_FILE)
+    except Exception:
+        pass
+
+
+def _get_listening_pid_win32(port):
+    """在 Windows 上利用 netstat -ano 查找指定端口的监听 PID"""
+    try:
+        res = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.split()
+                    if parts and parts[-1].isdigit():
+                        candidate = int(parts[-1])
+                        if candidate > 0 and candidate != os.getpid():
+                            return candidate
+    except Exception:
+        pass
+    return None
 
 
 def voice_status_dict(conf=None):
@@ -878,45 +991,42 @@ def voice_status_dict(conf=None):
         "status": "stopped",
         "ready": False,
         "pid": None,
-        "owned": voice_owned(),
+        "owned": False,
         "hotkey": v_conf.get("hotkey", "mouse_x1"),
-        "engine": v_conf.get("engine", "paraformer_streaming_2pass"),
+        "engine": v_conf.get("engine", "sensevoice_offline"),
         "last_error": _VOICE_LAST_ERROR,
     }
-    if not _tcp(port, t=0.08):
-        with _VOICE_PROCESS_LOCK:
-            if _VOICE_PROCESS is not None:
-                if _VOICE_PROCESS.poll() is None:
-                    status_info["status"] = "starting"
-                    status_info["pid"] = _VOICE_PROCESS.pid
-                else:
-                    status_info["status"] = "error" if _VOICE_LAST_ERROR else "stopped"
-            elif _VOICE_LAST_ERROR:
-                status_info["status"] = "error"
+
+    # 1. 优先通过探针查询已在运行的服务
+    probe_data = _probe_voice_service(conf, timeout=1.5)
+    if probe_data:
+        status_info["status"] = probe_data.get("status", "ready")
+        status_info["ready"] = bool(probe_data.get("ready"))
+        pid = probe_data.get("pid")
+        if isinstance(pid, int) and pid > 0:
+            status_info["pid"] = pid
+            # Auto-adopt: 若此时磁盘缺失 .voice.pid，自动补写纳管
+            if not os.path.isfile(VOICE_PID_FILE):
+                _write_voice_pid(pid)
+        status_info["engine"] = probe_data.get("engine", status_info["engine"])
+        status_info["owned"] = True
         return status_info
 
-    try:
-        import urllib.request as _urllib
-        req = _urllib.Request(f"http://127.0.0.1:{port}/health", headers={"Origin": "http://127.0.0.1:8610"})
-        with _urllib.urlopen(req, timeout=1.5) as resp:
-            if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
-                if data.get("service") == "voice":
-                    status_info["status"] = data.get("status", "ready")
-                    status_info["ready"] = bool(data.get("ready"))
-                    status_info["pid"] = data.get("pid")
-                    status_info["engine"] = data.get("engine", status_info["engine"])
-                    return status_info
-    except Exception:
-        pass
-
+    # 2. 若探针未响应，检查是否正处于启动中或已崩溃
     with _VOICE_PROCESS_LOCK:
         if _VOICE_PROCESS is not None:
             if _VOICE_PROCESS.poll() is None:
                 status_info["status"] = "starting"
                 status_info["pid"] = _VOICE_PROCESS.pid
+                status_info["owned"] = True
             else:
-                status_info["status"] = "stopped"
+                status_info["status"] = "error" if _VOICE_LAST_ERROR else "stopped"
+        elif _VOICE_LAST_ERROR:
+            status_info["status"] = "error"
+
+    if not status_info["owned"] and os.path.isfile(VOICE_PID_FILE):
+        status_info["owned"] = voice_owned(conf)
+
     return status_info
 
 
@@ -944,7 +1054,7 @@ def voice_start(conf=None):
 
     v_conf = conf.get("tools", {}).get("voice", {})
     hotkey = v_conf.get("hotkey", "mouse_x1")
-    engine = v_conf.get("engine", "paraformer_streaming_2pass")
+    engine = v_conf.get("engine", "sensevoice_offline")
     port = str(v_conf.get("port", 8401))
 
     # 静默自愈依赖检测
@@ -962,12 +1072,16 @@ def voice_start(conf=None):
     try:
         out_f = open(v_out, "a", encoding="utf-8", errors="replace")
         err_f = open(v_err, "a", encoding="utf-8", errors="replace")
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if sys.platform == "win32":
+            # 附加 BELOW_NORMAL_PRIORITY_CLASS (0x00004000) 确保语音子进程不抢占 Windows 前台与系统光标调度
+            creationflags |= 0x00004000
         proc = subprocess.Popen(
             cmd,
             cwd=BASE,
             stdout=out_f,
             stderr=err_f,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=creationflags,
         )
         try:
             out_f.close()
@@ -1035,56 +1149,104 @@ def voice_start(conf=None):
 
 
 def voice_stop(conf=None):
-    """安全停止语音服务：仅停止确认归属于本服务的 voice 进程"""
+    """安全停止语音服务：支持由内存句柄、.voice.pid 以及探针/端口解析的目标 PID"""
     global _VOICE_PROCESS, _VOICE_LAST_ERROR
     _VOICE_LAST_ERROR = None
-    with _VOICE_PROCESS_LOCK:
-        proc = _VOICE_PROCESS
-        pid_to_kill = None
+    conf = conf or load_conf()
+    port = conf.get("tools", {}).get("voice", {}).get("port", 8401)
 
-        if proc is not None and proc.poll() is None:
-            pid_to_kill = proc.pid
-        elif os.path.isfile(VOICE_PID_FILE):
+    # 1. 尝试从内存句柄获取存活 PID
+    pid_to_kill = None
+    with _VOICE_PROCESS_LOCK:
+        if _VOICE_PROCESS is not None and _VOICE_PROCESS.poll() is None:
+            pid_to_kill = _VOICE_PROCESS.pid
+
+    # 2. 尝试从 .voice.pid 读取记录
+    if not pid_to_kill and os.path.isfile(VOICE_PID_FILE):
+        try:
+            with open(VOICE_PID_FILE, "r", encoding="utf-8") as f:
+                pinfo = json.load(f)
+            if pinfo.get("cmdline_marker") == "tools.voice_input":
+                cand = pinfo.get("pid")
+                if isinstance(cand, int) and cand > 0 and cand != os.getpid():
+                    pid_to_kill = cand
+        except Exception:
+            pass
+
+    # 3. 探针自愈：从 /health 获取真实自报 PID
+    probe = None
+    if not pid_to_kill:
+        probe = _probe_voice_service(conf, timeout=1.5)
+        if probe:
+            cand = probe.get("pid")
+            if isinstance(cand, int) and cand > 0 and cand != os.getpid():
+                pid_to_kill = cand
+
+    # 4. 端口监听定位兜底 (Windows)：仅在探针已核验是 voice 服务但未包含 pid 时查询
+    if not pid_to_kill and probe and sys.platform == "win32":
+        pid_to_kill = _get_listening_pid_win32(port)
+
+    # 找不到任何可信目标 PID
+    if not pid_to_kill:
+        with _VOICE_PROCESS_LOCK:
+            _VOICE_PROCESS = None
+        if _tcp(port, t=0.08):
+            return "not-managed"
+        if os.path.isfile(VOICE_PID_FILE):
             try:
-                with open(VOICE_PID_FILE, "r", encoding="utf-8") as f:
-                    pinfo = json.load(f)
-                if pinfo.get("cmdline_marker") == "tools.voice_input":
-                    pid_to_kill = pinfo.get("pid")
+                os.remove(VOICE_PID_FILE)
             except Exception:
                 pass
+        return "not-running"
 
-        if not pid_to_kill:
-            _VOICE_PROCESS = None
-            if voice_up(conf):
-                return "not-managed"
-            return "not-running"
-
-        try:
-            subprocess.run(
+    # 执行终止
+    stop_ok = False
+    try:
+        if sys.platform == "win32":
+            res = subprocess.run(
                 ["taskkill", "/F", "/PID", str(pid_to_kill)],
                 capture_output=True,
                 text=True,
                 timeout=10,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
+            stop_ok = res.returncode == 0
+        else:
+            import signal
+            os.kill(pid_to_kill, signal.SIGTERM)
+            stop_ok = True
+    except Exception as e:
+        _VOICE_LAST_ERROR = str(e)
+
+    # 确认端口释放
+    for _ in range(20):
+        if not _tcp(port, t=0.05):
+            stop_ok = True
+            break
+        time.sleep(0.1)
+
+    with _VOICE_PROCESS_LOCK:
+        _VOICE_PROCESS = None
+
+    if os.path.isfile(VOICE_PID_FILE):
+        try:
+            os.remove(VOICE_PID_FILE)
         except Exception:
             pass
-        finally:
-            _VOICE_PROCESS = None
-            if os.path.isfile(VOICE_PID_FILE):
-                try:
-                    os.remove(VOICE_PID_FILE)
-                except Exception:
-                    pass
 
-    return "stopped"
+    if stop_ok or not _tcp(port, t=0.05):
+        return "stopped"
+    return "stop-failed"
 
 
-def voice_owned():
+def voice_owned(conf=None):
     with _VOICE_PROCESS_LOCK:
         if _VOICE_PROCESS is not None and _VOICE_PROCESS.poll() is None:
             return True
     if os.path.isfile(VOICE_PID_FILE):
+        return True
+    # 若服务端口响应且确为本系统 voice 伴侣服务，即便丢失 .voice.pid 也视作由本中继纳管
+    if voice_up(conf):
         return True
     return False
 
@@ -2090,7 +2252,7 @@ def stats_snapshot():
     route = rt.get('route', 'hybrid')
     if route == 'gemini':
         route = 'antigravity'
-    codex_available = codex_up()
+    codex_available = codex_up(conf)
     antigravity_available = antigravity_up(conf)
     v_stat = voice_status_dict(conf)
     voice_available = v_stat.get("ready", False) or voice_up(conf)
@@ -2157,7 +2319,7 @@ def stats_snapshot():
             'codex_up': codex_available, 'antigravity_up': antigravity_available,
             'antigravity_owned': antigravity_owned(),
             'voice_up': voice_available,
-            'voice_owned': voice_owned(),
+            'voice_owned': voice_owned(conf),
             'voice_status': v_stat,
             'codex_state': cx_health["state"],
             'codex_reason': cx_health["reason"],
@@ -2201,9 +2363,9 @@ def stats_snapshot():
                     'state': vc_health["state"],
                     'reason': vc_health["reason"],
                     'status': v_stat.get('status', 'stopped'),
-                    'managed': voice_owned(),
+                    'managed': voice_owned(conf),
                     'hotkey': v_stat.get('hotkey', 'mouse_x1'),
-                    'engine': v_stat.get('engine', 'paraformer_streaming_2pass'),
+                    'engine': v_stat.get('engine', 'sensevoice_offline'),
                 },
             },
             'last_up': _UP['last'], 'last_model': _UP['last_model']}

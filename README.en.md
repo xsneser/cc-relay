@@ -294,6 +294,19 @@ The updater selects the Windows x64 installer from the official [Antigravity-Man
 
 ---
 
+## 🎙️ Claude Code CLI Voice Input Companion (Optional Extension)
+
+For Windows terminal users dealing with unreliable `Win + H` dictation or the official `/voice` command requiring direct network connections incompatible with local proxies, `cc-relay` provides a standalone offline speech-to-text companion in `tools/voice_input/` powered by **SenseVoice-Small + sherpa-onnx**:
+- **Two-Step Quick Start**: Run `setup_voice.bat` once to auto-configure the isolated virtual environment and download the ~239MB offline model, then run `start_voice.bat` (or click Start in the Web dashboard);
+- **Push-to-Talk**: Hold hotkey (default mouse back button `mouse_x1`, configurable to `F8` or `CapsLock`), speak, and release to inject transcribed text into your active terminal/editor cursor without losing window focus;
+- **Pure Local CPU Offline Inference**: Zero external API calls, extremely low latency, no Visual C++ compiler or PyTorch required out of the box;
+- **Spoken Slash Commands**: Voice phrases like "*slash cost*" are automatically converted to `/cost`;
+- **Isolated Environment**: Dependencies live strictly in `tools/voice_input/.venv`, preserving `cc-relay`'s core zero-pip-dependency architecture.
+
+See [tools/voice_input/README.md](tools/voice_input/README.md) for full configuration and documentation.
+
+---
+
 ## 📄 License and Terms
 
 - **Project code (`cc-relay`)**: Released under the [MIT License](LICENSE). Pure Python standard library implementation, free for both commercial and non-commercial use.

@@ -84,6 +84,30 @@ class TestDesktopVoiceWidget(unittest.TestCase):
         self.widget._on_cancel_click()
         self.assertFalse(self.coord.is_recording)
 
+    def test_loading_and_set_ready(self):
+        class FakeLoadingEngine:
+            is_loaded = False
+        self.coord.engine = FakeLoadingEngine()
+
+        self.widget.create_window()
+        self.assertIn("加载中", self.widget.status_label.cget("text"))
+
+        # 触发 set_ready
+        self.coord.engine.is_loaded = True
+        self.widget.set_ready()
+        self.widget.root.update()
+        self.assertEqual(self.widget.status_label.cget("text"), "● 点击语音输入")
+
+    def test_toggle_record_blocked_when_loading(self):
+        class FakeLoadingEngine:
+            is_loaded = False
+        self.coord.engine = FakeLoadingEngine()
+        self.widget.create_window()
+
+        self.widget._toggle_record()
+        self.assertFalse(self.coord.is_recording)
+        self.assertIn("加载中", self.widget.status_label.cget("text"))
+
     def test_error_state_shows_feedback(self):
         from tools.voice_input.session import SessionState
         self.widget.create_window()

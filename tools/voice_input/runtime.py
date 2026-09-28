@@ -76,6 +76,7 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
     """探测指定解释器中各项核心语音依赖的就绪状态 (毫秒级 find_spec 探测)"""
     py_exe = python_exe or find_voice_python()
     modules = [
+        "sherpa_onnx",
         "funasr",
         "torch",
         "torchaudio",
@@ -90,7 +91,7 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
 
     code = (
         "import importlib.util, json\n"
-        "mods = ['funasr', 'torch', 'torchaudio', 'webrtcvad', 'websockets', "
+        "mods = ['sherpa_onnx', 'funasr', 'torch', 'torchaudio', 'webrtcvad', 'websockets', "
         "'sounddevice', 'numpy', 'pynput', 'win32gui', 'tkinter']\n"
         "res = {m: importlib.util.find_spec(m) is not None for m in mods}\n"
         "print('__JSON_START__' + json.dumps(res))\n"

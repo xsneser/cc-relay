@@ -87,6 +87,13 @@ class TestVoiceSessionCoordinator(unittest.TestCase):
         self.assertEqual(self.coord.state, SessionState.IDLE)
         self.assertFalse(self.coord.is_recording)
 
+    def test_reject_session_when_engine_loading(self):
+        self.engine._is_loaded = False
+        success = self.coord.start_session(source="widget", mode="toggle", output_mode="inject")
+        self.assertFalse(success)
+        self.assertEqual(self.coord.state, SessionState.IDLE)
+        self.assertIn("加载中", self.coord.last_error)
+
     @mock.patch("tools.voice_input.session.capture_target_snapshot")
     def test_start_and_stop_session(self, mock_snap):
         mock_snap.return_value = TargetWindowSnapshot(hwnd=12345, pid=6789, title="Test Window")

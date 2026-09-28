@@ -170,6 +170,12 @@ class SessionCoordinator:
                     return True
                 return False
 
+            # 0. 校验 ASR 引擎是否已完成载入
+            if self.engine is not None and not getattr(self.engine, "is_loaded", True):
+                logger.warning("[Session] ASR 模型尚未载入就绪，忽略录音请求。")
+                self.last_error = "ASR模型加载中，请稍候"
+                return False
+
             # 1. 捕获前台输入目标快照
             target = capture_target_snapshot()
             sid = f"sess_{int(time.time() * 1000)}"

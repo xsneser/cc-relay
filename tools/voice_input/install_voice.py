@@ -98,18 +98,31 @@ def main():
     ]
     res = subprocess.run(download_cmd, cwd=str(REPO_ROOT), env=env)
     if res.returncode != 0:
-        print("    [!] Hugging Face 直连异常，尝试备用源...")
+        print("    [!] Hugging Face 直连异常，尝试国内镜像备用源...")
         download_cmd[-1] = "hf-mirror"
-        subprocess.run(download_cmd, cwd=str(REPO_ROOT), env=env, check=False)
+        res = subprocess.run(download_cmd, cwd=str(REPO_ROOT), env=env)
+        if res.returncode != 0:
+            print("    [!] 国内镜像下载异常，尝试 ModelScope 魔搭社区源...")
+            download_cmd[-1] = "modelscope"
+            res = subprocess.run(download_cmd, cwd=str(REPO_ROOT), env=env)
 
-    # 5. 运行诊断
+    # 5. 检查模型是否成功落地
+    check_cmd = [str(venv_py), "-m", "tools.voice_input.model_download", "--check"]
+    model_ready = (subprocess.run(check_cmd, cwd=str(REPO_ROOT), env=env, capture_output=True).returncode == 0)
+
+    # 6. 运行诊断
     print("\n[*] 正在执行环境自检诊断 (Doctor)...")
     doctor_cmd = [str(venv_py), "-m", "tools.voice_input", "doctor"]
     subprocess.run(doctor_cmd, cwd=str(REPO_ROOT), env=env, check=False)
 
     print("\n" + "=" * 65)
-    print("  恭喜！语音伴侣已全部配置就绪。")
-    print("  您可以直接双击运行根目录下的 start_voice.bat 启动伴侣！")
+    if model_ready:
+        print("  [+] 恭喜！语音伴侣已全部配置就绪。")
+        print("  您可以直接双击运行根目录下的 start_voice.bat 启动伴侣！")
+    else:
+        print("  [!] 依赖安装完成，但离线模型尚未下载完毕。")
+        print("  请检查网络后重新运行本脚本，或执行:")
+        print(f"    {venv_py} -m tools.voice_input download --source modelscope")
     print("=" * 65)
 
 

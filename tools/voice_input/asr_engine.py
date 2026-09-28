@@ -74,8 +74,7 @@ def _find_local_model_dir(model_id: str) -> Optional[str]:
     """优先查找用户目录下的模型缓存，若本地不存在则返回 None (绝不隐式联网下载)"""
     user_cache = Path(os.path.expanduser("~/.cache/modelscope/hub/models")) / model_id
     repo_models = Path(__file__).resolve().parent / "models" / model_id
-    alt_cache = Path("D:/AProject/MOSS-developer/LLM/models") / model_id
-    candidates = [user_cache, repo_models, alt_cache]
+    candidates = [user_cache, repo_models]
     for c in candidates:
         if c.is_dir() and ((c / "model.pt").is_file() or (c / "model.onnx").is_file()):
             return str(c.resolve())
@@ -126,6 +125,21 @@ class FunASR2PassEngine(BaseStreamingASR):
         with self._lock:
             if self._is_loaded:
                 return
+
+            # 严格限制 PyTorch / OpenMP CPU 运算线程数，防止模型加载与 warm-up 满载导致系统卡顿
+            threads = max(1, min(int(self.config.num_threads or 2), os.cpu_count() or 2))
+            os.environ.setdefault("OMP_NUM_THREADS", str(threads))
+            os.environ.setdefault("MKL_NUM_THREADS", str(threads))
+            try:
+                import torch
+                torch.set_num_threads(threads)
+                if hasattr(torch, "set_num_interop_threads"):
+                    try:
+                        torch.set_num_interop_threads(max(1, min(2, threads)))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
             try:
                 from funasr import AutoModel
@@ -183,8 +197,7 @@ class FunASR2PassEngine(BaseStreamingASR):
 
             self._is_loaded = True
             cost = (time.monotonic() - t0) * 1000
-            print(f"[ASR] ✅ FunASR 2-Pass 引擎初始化就绪 (耗时: {cost:.1f}ms, device: {device})")
-            print(f"[ASR] ✅ FunASR 2-Pass 引擎初始化就绪 (耗时: {cost:.1f}ms, device: {device})")
+            print(f"[ASR] [OK] FunASR 2-Pass 引擎初始化就绪 (耗时: {cost:.1f}ms, device: {device})")
 
     def create_session(self, session_id: str) -> SessionContext:
         with self._lock:

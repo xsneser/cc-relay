@@ -1,17 +1,31 @@
-# Claude Code CLI 中文语音输入伴侣 (FunASR 2-Pass 流式因果识别 + Web UI 联动)
+# Claude Code CLI 中文语音输入伴侣 (SenseVoice 离线极速 / FunASR 2-Pass 流式)
 
-专为 **Claude Code CLI** 及各类 Windows 终端打造的**本地低延迟、2-Pass 流式因果识别、支持随 cc-relay 自启动的对讲输入伴侣**。
+专为 **Claude Code CLI** 及各类 Windows 终端打造的**本地低延迟、开箱即用（无需 MSVC 编译环境/PyTorch）、支持随 cc-relay 自启动的对讲输入伴侣**。
 
 ---
 
-## 🌟 核心特性与架构升级
+## ⚡ 快速上手 (3 步搞定)
 
-1. **2-Pass 流式因果识别架构**：
-   - **Online 实时阶段**：麦克风 16kHz PCM 音频流持续切片，配合 240ms Ring Buffer Pre-roll 防止开头断字；WebRTC VAD 实时进行语音活动检测；Streaming 模型增量推断并下发 Partial 临时结果（边说边出字）。
-   - **Offline 终态纠错阶段**：松开对讲热键或句末停顿触发，将累计原始音频送入离线模型进行全局上下文纠错与 CT-Transformer 标点恢复。
-   - **Session Cache 严格隔离**：每次对讲或 WebSocket 握手独立创建与有序复用 cache，会话结束显式销毁，彻底杜绝跨录音串流。
+1. **一键环境与模型初始化**：
+   - 双击项目根目录下的 **`setup_voice.bat`**；
+   - 脚本将自动创建隔离虚拟环境（`tools/voice_input/.venv`）、安装轻量 CPU 依赖（无需安装 Visual C++ 14.0+ 或 PyTorch），并自动下载 ~239MB 的 SenseVoice 离线模型。
+2. **启动伴侣服务**：
+   - 双击根目录下的 **`start_voice.bat`**；
+   - *或者* 在 cc-relay Web 控制台（`http://127.0.0.1:8610`）顶栏点击「语音伴侣 -> 启动」；
+   - 启动后屏幕右上角将显示免激活桌面悬浮麦克风胶囊。
+3. **免复制自动输入**：
+   - 在任意终端（Windows Terminal、VS Code 终端等）或文本框定位光标；
+   - 按住鼠标后侧键（`mouse_x1`）说话，松开按键，文字即在毫秒内自动输入到光标处！
+
+---
+
+## 🌟 核心特性与架构
+
+1. **轻量与多引擎架构**：
+   - **默认引擎 (`sensevoice_offline`)**：基于 `sherpa-onnx` 纯 CPU 离线推理，资源占用极小，毫秒级转写，中英文代码术语识别准确率极高；
+   - **进阶引擎 (`paraformer_streaming_2pass`)**：FunASR 2-Pass 流式因果识别，支持实时边说边出字（Partial）与离线全局上下文纠错。
 2. **随 cc-relay 统一生命周期管理**：
-   - 支持在 `config.json` 中配置 `"tools": { "voice": { "auto_start": true } }`，在 `lifecycle.py` / `claude.bat` 启动中转时一键静默自启；
+   - 支持在 `config.json` 中配置 `"tools": { "voice": { "auto_start": true } }`，在中转启动时一键静默自启；
    - 采用 **Windows Job Object (`KILL_ON_JOB_CLOSE`) + `.voice.pid` 强校验**双重保障，主服务退出或异常崩溃时由操作系统内核自动回收伴侣子进程，彻底消除孤儿进程残留。
 3. **Web 控制台仪表盘与在线听写集成 (`ui.html`)**：
    - 顶部 Header 增加语音伴侣状态胶囊（状态点：未启动 / 模型加载中 / 就绪 / 录音中闪烁）；
@@ -35,9 +49,9 @@
 {
   "tools": {
     "voice": {
-      "auto_start": true,
+      "auto_start": false,
       "hotkey": "mouse_x1",
-      "engine": "paraformer_streaming_2pass",
+      "engine": "sensevoice_offline",
       "port": 8401,
       "vad_mode": 2,
       "beep_feedback": false,
@@ -54,8 +68,8 @@
   - `f8`：键盘 F8 键
   - `caps_lock`：大写锁定键（短按切换大写，长按对讲）
 - `engine`: 识别引擎模式。可选：
-  - `paraformer_streaming_2pass`：FunASR 2-Pass 流式因果识别（推荐）
-  - `sensevoice_offline`：SenseVoice 离线保底引擎
+  - `sensevoice_offline`：SenseVoice 离线极速引擎（推荐默认，极低资源占用）
+  - `paraformer_streaming_2pass`：FunASR 2-Pass 流式因果识别（进阶）
 - `port`: 语音伴侣 RPC 与 WebSocket 监听端口（默认 8401，绑定 127.0.0.1）。
 
 ---

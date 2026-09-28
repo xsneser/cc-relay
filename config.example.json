@@ -38,7 +38,7 @@
     "voice": {
       "auto_start": false,
       "hotkey": "mouse_x1",
-      "engine": "paraformer_streaming_2pass",
+      "engine": "sensevoice_offline",
       "port": 8401,
       "vad_mode": 2,
       "beep_feedback": false,

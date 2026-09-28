@@ -81,6 +81,39 @@ class CPAUpdaterTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "must be a boolean"):
                 cc_relay._apply_config_update(config, {"tools": {"codex": {"auto_update": "yes"}}})
 
+    def test_codex_outbound_proxy_read_write_and_update(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg_yaml = os.path.join(directory, "config.yaml")
+            with open(cfg_yaml, "w", encoding="utf-8") as f:
+                f.write('host: "127.0.0.1"\nport: 8317\nproxy-url: "http://127.0.0.1:7900"\nopenai-compatibility:\n  - proxy-url: "direct"\n')
+            conf = {"codex_config": cfg_yaml, "upstreams": {}, "tools": {}}
+
+            # 1. 验证读取
+            self.assertEqual(cc_relay._read_codex_outbound_proxy(conf), "http://127.0.0.1:7900")
+
+            # 2. 验证写入新端口 7890
+            self.assertTrue(cc_relay._write_codex_outbound_proxy(conf, "http://127.0.0.1:7890"))
+            self.assertEqual(cc_relay._read_codex_outbound_proxy(conf), "http://127.0.0.1:7890")
+            # 确认子项 openai-compatibility 中的 proxy-url 未被误修改
+            with open(cfg_yaml, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn('proxy-url: "http://127.0.0.1:7890"', content)
+            self.assertIn('  - proxy-url: "direct"', content)
+
+            # 3. 验证 _get_codex_proxy_target 能够解析 7890 端口
+            target = cc_relay._get_codex_proxy_target(conf)
+            self.assertEqual(target, ("127.0.0.1", 7890))
+
+            # 4. 验证 _apply_config_update 校验与更新流程
+            with mock.patch.object(cc_relay, "_save_conf"):
+                view = cc_relay._apply_config_update(conf, {"tools": {"codex": {"outbound_proxy": "http://127.0.0.1:7890"}}})
+            self.assertEqual(view["tools"]["codex"]["outbound_proxy"], "http://127.0.0.1:7890")
+
+            # 5. 验证非法 URL 校验报错
+            with mock.patch.object(cc_relay, "_save_conf"):
+                with self.assertRaisesRegex(ValueError, "Codex 外部代理必须以"):
+                    cc_relay._apply_config_update(conf, {"tools": {"codex": {"outbound_proxy": "ftp://127.0.0.1:7890"}}})
+
     def test_status_does_not_expose_etag(self):
         with tempfile.TemporaryDirectory() as directory:
             updater = cpa_updater.CPAUpdater(directory, os.path.join(directory, "missing.exe"), "")

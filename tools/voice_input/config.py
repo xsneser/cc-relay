@@ -21,8 +21,8 @@ class VoiceConfig:
     port: int = 8401
     auto_start: bool = False
 
-    # 引擎模式: "paraformer_streaming_2pass" | "sensevoice_offline"
-    engine: str = "paraformer_streaming_2pass"
+    # 引擎模式: "sensevoice_offline" (推荐轻量极速，纯 CPU) | "paraformer_streaming_2pass" (FunASR 进阶)
+    engine: str = "sensevoice_offline"
 
     # 音频参数
     sample_rate: int = 16000
@@ -51,6 +51,10 @@ class VoiceConfig:
     beep_feedback: bool = False
 
     @property
+    def model_name(self) -> str:
+        return self.sensevoice_model_name
+
+    @property
     def sensevoice_model_path(self) -> Path:
         return self.models_dir / self.sensevoice_model_name / self.sensevoice_model_filename
 
@@ -60,6 +64,9 @@ class VoiceConfig:
 
     def is_sensevoice_installed(self) -> bool:
         return self.sensevoice_model_path.is_file() and self.sensevoice_tokens_path.is_file()
+
+    def is_model_installed(self) -> bool:
+        return self.is_sensevoice_installed()
 
     def validate(self) -> None:
         """检查关键配置是否合法"""
@@ -73,6 +80,8 @@ class VoiceConfig:
             raise ValueError(f"不支持的引擎: {self.engine}")
         if not (1024 <= self.port <= 65535):
             raise ValueError(f"端口超出范围: {self.port}")
+        if self.num_threads <= 0:
+            self.num_threads = 2
 
     @classmethod
     def from_relay_config(cls, repo_root: Optional[Path] = None) -> "VoiceConfig":
@@ -101,6 +110,8 @@ class VoiceConfig:
                 cfg.port = v_conf["port"]
             if "vad_mode" in v_conf and isinstance(v_conf["vad_mode"], int):
                 cfg.vad_mode = v_conf["vad_mode"]
+            if "num_threads" in v_conf and isinstance(v_conf["num_threads"], int) and v_conf["num_threads"] > 0:
+                cfg.num_threads = v_conf["num_threads"]
             if "restore_clipboard" in v_conf:
                 cfg.restore_clipboard = bool(v_conf["restore_clipboard"])
             if "beep_feedback" in v_conf:

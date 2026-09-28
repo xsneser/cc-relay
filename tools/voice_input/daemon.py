@@ -7,11 +7,13 @@
 """
 
 import asyncio
+import json
 import os
 import signal
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 from .asr_engine import BaseStreamingASR, create_engine
@@ -65,11 +67,62 @@ class VoiceInputDaemon:
         self.server.engine = self.engine
         self.server.coordinator = self.coordinator
         self.server.widget = self.widget
+        self.server.on_ready = self._on_engine_ready
+        self.server.on_error = self._on_engine_error
         self._server_thread: Optional[threading.Thread] = None
 
         # 注册终端控制台输出观察者
         self.coordinator.add_partial_listener(self._on_console_partial)
         self.coordinator.add_final_listener(self._on_console_final)
+
+    def _on_engine_ready(self):
+        """ASR 模型预载与 warm-up 完成后，安全启动全局对讲热键监听"""
+        if not self._is_running:
+            return
+        print(f"[*] ASR 引擎已就绪，正在激活全局对讲监听: {self.hotkey_ctrl.get_display_name()}...")
+        try:
+            self.hotkey_ctrl.start()
+            print("[+] 全局对讲热键已就绪！点击桌面悬浮胶囊或按住热键即可在光标处自动输入。")
+        except Exception as e:
+            print(f"[!] 全局热键监听未就绪 ({e})，已降级运行 (可通过桌面悬浮胶囊或 Web UI 使用)。")
+
+        if self.widget:
+            self.widget.set_ready()
+
+    def _on_engine_error(self, err_msg: str):
+        if self.widget:
+            self.widget.set_error(err_msg)
+
+    @property
+    def _pid_file(self) -> Path:
+        return Path(__file__).resolve().parent.parent.parent / ".voice.pid"
+
+    def _write_pid_file(self):
+        """记录自身 PID 至根目录 .voice.pid 文件，方便 Relay 管理"""
+        try:
+            pid_path = self._pid_file
+            tmp = str(pid_path) + f".tmp_{os.getpid()}"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({
+                    "pid": os.getpid(),
+                    "create_time": time.time(),
+                    "cmdline_marker": "tools.voice_input",
+                }, f)
+            os.replace(tmp, str(pid_path))
+        except Exception:
+            pass
+
+    def _cleanup_pid_file(self):
+        """退出时仅在当前记录仍属于自身时清理 PID 文件"""
+        try:
+            pid_path = self._pid_file
+            if pid_path.is_file():
+                with open(pid_path, "r", encoding="utf-8") as f:
+                    pinfo = json.load(f)
+                if pinfo.get("pid") == os.getpid():
+                    os.remove(str(pid_path))
+        except Exception:
+            pass
 
     def _play_feedback(self, frequency: int = 1000, duration_ms: int = 50):
         if not self.config.beep_feedback:
@@ -122,20 +175,18 @@ class VoiceInputDaemon:
         print(f"[*] 触发方式: 桌面悬浮麦克风点击 + {self.hotkey_ctrl.get_display_name()}")
         print(f"[*] 内部服务: ws://{self.config.host}:{self.config.port}/ws/voice")
 
+        self._is_running = True
+        self._write_pid_file()
+
         # 1. 启动 RPC 探针与 WebSocket 服务后台线程
         self._server_thread = threading.Thread(target=self._run_server_thread, daemon=True)
         self._server_thread.start()
 
-        # 2. 尝试启动桌面全局按键监听
-        try:
-            print("[*] 正在启动全局键盘/鼠标监听...")
-            self.hotkey_ctrl.start()
-            print("[+] 全局对讲热键已就绪！")
-        except Exception as e:
-            print(f"[!] 全局热键监听未就绪 ({e})，已降级运行 (可通过桌面悬浮胶囊或 Web UI 使用)。")
-
-        self._is_running = True
-        print("[+] 伴侣守护进程已就绪！点击桌面悬浮胶囊或按住热键即可在光标处自动输入。")
+        # 2. 检查引擎就绪状态：若已载入直接激活热键，否则在 ASR 加载完毕后由 server.on_ready 唤醒
+        if getattr(self.engine, "is_loaded", False):
+            self._on_engine_ready()
+        else:
+            print("[*] 伴侣网络端口已就绪，正在后台并发预载 ASR 模型（加载完成后自动激活对讲热键与悬浮输入）...")
 
         # 3. 运行桌面悬浮胶囊界面
         if not headless and self.widget is not None:
@@ -162,4 +213,5 @@ class VoiceInputDaemon:
         if self.widget:
             self.widget.stop()
         self.server.stop()
+        self._cleanup_pid_file()
         print("[+] 退出完成。")

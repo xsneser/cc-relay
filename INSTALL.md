@@ -332,4 +332,4 @@ systemctl --user status cc-relay.service
 
 ### Q6: 在 Windows 终端中如何使用中文语音输入 Claude Code？
 - **说明**：Windows 自带的 `Win + H` 在命令行中容易丢失焦点且标点混乱，Claude Code 官方 `/voice` 在代理模式下无法工作。
-- **推荐方案**：运行本项目内置的 `tools/voice_input/start_voice.bat`（首次使用双击 `setup_voice.bat` 初始化环境与 SenseVoice 模型），在终端中按住 `F8` 键说话，松开即可自动将中文或口述指令（如“*斜杠 cost*”转为 `/cost`）秒速填入终端。详见 `tools/voice_input/README.md`。
+- **推荐方案**：首次使用双击根目录的 `setup_voice.bat`（自动在独立虚拟环境安装轻量依赖并下载 SenseVoice 离线模型，无需 Visual C++ 编译环境或 PyTorch），随后双击 `start_voice.bat`（或在 Web 控制台顶栏一键启动）。在任意终端或编辑器中按住热键（默认鼠标后侧键 `mouse_x1`，可在 `config.json` 或 Web 界面自定义为 `f8`、`caps_lock`）说话，松开即可自动将中文或口述指令（如“*斜杠 cost*”转为 `/cost`）秒速填入光标位置。详见 `tools/voice_input/README.md`。

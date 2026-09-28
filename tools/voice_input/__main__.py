@@ -31,29 +31,54 @@ def cmd_doctor():
     print(f"[1] Python 版本: {sys.version.split()[0]} ({sys.executable})")
 
     # 2. 检查关键依赖库
-    print("\n[2] 检查核心与流式依赖库:")
+    print("\n[2] 检查核心依赖库:")
     deps = [
-        ("funasr", "funasr (2-Pass 流式因果 ASR 引擎)"),
-        ("webrtcvad", "webrtcvad (WebRTC 语音活动检测 VAD)"),
-        ("websockets", "websockets (双向流式 RPC 通信)"),
-        ("sounddevice", "sounddevice (麦克风音频采集)"),
-        ("numpy", "numpy (音频矩阵运算)"),
-        ("pynput", "pynput (全局热键监听)"),
-        ("win32gui", "pywin32 (Win32 焦点检测与安全注入)"),
+        ("numpy", "numpy (音频矩阵运算)", True),
+        ("sounddevice", "sounddevice (麦克风音频采集)", True),
+        ("pynput", "pynput (全局热键监听)", True),
+        ("websockets", "websockets (双向流式 RPC 通信)", True),
     ]
-    for mod_name, desc in deps:
+    if sys.platform == "win32":
+        deps.append(("win32gui", "pywin32 (Win32 焦点检测与安全注入)", True))
+
+    if cfg.engine == "sensevoice_offline":
+        deps.append(("sherpa_onnx", "sherpa-onnx (SenseVoice 本地轻量 CPU 引擎)", True))
+        deps.append(("webrtcvad", "webrtcvad (WebRTC VAD，未安装时自动回退至内置 RMS 检测)", False))
+    else:
+        deps.append(("funasr", "funasr (2-Pass 流式因果 ASR 引擎)", True))
+        deps.append(("webrtcvad", "webrtcvad (WebRTC 语音活动检测 VAD)", False))
+
+    for mod_name, desc, is_required in deps:
         try:
             __import__(mod_name)
             print(f"    [+] {desc}: 已就绪")
         except ImportError:
-            print(f"    [-] {desc}: 未安装 (请在环境中运行 pip install -r requirements.txt)")
-            all_pass = False
+            if is_required:
+                print(f"    [-] {desc}: 未安装 (必须，请运行 setup_voice.bat 安装)")
+                all_pass = False
+            else:
+                print(f"    [*] {desc}: 未安装 (可选，系统已启用平滑回退)")
 
     # 3. 检查模型状态
     print("\n[3] 检查模型与配置状态:")
     print(f"    [*] 当前配置引擎: {cfg.engine}")
     print(f"    [*] 服务监听端口: {cfg.host}:{cfg.port}")
     print(f"    [*] 对讲触发热键: {cfg.hotkey}")
+    if cfg.engine == "sensevoice_offline":
+        if cfg.is_sensevoice_installed():
+            print(f"    [+] SenseVoice 离线模型: 已就绪 ({cfg.sensevoice_model_path.name})")
+        else:
+            print(f"    [-] SenseVoice 离线模型: 未下载 (请运行 setup_voice.bat 或 python -m tools.voice_input download)")
+            all_pass = False
+    else:
+        # FunASR 模型检查
+        from .asr_engine import _find_local_model_dir
+        paraformer_id = _find_local_model_dir("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
+        if paraformer_id:
+            print(f"    [+] Paraformer 模型: 已就绪")
+        else:
+            print(f"    [-] Paraformer 模型: 未在本地找到")
+            all_pass = False
 
     # 4. 检查麦克风设备
     print("\n[4] 检查可用音频输入设备:")
@@ -93,6 +118,14 @@ def cmd_normalize(text: str):
 
 def cmd_service(hotkey: str = None, engine: str = None, port: int = None, headless: bool = False):
     """启动语音服务（包含后台 WebSocket RPC 服务、桌面悬浮胶囊与全局 PTT 对讲热键）"""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            # 设置自身为 BELOW_NORMAL_PRIORITY_CLASS (0x00004000) 确保不影响系统输入响应与前台调度
+            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x00004000)
+        except Exception:
+            pass
+
     cfg = VoiceConfig.from_relay_config()
     if hotkey:
         cfg.hotkey = hotkey
@@ -103,7 +136,10 @@ def cmd_service(hotkey: str = None, engine: str = None, port: int = None, headle
 
     from .daemon import VoiceInputDaemon
     daemon = VoiceInputDaemon(cfg)
-    daemon.start(headless=headless)
+    try:
+        daemon.start(headless=headless)
+    finally:
+        daemon.stop()
 
 
 def main():
@@ -124,6 +160,8 @@ def main():
     # download
     p_dl = subparsers.add_parser("download", help="下载 ASR 离线模型")
     p_dl.add_argument("--source", default="hf-mirror", help="模型下载源")
+    p_dl.add_argument("--check", action="store_true", help="仅检查模型是否已就绪")
+    p_dl.add_argument("--force", action="store_true", help="强制重新下载已有模型文件")
 
     # doctor
     subparsers.add_parser("doctor", help="诊断环境依赖、硬件与模型状态")
@@ -144,8 +182,17 @@ def main():
     elif args.command == "normalize":
         cmd_normalize(args.text)
     elif args.command == "download":
-        from .model_download import download_models
-        download_models(source=args.source)
+        from .model_download import ensure_models
+        cfg = VoiceConfig.from_relay_config()
+        if args.check:
+            if cfg.is_sensevoice_installed():
+                print(f"[+] 模型已完整安装于: {cfg.sensevoice_model_path.parent}")
+                sys.exit(0)
+            else:
+                print("[-] 模型未安装或文件缺失")
+                sys.exit(1)
+        ok = ensure_models(cfg, source=args.source, force=args.force)
+        sys.exit(0 if ok else 1)
     elif args.command in ("service", "listen") or args.command is None:
         hotkey = getattr(args, "hotkey", None)
         engine = getattr(args, "engine", None)

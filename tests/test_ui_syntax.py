@@ -177,6 +177,25 @@ class TestUISyntax(unittest.TestCase):
 
         # 7. renderTrafficControl 不得使用 className 赋值覆盖按钮基类
         self.assertNotIn("btn.className = 'btn-traffic", self.html)
+
+    def test_locked_local_upstreams_ui(self):
+        # 验证本地服务（Codex 与 Antigravity）的配置锁定与提示
+        self.assertNotIn(".config-local-badge", self.html)
+        self.assertIn(".config-locked-input", self.html)
+        self.assertIn(".config-lock-hint", self.html)
+        self.assertIn("localUpstreams", self.html)
+        self.assertNotIn("内置受管服务", self.html)
+        self.assertNotIn("本地伴侣工具", self.html)
+        self.assertIn("base.input.readOnly = true", self.html)
+        self.assertIn("btn-unlock-base", self.html)
+        self.assertIn("🔒 解锁修改", self.html)
+        self.assertNotIn("proxy.input.readOnly = true", self.html)
+        # 确保已精简掉预设按钮与自动更新复选框
+        self.assertNotIn("btn-codex-proxy-7890", self.html)
+        self.assertNotIn("cfg-codex-auto-update", self.html)
+        # 确保 Codex 外部代理输入框具备独立样式且没有误用 cfg-base 类名以防覆盖上游 base
+        self.assertNotIn('id="cfg-codex-outbound-proxy" class="cfg-base"', self.html)
+        self.assertIn(".cfg-cpa-proxy", self.html)
         self.assertIn("btn.classList.toggle('paused'", self.html)
 
     def test_upstream_controls_are_merged_into_header(self):

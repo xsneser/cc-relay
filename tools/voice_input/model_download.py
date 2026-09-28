@@ -120,7 +120,7 @@ def ensure_models(
     if config is None:
         config = VoiceConfig()
 
-    target_dir = config.models_dir / config.model_name
+    target_dir = config.models_dir / config.sensevoice_model_name
     target_dir.mkdir(parents=True, exist_ok=True)
 
     if source not in DOWNLOAD_SOURCES:
@@ -174,8 +174,8 @@ def main():
 
     cfg = VoiceConfig()
     if args.check:
-        if cfg.is_model_installed():
-            print(f"[+] 模型已完整安装于: {cfg.models_dir / cfg.model_name}")
+        if cfg.is_sensevoice_installed():
+            print(f"[+] 模型已完整安装于: {cfg.models_dir / cfg.sensevoice_model_name}")
             sys.exit(0)
         else:
             print("[-] 模型未安装或文件缺失")
@@ -188,6 +188,10 @@ def main():
     else:
         print("[-] 模型下载失败，请检查网络连接或更换下载源 --source modelscope / huggingface")
         sys.exit(1)
+
+
+# 导出兼容器别名
+download_models = ensure_models
 
 
 if __name__ == "__main__":

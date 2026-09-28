@@ -5,9 +5,13 @@ from unittest import mock
 
 from tools.voice_input.hotkeys import (
     HotkeyController,
+    HotkeyState,
     key_to_name,
     KEY_ALIASES,
     MOUSE_BUTTON_ALIASES,
+    VK_MOUSE_BUTTONS,
+    VK_ESCAPE,
+    WindowsMousePoller,
 )
 
 
@@ -63,6 +67,52 @@ class TestVoiceHotkeys(unittest.TestCase):
         self.assertIn("CapsLock", HotkeyController("caps_lock").get_display_name())
         self.assertIn("F9", HotkeyController("f9").get_display_name())
         self.assertIn("右Ctrl", HotkeyController("ctrl_r").get_display_name())
+
+
+    def test_vk_mouse_button_mappings(self):
+        self.assertEqual(VK_MOUSE_BUTTONS.get("x1"), 0x05)
+        self.assertEqual(VK_MOUSE_BUTTONS.get("x2"), 0x06)
+        self.assertEqual(VK_MOUSE_BUTTONS.get("middle"), 0x04)
+        self.assertEqual(VK_ESCAPE, 0x1B)
+
+        for alias, target in MOUSE_BUTTON_ALIASES.items():
+            self.assertIn(target, VK_MOUSE_BUTTONS)
+
+    def test_mouse_trigger_state_machine(self):
+        started = []
+        stopped = []
+        cancelled = []
+
+        ctrl = HotkeyController(
+            hotkey_name="mouse_x1",
+            on_start_record=lambda: started.append(True),
+            on_stop_record=lambda: stopped.append(True),
+            on_cancel=lambda: cancelled.append(True),
+        )
+
+        self.assertEqual(ctrl.state, HotkeyState.IDLE)
+
+        # 模拟按下鼠标侧键
+        ctrl._on_mouse_trigger_down()
+        self.assertEqual(ctrl.state, HotkeyState.RECORDING)
+
+        # 重复按下应忽略
+        ctrl._on_mouse_trigger_down()
+        self.assertEqual(ctrl.state, HotkeyState.RECORDING)
+
+        # 模拟松开鼠标侧键
+        ctrl._on_mouse_trigger_up()
+        self.assertEqual(ctrl.state, HotkeyState.PROCESSING)
+
+        # 重置回空闲
+        ctrl.set_idle()
+        self.assertEqual(ctrl.state, HotkeyState.IDLE)
+
+        # 测试 Esc 紧急取消
+        ctrl._on_mouse_trigger_down()
+        self.assertEqual(ctrl.state, HotkeyState.RECORDING)
+        ctrl._on_esc_cancel()
+        self.assertEqual(ctrl.state, HotkeyState.IDLE)
 
 
 if __name__ == "__main__":

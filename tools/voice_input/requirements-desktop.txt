@@ -1,2 +1,8 @@
+# Claude Code Voice Companion 桌面自愈依赖清单
+numpy>=1.20.0
 sounddevice>=0.4.6
 pynput>=1.7.6
+websockets>=11.0
+pywin32>=306; sys_platform == 'win32'
+sherpa-onnx>=1.10.0
+

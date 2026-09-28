@@ -113,17 +113,23 @@ class DesktopVoiceWidget:
             cursor="hand2",
         )
         self.canvas.pack(side=tk.LEFT, padx=(4, 2), pady=2)
-        self._draw_mic_icon(color="#00ffc4", state="idle")
+        engine = getattr(self.coordinator, "engine", None)
+        is_ready = getattr(engine, "is_loaded", True) if engine is not None else True
+        init_mic_color = "#00ffc4" if is_ready else "#d29922"
+        self._draw_mic_icon(color=init_mic_color, state="idle")
 
         # 2. 状态与提示文字
         self.info_container = tk.Frame(self.main_frame, bg=bg_color)
         self.info_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4)
 
+        init_title = "点击语音输入" if is_ready else "⏳ ASR 模型加载中..."
+        init_sub = f"快捷键: {self.coordinator.config.hotkey.upper()}" if is_ready else "正在预载模型，请稍候"
+
         self.status_label = tk.Label(
             self.info_container,
-            text="点击语音输入",
+            text=init_title,
             font=("Segoe UI", 9, "bold"),
-            fg="#e6edf3",
+            fg="#e6edf3" if is_ready else "#d29922",
             bg=bg_color,
             anchor="w",
             cursor="hand2",
@@ -132,7 +138,7 @@ class DesktopVoiceWidget:
 
         self.partial_label = tk.Label(
             self.info_container,
-            text=f"快捷键: {self.coordinator.config.hotkey.upper()}",
+            text=init_sub,
             font=("Segoe UI", 8),
             fg="#8b949e",
             bg=bg_color,
@@ -248,10 +254,39 @@ class DesktopVoiceWidget:
 
     def _toggle_record(self):
         """点击麦克风胶囊触发开始或停止录音"""
+        engine = getattr(self.coordinator, "engine", None)
+        if engine is not None and not getattr(engine, "is_loaded", True):
+            self.set_feedback("⏳ 模型仍在加载中…", color="#d29922")
+            return
+
         if self.coordinator.is_recording:
             self.coordinator.stop_session(source="widget")
         else:
             self.coordinator.start_session(source="widget", mode="toggle", output_mode="inject")
+
+    def set_ready(self):
+        """引擎载入成功，更新胶囊为就绪状态"""
+        if not self.root:
+            return
+        def _update():
+            if self.status_label:
+                self.status_label.configure(text="● 点击语音输入", fg="#e6edf3")
+            if self.partial_label:
+                self.partial_label.configure(text=f"快捷键: {self.coordinator.config.hotkey.upper()}", fg="#8b949e")
+            self._draw_mic_icon(color="#00ffc4", state="idle")
+        self.root.after(0, _update)
+
+    def set_error(self, err_msg: str = ""):
+        """引擎载入失败，更新胶囊为异常状态"""
+        if not self.root:
+            return
+        def _update():
+            if self.status_label:
+                self.status_label.configure(text="✕ 模型加载失败", fg="#ff7b72")
+            if self.partial_label:
+                self.partial_label.configure(text=err_msg[:24] if err_msg else "请检查依赖与模型目录", fg="#ff7b72")
+            self._draw_mic_icon(color="#ff7b72", state="idle")
+        self.root.after(0, _update)
 
     def _on_cancel_click(self):
         """点击取消按钮"""

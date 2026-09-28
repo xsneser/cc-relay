@@ -2528,9 +2528,31 @@
     border-radius: 6px;
     border: 1px solid var(--glass-border);
   }
+  .upstream-heading {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .config-field input.config-locked-input {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: rgba(59, 130, 246, 0.25);
+    color: var(--text-muted);
+    cursor: text;
+  }
+  .config-field input.config-locked-input:focus {
+    border-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+  }
+  .config-lock-hint {
+    display: block;
+    color: var(--text-dim);
+    font: 11px/1.4 var(--font-sans);
+    margin-top: 3px;
+  }
   .config-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 14px;
   }
   .codex-login-row {
@@ -2548,13 +2570,22 @@
     gap: 7px;
     min-width: 122px;
     height: 36px;
-    padding: 0 12px;
+    padding: 0 14px;
     border: 1px solid var(--glass-border);
-    border-radius: 6px;
-    background: #fff;
-    color: #111;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
     font: 600 12px var(--font-sans);
     cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .codex-login-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+  }
+  .codex-login-button:active:not(:disabled) {
+    transform: translateY(0);
   }
   .codex-login-button:disabled { opacity: .55; cursor: wait; }
   .codex-login-button svg { width: 16px; height: 16px; flex: none; }
@@ -2572,6 +2603,89 @@
     font-size: 11px;
     color: var(--text-muted);
     font-weight: 700;
+  }
+  .config-field-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .btn-unlock-base {
+    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1.4;
+    transition: all 0.15s ease;
+  }
+  .btn-unlock-base:hover {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.09);
+  }
+  .btn-unlock-base.unlocked {
+    background: rgba(224, 168, 46, 0.14);
+    border-color: rgba(224, 168, 46, 0.45);
+    color: #facc15;
+  }
+  .config-field input.config-unlocked-input {
+    background: #000000;
+    border-color: rgba(224, 168, 46, 0.4);
+    color: #ffffff;
+    box-shadow: 0 0 0 2px rgba(224, 168, 46, 0.12);
+  }
+  .cfg-cpa-proxy {
+    width: 100%;
+    background: #000000;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: #ffffff;
+    padding: 9px 12px;
+    font: 11.5px var(--font-mono);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+  }
+  .cfg-cpa-proxy:focus {
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+  }
+  #btn-record-hotkey {
+    background: #000000;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: #ffffff;
+    transition: all 0.15s ease;
+  }
+  #btn-record-hotkey:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  #btn-record-hotkey.listening {
+    border-color: #39c998;
+    box-shadow: 0 0 0 2px rgba(57, 201, 152, 0.25);
+  }
+  #cfg-voice-engine {
+    width: 100%;
+    background: #000000;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: #ffffff;
+    padding: 8px 12px;
+    font: 12px var(--font-sans);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  #cfg-voice-engine:focus {
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+  }
+  #cfg-voice-engine option {
+    background: #11151c;
+    color: #ffffff;
   }
   .config-field input {
     width: 100%;
@@ -4366,11 +4480,24 @@ function renderConfig(cfg) {
   const ups = cfg.upstreams || {};
   const names = Object.keys(ups);
   if (!names.length) { root.innerHTML = '<div style="color:var(--text-dim);padding:14px;text-align:center">暂无上游配置</div>'; return; }
+  const localUpstreams = {
+    codex: {
+      base: 'http://127.0.0.1:8317',
+      baseHint: '内置 CLIProxyAPI 服务端口，由 Relay 自动拉起与管理；自定义端口需与本地服务保持一致'
+    },
+    antigravity: {
+      base: 'http://127.0.0.1:8045',
+      baseHint: '本地 Antigravity Tools 伴侣服务端口，由 Relay 自动探测；自定义端口需与本地服务保持一致'
+    }
+  };
   names.forEach(name => {
     const info = ups[name] || {};
+    const local = localUpstreams[name] || null;
     const card = document.createElement('div'); card.className = 'upstream-card'; card.dataset.name = name;
     const title = document.createElement('div'); title.className = 'upstream-title';
-    const b = document.createElement('b'); b.textContent = name; title.appendChild(b);
+    const heading = document.createElement('div'); heading.className = 'upstream-heading';
+    const b = document.createElement('b'); b.textContent = name; heading.appendChild(b);
+    title.appendChild(heading);
     const code = document.createElement('code'); code.textContent = info.key_env ? 'key_env: ' + info.key_env : '未配置 key_env'; title.appendChild(code);
     card.appendChild(title);
     if (name === 'codex') {
@@ -4378,21 +4505,82 @@ function renderConfig(cfg) {
       const updateBox = document.createElement('div');
       updateBox.className = 'cpa-update-panel';
       updateBox.id = 'cpa-update-panel';
-      const autoUpdate = !!((cfg.tools && cfg.tools.codex) || {}).auto_update;
+      const codexProxyVal = (cfg.tools && cfg.tools.codex && cfg.tools.codex.outbound_proxy) || '';
+      window._currentCodexProxy = codexProxyVal;
       updateBox.innerHTML = '<div class="upstream-title"><b>CLIProxyAPI 更新</b><code id="cpa-version-label">检测版本中…</code></div>' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">' +
         '<button type="button" class="btn-action" id="cpa-check-update">检查更新</button>' +
-        '<button type="button" class="btn-action" id="cpa-install-update" disabled>一键升级</button>' +
-        '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted);margin-left:8px;">' +
-        '<input type="checkbox" id="cfg-codex-auto-update" ' + (autoUpdate ? 'checked' : '') + ' style="width:16px;height:16px;">空闲时自动更新</label></div>' +
-        '<div id="cpa-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">自动更新默认关闭；升级时 Codex 将短暂重启。</div>';
+        '<button type="button" class="btn-action" id="cpa-install-update" disabled>一键升级</button></div>' +
+        '<div id="cpa-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">升级时 Codex 将短暂重启。</div>';
       card.appendChild(updateBox);
+
+      const proxyPanel = document.createElement('div');
+      proxyPanel.className = 'cpa-proxy-panel';
+      proxyPanel.style.cssText = 'margin:12px 0 14px;padding:12px 14px;background:rgba(255,255,255,0.018);border:1px solid var(--glass-border);border-radius:10px;';
+      proxyPanel.innerHTML = '<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<span style="font-size:12px;font-weight:700;color:#ffffff;">外部网络代理 (clash)</span>' +
+        '<span style="font-size:11px;color:var(--text-dim);">供 CLIProxyAPI 访问外网 OpenAI，请核对端口号与 Clash 是否一致</span>' +
+        '</div>' +
+        '<input type="text" id="cfg-codex-outbound-proxy" class="cfg-cpa-proxy" placeholder="例如: http://127.0.0.1:7890 (留空或 direct 为直连)">';
+      card.appendChild(proxyPanel);
+
+      const inputProxy = proxyPanel.querySelector('#cfg-codex-outbound-proxy');
+      if (inputProxy) {
+        inputProxy.value = codexProxyVal;
+        inputProxy.addEventListener('input', markConfigDirty);
+      }
     }
     const grid = document.createElement('div'); grid.className = 'config-grid';
-    const base = configField('Base URL', 'cfg-base', 'url', info.base, 'https://example.com/v1');
-    const proxy = configField('上游代理 URL', 'cfg-up-proxy', 'text', info.proxy_url, '留空直连；可填 direct');
+    const baseVal = local ? (info.base || local.base) : info.base;
+    const base = configField('Base URL', 'cfg-base', 'url', baseVal, 'https://example.com/v1');
     const key = secretField('API Key', 'cfg-key', info.has_key ? (info.key_mask + ' · 留空保持不变') : '尚未设置');
-    grid.appendChild(base.field); grid.appendChild(proxy.field); grid.appendChild(key.field);
+    if (local) {
+      base.input.readOnly = true;
+      base.input.classList.add('config-locked-input');
+      const label = base.field.querySelector('label');
+      const labelRow = document.createElement('div');
+      labelRow.className = 'config-field-label-row';
+      base.field.insertBefore(labelRow, base.input);
+      labelRow.appendChild(label);
+
+      const unlockBtn = document.createElement('button');
+      unlockBtn.type = 'button';
+      unlockBtn.className = 'btn-action btn-unlock-base';
+      unlockBtn.textContent = '🔒 解锁修改';
+      unlockBtn.title = '默认锁定以防误触；点击可解锁编辑';
+      labelRow.appendChild(unlockBtn);
+
+      const bHint = document.createElement('small');
+      bHint.className = 'config-lock-hint';
+      bHint.textContent = local.baseHint;
+      base.field.appendChild(bHint);
+
+      unlockBtn.addEventListener('click', () => {
+        if (base.input.readOnly) {
+          base.input.readOnly = false;
+          base.input.classList.remove('config-locked-input');
+          base.input.classList.add('config-unlocked-input');
+          unlockBtn.classList.add('unlocked');
+          unlockBtn.textContent = '🔓 锁定';
+          bHint.textContent = '已解锁修改：请确保自定义端口与本地服务实际运行端口一致，修改后保存生效';
+          bHint.style.color = '#e0a82e';
+          base.input.focus();
+        } else {
+          base.input.readOnly = true;
+          base.input.classList.remove('config-unlocked-input');
+          base.input.classList.add('config-locked-input');
+          unlockBtn.classList.remove('unlocked');
+          unlockBtn.textContent = '🔒 解锁修改';
+          bHint.textContent = local.baseHint;
+          bHint.style.color = '';
+        }
+      });
+      grid.appendChild(base.field); grid.appendChild(key.field);
+    } else {
+      const proxyVal = info.proxy_url;
+      const proxy = configField('上游代理 URL', 'cfg-up-proxy', 'text', proxyVal, '留空直连；可填 direct');
+      grid.appendChild(base.field); grid.appendChild(proxy.field); grid.appendChild(key.field);
+    }
     card.appendChild(grid); root.appendChild(card);
   });
   // 语音伴侣独立配置卡片
@@ -4400,9 +4588,9 @@ function renderConfig(cfg) {
   const vCard = document.createElement('div');
   vCard.className = 'upstream-card';
   vCard.id = 'cfg-voice-card';
-  const autoChecked = vConf.auto_start ? 'checked' : '';
+  const autoChecked = vConf.auto_start !== false ? 'checked' : '';
   const selH = vConf.hotkey || 'mouse_x1';
-  const selE = vConf.engine || 'paraformer_streaming_2pass';
+  const selE = vConf.engine || 'sensevoice_offline';
   const formatHotkeyLabel = k => {
     k = String(k || 'mouse_x1').toLowerCase().trim();
     if (k === 'mouse_x1' || k === 'x1') return '🖱️ 鼠标侧键1 (后退键 · 默认)';
@@ -4418,24 +4606,27 @@ function renderConfig(cfg) {
     return '⌨️ 按键 [' + k.toUpperCase() + ']';
   };
 
-  vCard.innerHTML = '<div class="upstream-title"><b>voice (语音输入伴侣)</b><code>服务端口: ' + (vConf.port || 8401) + ' · 2-Pass 流式因果识别</code></div>' +
+  vCard.innerHTML = '<div class="upstream-title"><b>voice (语音输入伴侣)</b><code>服务端口: ' + (vConf.port || 8401) + ' · 本地离线语音识别</code></div>' +
     '<div class="config-grid">' +
-    '  <div class="config-field"><label>随 CC Relay 自启动</label><div style="display:flex;align-items:center;height:34px;gap:8px;">' +
-    '    <input type="checkbox" id="cfg-voice-autostart" ' + autoChecked + ' style="cursor:pointer;width:16px;height:16px;">' +
-    '    <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起</span></div></div>' +
+    '  <div class="config-field" style="justify-content:center;">' +
+    '    <label style="display:flex;align-items:center;height:34px;gap:8px;cursor:pointer;margin:0;">' +
+    '      <input type="checkbox" id="cfg-voice-autostart" ' + autoChecked + ' style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">' +
+    '      <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起</span>' +
+    '    </label>' +
+    '  </div>' +
     '  <div class="config-field"><label>全局对讲触发热键 (点击录制按键)</label>' +
     '    <div style="display:flex;align-items:center;gap:8px;">' +
     '      <input type="hidden" id="cfg-voice-hotkey" value="' + selH + '">' +
-    '      <button type="button" id="btn-record-hotkey" class="cfg-base" style="flex:1;text-align:left;cursor:pointer;padding:6px 12px;font-family:var(--font-mono);display:flex;align-items:center;justify-content:space-between;">' +
+    '      <button type="button" id="btn-record-hotkey" style="flex:1;text-align:left;cursor:pointer;padding:8px 12px;font-family:var(--font-mono);font-size:11.5px;display:flex;align-items:center;justify-content:space-between;">' +
     '        <span id="txt-record-hotkey">' + formatHotkeyLabel(selH) + '</span>' +
     '        <span style="font-size:11px;color:var(--text-muted);border:1px solid var(--glass-border);padding:1px 6px;border-radius:4px;">点击录制</span>' +
     '      </button>' +
-    '      <button type="button" id="btn-reset-hotkey" class="btn-action" style="font-size:12px;padding:6px 10px;" title="重置为默认鼠标侧键">默认</button>' +
+    '      <button type="button" id="btn-reset-hotkey" class="btn-action" style="font-size:12px;padding:8px 12px;" title="重置为默认鼠标侧键">默认</button>' +
     '    </div>' +
     '  </div>' +
-    '  <div class="config-field"><label>ASR 引擎模式</label><select id="cfg-voice-engine" class="cfg-base" style="cursor:pointer;">' +
-    '    <option value="paraformer_streaming_2pass"' + (selE === 'paraformer_streaming_2pass' ? ' selected' : '') + '>paraformer_streaming_2pass (2-Pass 流式 · 推荐)</option>' +
-    '    <option value="sensevoice_offline"' + (selE === 'sensevoice_offline' ? ' selected' : '') + '>sensevoice_offline (SenseVoice 离线保底)</option>' +
+    '  <div class="config-field"><label>ASR 引擎模式</label><select id="cfg-voice-engine">' +
+    '    <option value="sensevoice_offline"' + (selE === 'sensevoice_offline' ? ' selected' : '') + '>sensevoice_offline (SenseVoice 离线极速 · 推荐)</option>' +
+    '    <option value="paraformer_streaming_2pass"' + (selE === 'paraformer_streaming_2pass' ? ' selected' : '') + '>paraformer_streaming_2pass (FunASR 2-Pass 流式 · 进阶)</option>' +
     '  </select></div>' +
     '</div>';
 
@@ -4525,8 +4716,6 @@ function renderConfig(cfg) {
 
   vCard.querySelectorAll('input, select').forEach(el => el.addEventListener('change', markConfigDirty));
   root.appendChild(vCard);
-  const cpaAuto = $('#cfg-codex-auto-update');
-  if (cpaAuto) cpaAuto.addEventListener('change', markConfigDirty);
   const cpaCheck = $('#cpa-check-update');
   if (cpaCheck) cpaCheck.addEventListener('click', async () => {
     cpaCheck.disabled = true;
@@ -4564,16 +4753,22 @@ function collectConfig() {
   document.querySelectorAll('#cfg-upstreams .upstream-card').forEach(card => {
     if (card.id === 'cfg-voice-card') return;
     const key = card.querySelector('.cfg-key');
-    payload.upstreams[card.dataset.name] = {
+    const proxyInput = card.querySelector('.cfg-up-proxy');
+    const upItem = {
       base: card.querySelector('.cfg-base').value,
-      proxy_url: card.querySelector('.cfg-up-proxy').value,
       key: key.value
     };
+    if (proxyInput) {
+      upItem.proxy_url = proxyInput.value;
+    }
+    payload.upstreams[card.dataset.name] = upItem;
   });
-  const codexAutoUpdate = $('#cfg-codex-auto-update');
-  if (codexAutoUpdate) {
+  const codexProxyInput = $('#cfg-codex-outbound-proxy');
+  if (codexProxyInput) {
     payload.tools = payload.tools || {};
-    payload.tools.codex = { auto_update: codexAutoUpdate.checked };
+    payload.tools.codex = {
+      outbound_proxy: codexProxyInput.value.trim()
+    };
   }
   const vCard = $('#cfg-voice-card');
   if (vCard) {
@@ -4584,7 +4779,7 @@ function collectConfig() {
     payload.tools.voice = {
       auto_start: asEl ? asEl.checked : false,
       hotkey: hkEl ? hkEl.value : 'mouse_x1',
-      engine: egEl ? egEl.value : 'paraformer_streaming_2pass'
+      engine: egEl ? egEl.value : 'sensevoice_offline'
     };
   }
   return payload;
@@ -4594,11 +4789,26 @@ $('#cfg-save').addEventListener('click', async () => {
   const btn = $('#cfg-save'); btn.disabled = true; btn.textContent = '保存中…';
   try {
     const oldHk = (window._currentVoiceHotkey || '');
+    const oldCodexProxy = (window._currentCodexProxy || '');
     const newCfg = collectConfig();
     const newHk = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.hotkey) || '';
+    const newCodexProxy = (newCfg.tools && newCfg.tools.codex && newCfg.tools.codex.outbound_proxy) || '';
     const r = await api('/api/config', newCfg);
     if (r.error) throw new Error(r.error);
     renderConfig(r.config || {}); toast('连接配置已保存，下一次请求立即生效');
+
+    // 若 Codex 外发代理发生变化且正在运行，自动重启 Codex 使新代理生效
+    if (oldCodexProxy !== newCodexProxy && isUpstreamRunning('codex')) {
+      toast('Codex 代理已变更，正在自动重启 Codex…');
+      try {
+        await api('/api/upstream', { name: 'codex', action: 'stop' });
+        await new Promise(res => setTimeout(res, 800));
+        await api('/api/upstream', { name: 'codex', action: 'start' });
+        toast('Codex 已重启，新代理端口立即生效！');
+      } catch(err) {
+        toast('自动重启 Codex 异常: ' + err, true);
+      }
+    }
 
     // 若热键发生变化且语音服务正在运行，自动重启语音服务使新热键生效
     if (oldHk && newHk && oldHk !== newHk && isUpstreamRunning('voice')) {
@@ -4814,8 +5024,9 @@ function renderStatus() {
   const vtext = $('#voice-status');
   if (vdot) {
     if (vstat.status === 'recording') vdot.className = 'dot rec';
-    else if (voiceInfo.state === 'online') vdot.className = 'dot on';
-    else if (voiceInfo.state === 'degraded') vdot.className = 'dot warn';
+    else if (vstat.status === 'loading_model') vdot.className = 'dot warn';
+    else if (voiceInfo.state === 'online' && vstat.ready) vdot.className = 'dot on';
+    else if (voiceInfo.state === 'online' || voiceInfo.state === 'degraded') vdot.className = 'dot warn';
     else vdot.className = 'dot';
   }
   if (vtext) {
@@ -5190,7 +5401,7 @@ async function controlUpstream(provider) {
     const res = await api('/api/upstream', { name: meta.apiName, action });
     if (res.error || res.ok === false) throw new Error(res.error || res.result || '操作失败');
     if (res.result === 'not-managed') {
-      toast(meta.label + ' 不是由当前 Relay 启动，未执行停止操作', true);
+      toast(meta.label + ' 服务由外部程序占用或无法核验目标进程，未执行停止操作', true);
     } else if (res.result === 'not-running') {
       toast(meta.label + ' 已经停止');
     } else if (typeof res.result === 'string' && (res.result.startsWith('start-failed') || ['no-exe', 'stop-failed', 'timeout'].includes(res.result))) {
@@ -5242,8 +5453,36 @@ function updateVoiceModalStatus() {
   const stText = $('#vm-server-status');
   const dot = $('#vm-dot');
   const running = isUpstreamRunning('voice');
-  if (stText) stText.textContent = running ? '服务运行中 (:8401 就绪)' : '服务未启动 (请先启动)';
-  if (dot) dot.className = 'dot' + (running ? ' on' : '');
+  const vstat = (st && st.voice_status) || {};
+  const btn = $('#btn-vm-record');
+  if (stText) {
+    if (!running) {
+      stText.textContent = '服务未启动 (请先启动)';
+    } else if (vstat.status === 'loading_model') {
+      stText.textContent = 'ASR 模型加载中… (:8401 预载权重)';
+    } else if (vstat.ready) {
+      stText.textContent = '服务运行中 (:8401 就绪)';
+    } else {
+      stText.textContent = '服务初始化中…';
+    }
+  }
+  if (dot) {
+    if (!running) dot.className = 'dot';
+    else if (vstat.status === 'loading_model') dot.className = 'dot warn';
+    else if (vstat.ready) dot.className = 'dot on';
+    else dot.className = 'dot warn';
+  }
+  if (btn) {
+    if (vstat.status === 'loading_model') {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      btn.style.cursor = 'not-allowed';
+    } else {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    }
+  }
 }
 
 async function startWebVoiceRecording() {
@@ -5255,6 +5494,11 @@ async function startWebVoiceRecording() {
   }
   if (!isUpstreamRunning('voice')) {
     toast('语音伴侣服务未运行，请先在顶部启动语音服务', true);
+    return;
+  }
+  const vstat = (st && st.voice_status) || {};
+  if (vstat.status === 'loading_model') {
+    toast('ASR 语音模型正在后台加载中，请稍候…', true);
     return;
   }
 
@@ -5281,6 +5525,11 @@ async function startWebVoiceRecording() {
     _voiceWs.onmessage = e => {
       try {
         const msg = JSON.parse(e.data);
+        if (msg.type === 'error') {
+          toast(msg.message || '语音服务暂未就绪', true);
+          stopWebVoiceRecording();
+          return;
+        }
         if (msg.type === 'partial') {
           if (msg.confirmed_text) $('#vm-confirmed-text').textContent = msg.confirmed_text;
           if (msg.partial_text) $('#vm-partial-text').textContent = msg.partial_text;

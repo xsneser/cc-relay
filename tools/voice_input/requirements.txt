@@ -1,9 +1,13 @@
-# Claude Code Voice Companion requirements
+# Claude Code Voice Companion requirements (开箱即用轻量级依赖，无需 MSVC / PyTorch)
+numpy>=1.20.0
 sounddevice>=0.4.6
 pynput>=1.7.6
-numpy>=1.20.0
 websockets>=11.0
-webrtcvad>=2.0.10
-pywin32>=306
-funasr>=1.0.0
+pywin32>=306; sys_platform == 'win32'
 sherpa-onnx>=1.10.0
+
+# 可选扩展依赖 (FunASR 2-Pass 流式因果引擎与 WebRTC C++ VAD)
+# 若需启用 paraformer_streaming_2pass 引擎，请取消注释安装:
+# funasr>=1.0.0
+# webrtcvad>=2.0.10
+
