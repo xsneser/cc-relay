@@ -100,6 +100,27 @@ class TestVoiceNormalize(unittest.TestCase):
             with self.subTest(spoken=spoken):
                 self.assertEqual(normalize(spoken), expected)
 
+    def test_3d_modeling_terms(self):
+        cases = [
+            ("打开布兰德建模软件", "打开 Blender 建模软件"),
+            ("在blender中渲染场景", "在 Blender 中渲染场景"),
+            ("导出为欧比杰文件格式", "导出为 OBJ 文件格式"),
+            ("使用艾弗比克斯格式导入虚幻引擎", "使用 FBX 格式导入 Unreal Engine"),
+            ("导出吉尔替弗模型文件", "导出 glTF 模型文件"),
+            ("进行次世代雕刻和细分曲面", "进行 ZBrush 和 subdivision"),
+            ("在物质画家里面画贴图", "在 Substance Painter 里面画贴图"),
+            ("需要重新给模型展UV", "需要重新给模型 UV"),
+            ("生成法线贴图和环境光遮蔽", "生成 normal map 和 AO"),
+            ("进行低模和高模烘焙贴图", "进行 Low Poly 和 High Poly bake"),
+            ("完成角色的骨骼绑定和蒙皮权重", "完成角色的 rigging 和 skinning"),
+            ("开启光线追踪渲染模式", "开启 ray tracing 渲染模式"),
+            ("导入三Dmesh模型", "导入 3D mesh 模型"),
+            ("对三D模型进行拓扑", "对 3D 模型进行拓扑"),
+        ]
+        for spoken, expected in cases:
+            with self.subTest(spoken=spoken):
+                self.assertEqual(normalize(spoken), expected)
+
     def test_negative_cases_and_idempotence(self):
         # 验证前缀/子串负向保护（tokenizer 不能被误替为 tokenizer）
         self.assertEqual(normalize("使用 tokenizer 分词"), "使用 tokenizer 分词")

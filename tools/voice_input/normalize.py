@@ -128,6 +128,68 @@ TECH_TERMS_REPLACEMENTS = [
     (re.compile(rf"{_L}async{_R}|(?:阿辛克)", re.IGNORECASE), "async"),
     (re.compile(rf"{_L}await{_R}|(?:阿维特)", re.IGNORECASE), "await"),
     (re.compile(rf"{_L}boolean{_R}|(?:布尔值|布尔)", re.IGNORECASE), "boolean"),
+
+    # 13. 3D 建模、图形与 CG 渲染专有名词 (3D Modeling & CG)
+    # 3D 基础前缀规范 (三D -> 3D)
+    (re.compile(r"(?:三\s*[dD]|3\s*[dD])(?=[a-zA-Z0-9模建图视效空库场打印网格渲染引擎物体场景])"), "3D"),
+
+    # 主流建模与游戏引擎软件
+    (re.compile(rf"{_L}(?:blender){_R}|(?:不兰得|布兰德|布兰登)(?=[模型|建模|渲染|快捷键|插件|软件|中])", re.IGNORECASE), "Blender"),
+    (re.compile(rf"{_L}(?:zbrush){_R}|(?:Z刷|Z布拉许|次世代雕刻)", re.IGNORECASE), "ZBrush"),
+    (re.compile(rf"{_L}(?:substance\s*painter|substance){_R}|(?:物质画家|萨博斯坦斯)", re.IGNORECASE), "Substance Painter"),
+    (re.compile(rf"{_L}(?:unreal\s*engine|ue5|ue4){_R}|(?:虚幻引擎)", re.IGNORECASE), "Unreal Engine"),
+    (re.compile(rf"{_L}(?:unity3d|unity){_R}|(?:优尼提)(?=[引擎|游戏|项目|组件])", re.IGNORECASE), "Unity"),
+    (re.compile(rf"{_L}(?:houdini){_R}|(?:胡迪尼)", re.IGNORECASE), "Houdini"),
+    (re.compile(rf"{_L}(?:c4d|cinema\s*4d){_R}", re.IGNORECASE), "C4D"),
+    (re.compile(rf"{_L}(?:3ds\s*max|3dmax){_R}", re.IGNORECASE), "3ds Max"),
+
+    # 3D 格式规范
+    (re.compile(rf"{_L}(?:gltf|glb){_R}|(?:吉尔替弗)", re.IGNORECASE), "glTF"),
+    (re.compile(rf"{_L}(?:fbx){_R}|(?:艾弗比克斯)", re.IGNORECASE), "FBX"),
+    (re.compile(rf"{_L}(?:obj){_R}|(?:欧比杰)", re.IGNORECASE), "OBJ"),
+    (re.compile(rf"{_L}(?:stl){_R}|(?:斯提艾勒)", re.IGNORECASE), "STL"),
+    (re.compile(rf"{_L}(?:usdz|usd){_R}", re.IGNORECASE), "USDZ"),
+
+    # 网格与拓扑结构 (Mesh & Topology)
+    (re.compile(rf"{_L}(?:low\s*poly){_R}|(?:低多边形|低模)", re.IGNORECASE), "Low Poly"),
+    (re.compile(rf"{_L}(?:high\s*poly){_R}|(?:高模)", re.IGNORECASE), "High Poly"),
+    (re.compile(rf"{_L}(?:mesh){_R}|(?:麦许|梅许)", re.IGNORECASE), "mesh"),
+    (re.compile(rf"{_L}(?:vertex|vertices){_R}|(?:沃尔泰克斯)", re.IGNORECASE), "vertex"),
+    (re.compile(rf"{_L}(?:polygons?){_R}|(?:多边形面)", re.IGNORECASE), "polygon"),
+    (re.compile(rf"{_L}(?:topology|retopology|retopo){_R}|(?:重拓扑)", re.IGNORECASE), "retopology"),
+    (re.compile(rf"{_L}(?:subdivision|subsurf){_R}|(?:细分曲面)", re.IGNORECASE), "subdivision"),
+    (re.compile(rf"{_L}(?:wireframe){_R}|(?:线框模式|线框图)", re.IGNORECASE), "wireframe"),
+    (re.compile(rf"{_L}(?:extrude){_R}|(?:挤出面)", re.IGNORECASE), "extrude"),
+    (re.compile(rf"{_L}(?:bevel){_R}|(?:贝威尔|倒角)", re.IGNORECASE), "bevel"),
+    (re.compile(rf"{_L}(?:sculpting|sculpt){_R}|(?:数字雕刻)", re.IGNORECASE), "sculpting"),
+    (re.compile(rf"{_L}(?:voxel){_R}|(?:体素)", re.IGNORECASE), "voxel"),
+
+    # UV 贴图与 PBR 材质渲染
+    (re.compile(rf"{_L}(?:uv\s*unwrapping|uv\s*map|uv){_R}|(?:展UV|UV贴图|UV展平)", re.IGNORECASE), "UV"),
+    (re.compile(rf"{_L}(?:pbr){_R}|(?:物理渲染|物理材质)", re.IGNORECASE), "PBR"),
+    (re.compile(rf"{_L}(?:texture|texturing){_R}", re.IGNORECASE), "texture"),
+    (re.compile(rf"{_L}(?:material|materials){_R}|(?:材质球)", re.IGNORECASE), "material"),
+    (re.compile(rf"{_L}(?:shader|shading){_R}|(?:着色器)", re.IGNORECASE), "shader"),
+    (re.compile(rf"{_L}(?:normal\s*map|normals?){_R}|(?:法线贴图|法线)", re.IGNORECASE), "normal map"),
+    (re.compile(rf"{_L}(?:roughness){_R}|(?:粗糙度贴图)", re.IGNORECASE), "roughness"),
+    (re.compile(rf"{_L}(?:metallic|metalness){_R}|(?:金属度贴图)", re.IGNORECASE), "metallic"),
+    (re.compile(rf"{_L}(?:ambient\s*occlusion|ao\s*贴图|ao\s*map){_R}|(?:环境光遮蔽|AO贴图)", re.IGNORECASE), "AO"),
+    (re.compile(rf"{_L}(?:albedo|base\s*color){_R}|(?:固有色贴图|基础色)", re.IGNORECASE), "albedo"),
+    (re.compile(rf"{_L}(?:displacement){_R}|(?:置换贴图)", re.IGNORECASE), "displacement"),
+    (re.compile(rf"{_L}(?:baking|bake){_R}|(?:烘焙贴图|烘焙)", re.IGNORECASE), "bake"),
+    (re.compile(rf"{_L}(?:hdri|hdr){_R}|(?:高动态范围贴图)", re.IGNORECASE), "HDRI"),
+
+    # 骨骼绑定与动画 (Rigging & Animation)
+    (re.compile(rf"{_L}(?:rigging|rig){_R}|(?:骨骼绑定|骨架绑定|瑞格)", re.IGNORECASE), "rigging"),
+    (re.compile(rf"{_L}(?:skinning|skin\s*weight){_R}|(?:蒙皮权重|刷权重)", re.IGNORECASE), "skinning"),
+    (re.compile(rf"{_L}(?:blendshape|blend\s*shape|morph\s*target){_R}|(?:形态键|混合形状)", re.IGNORECASE), "blendshape"),
+    (re.compile(rf"{_L}(?:keyframe|keyframes){_R}|(?:关键帧)", re.IGNORECASE), "keyframe"),
+
+    # 渲染与视口
+    (re.compile(rf"{_L}(?:ray\s*tracing){_R}|(?:光线追踪|光追)", re.IGNORECASE), "ray tracing"),
+    (re.compile(rf"{_L}(?:render|rendering){_R}", re.IGNORECASE), "render"),
+    (re.compile(rf"{_L}(?:viewport){_R}|(?:三维视口)", re.IGNORECASE), "viewport"),
+    (re.compile(rf"{_L}(?:lod){_R}|(?:细节层次)", re.IGNORECASE), "LOD"),
 ]
 
 # SenseVoice 特殊标记清理
@@ -200,11 +262,12 @@ def normalize(text: str) -> str:
 
     # 3. 常见技术专有名词口语修正
     for pattern, replacement in TECH_TERMS_REPLACEMENTS:
-        text = pattern.sub(replacement, text)
+        text = pattern.sub(f" {replacement} ", text)
 
     # 4. 如果是普通文本但以已有的 "/" 开头，去除尾部多余标点
     if text.startswith("/"):
         text = TRAILING_PUNCTUATION_PATTERN.sub("", text)
+        text = re.sub(r" {2,}", " ", text)
     else:
         # 对自然语言应用中英混排优雅排版空格
         text = format_cjk_spacing(text)
