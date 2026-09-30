@@ -78,6 +78,14 @@ class TestVoiceRuntime(unittest.TestCase):
         self.assertIn("-m", cmd)
         self.assertIn("pip", cmd)
 
+    def test_find_voice_python_routes_by_engine(self):
+        # 验证针对 Paraformer 引擎能正确路由到具备 funasr 的系统解释器
+        py_para = find_voice_python(engine="paraformer_streaming_2pass")
+        self.assertNotIn(".venv", py_para)
+        # 验证针对 SenseVoice 引擎能正确路由到具备 sherpa_onnx 的 .venv
+        py_sv = find_voice_python(engine="sensevoice_offline")
+        self.assertIn(".venv", py_sv)
+
 
 if __name__ == "__main__":
     unittest.main()

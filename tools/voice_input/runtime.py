@@ -50,10 +50,41 @@ def _score_interpreter(py_path: str) -> int:
     return -1
 
 
-def find_voice_python(repo_root: Optional[Path] = None) -> str:
-    """按依赖完备度与优先级智能寻找能够正常运行语音伴侣的 Python 解释器路径"""
+def _check_module_in_interpreter(py_path: str, module_name: str) -> bool:
+    """快速探测解释器中是否安装了指定模块"""
+    if not py_path:
+        return False
+    code = f"import importlib.util; exit(0 if importlib.util.find_spec('{module_name}') is not None else 1)"
+    try:
+        res = subprocess.run([py_path, "-c", code], capture_output=True, timeout=2)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = None) -> str:
+    """按依赖完备度与目标引擎诉求智能寻找最匹配能够运行该 ASR 引擎的 Python 解释器路径"""
     if repo_root is None:
         repo_root = get_repo_root()
+
+    if engine is None:
+        try:
+            cfg_file = repo_root / "config.json"
+            if cfg_file.is_file():
+                import json
+                with open(cfg_file, "r", encoding="utf-8") as f:
+                    conf = json.load(f)
+                engine = conf.get("tools", {}).get("voice", {}).get("engine")
+        except Exception:
+            pass
+
+    target_mod = None
+    if engine:
+        eng_lower = str(engine).lower()
+        if "paraformer" in eng_lower:
+            target_mod = "funasr"
+        elif "sensevoice" in eng_lower:
+            target_mod = "sherpa_onnx"
 
     candidates = []
 
@@ -86,7 +117,13 @@ def find_voice_python(repo_root: Optional[Path] = None) -> str:
             seen.add(c)
             unique_candidates.append(c)
 
-    # 逐一按优先级探针测试候选者（.venv 优先于系统全局 python）
+    # 若指定了目标引擎必需的核心模块，优先选出满足该模块且基础探针正常的解释器
+    if target_mod:
+        for cand in unique_candidates:
+            if _probe_interpreter(cand) and _check_module_in_interpreter(cand, target_mod):
+                return cand
+
+    # 其次按优先级探针测试候选者
     for cand in unique_candidates:
         if _probe_interpreter(cand):
             return cand

@@ -144,6 +144,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
                      {"sha": "new12345", "short_sha": "new1234", "branch": "master"}
                  ]), \
                  mock.patch.object(updater, "_compile_check", return_value=(True, "")), \
+                 mock.patch("relay_updater._is_git_repo", return_value=True), \
                  mock.patch("relay_updater._run_git", return_value=mock.Mock(returncode=0, stdout="", stderr="")):
 
                 ok, msg = updater.apply_update(restart_callback=lambda: restart_called.set())

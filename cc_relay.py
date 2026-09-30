@@ -1080,17 +1080,17 @@ def voice_start(conf=None):
         _VOICE_LAST_ERROR = None
         return "already"
 
-    try:
-        from tools.voice_input.runtime import find_voice_python
-        from pathlib import Path
-        py_exe = find_voice_python(Path(BASE))
-    except Exception:
-        py_exe = sys.executable
-
     v_conf = conf.get("tools", {}).get("voice", {})
     hotkey = v_conf.get("hotkey", "mouse_x1")
     engine = v_conf.get("engine", "sensevoice_offline")
     port = str(v_conf.get("port", 8401))
+
+    try:
+        from tools.voice_input.runtime import find_voice_python
+        from pathlib import Path
+        py_exe = find_voice_python(Path(BASE), engine=engine)
+    except Exception:
+        py_exe = sys.executable
 
     # 静默自愈依赖检测
     try:
@@ -1490,15 +1490,18 @@ def is_cli_placeholder(model: str) -> bool:
     return False
 
 
-def _route_by_system_prompt(headers, body_json, requested_model=""):
-    """针对官方模型名称 (如 claude-opus-5, claude-sonnet-5, claude-haiku-4-5-20251001 等)，
-    完全根据 system 提示词内容来区分角色分流：
-    1. Plan 规划代理 -> agent
-    2. Explore 搜索代理 -> opus
-    3. 安全审查 / 状态行 / claude guide 等特定辅助代理 -> sonnet
-    4. 会话命名 / 快速任务 / Haiku族 -> fast
-    5. 其他明确子代理 (带 agent-id 或 cc_is_subagent) -> opus
-    6. 主循环 (CLI 默认、Desktop 默认等，或不含明确子代理特征) -> main
+def _classify_request_role(headers, body_json, requested_model=""):
+    """统一角色分流函数：无论是占位符 relay-main 还是官方模型名 (claude-*)，
+    统一根据请求头与 system 提示词内容区分角色分流：
+    1. 优先子代理检测与角色细分：
+       - Plan 代理 -> agent 档 (架构设计与长程规划)
+       - Explore 代理 -> opus 档 (代码搜索与大上下文探索)
+       - 安全审查 / 状态行 / Guide 等特定辅助代理 -> sonnet 档
+       - 其他子代理 (携带 Agent ID 或 cc_is_subagent) -> agent 档 (默认主力智能体)
+    2. 辅助轻量任务：
+       - 会话命名 / 快速任务 (naming a coding session 等) -> fast 档
+       - 未知纯 Haiku 请求 -> fast 档
+    3. 主会话循环 (CLI 默认、Desktop 默认等) -> main 档
     """
     sys = (body_json or {}).get("system")
     txt = ""
@@ -1507,7 +1510,7 @@ def _route_by_system_prompt(headers, body_json, requested_model=""):
     elif isinstance(sys, list):
         txt = " ".join((c.get("text") or "") for c in sys if isinstance(c, dict))
 
-    # 1. Plan 规划代理
+    # 1. Plan 规划代理 (优先级最高，确保精准走 agent)
     if any(sig in txt for sig in (
         "software architect and planning specialist",
         "planning specialist for Claude Code",
@@ -1515,7 +1518,7 @@ def _route_by_system_prompt(headers, body_json, requested_model=""):
     )):
         return "agent"
 
-    # 2. Explore 搜索代理
+    # 2. Explore 搜索代理 (走 opus 档)
     if any(sig in txt for sig in (
         "file search specialist for Claude Code",
         "thoroughly navigating and exploring codebases",
@@ -1538,16 +1541,9 @@ def _route_by_system_prompt(headers, body_json, requested_model=""):
     )):
         return "fast"
 
-    # 5. 明确带有子代理标记 (有 agent-id 或 cc_is_subagent=true) 的其他普通子代理 -> 走 opus 档
-    hdrs = headers or {}
-    has_agent_id = False
-    if hasattr(hdrs, "items"):
-        for k, v in hdrs.items():
-            if str(k).strip().lower() == "x-claude-code-agent-id" and v:
-                has_agent_id = True
-                break
-    if has_agent_id or "cc_is_subagent=true" in txt:
-        return "opus"
+    # 5. 明确带有子代理标记 (有 agent-id 或 cc_is_subagent=true 或 Claude Agent SDK) -> 走 agent 档
+    if _is_subagent(headers, body_json):
+        return "agent"
 
     # 6. 未知纯 Haiku 请求 -> 走 fast 档
     if str(requested_model or "").lower().startswith("claude-haiku"):
@@ -1555,6 +1551,10 @@ def _route_by_system_prompt(headers, body_json, requested_model=""):
 
     # 7. 其余（包括带 <application_details> 的 Desktop 主循环等）一律视为主循环 -> main
     return "main"
+
+
+# 保留别名以保持兼容
+_route_by_system_prompt = _classify_request_role
 
 
 def _is_subagent(headers, body_json):
@@ -1579,28 +1579,12 @@ def _is_subagent(headers, body_json):
             "You are a Claude agent",
             "software architect and planning specialist",
             "planning specialist for Claude Code",
+            "software architect agent for designing implementation plans",
+            "file search specialist for Claude Code",
+            "thoroughly navigating and exploring codebases",
             "You are a software engineer for Claude Code",
         )
         return any(sig in txt for sig in signatures)
-    except Exception:
-        return False
-
-
-def _is_plan_subagent(headers, body_json):
-    """专门识别 Plan 规划子代理 (不论来自 CLI 还是 Desktop 客户端带 Opus 模型)"""
-    try:
-        sys = (body_json or {}).get("system")
-        txt = ""
-        if isinstance(sys, str):
-            txt = sys
-        elif isinstance(sys, list):
-            txt = " ".join((c.get("text") or "") for c in sys if isinstance(c, dict))
-        plan_signatures = (
-            "software architect and planning specialist",
-            "planning specialist for Claude Code",
-            "software architect agent for designing implementation plans",
-        )
-        return any(sig in txt for sig in plan_signatures)
     except Exception:
         return False
 
@@ -1940,37 +1924,28 @@ def pick_route(conf, headers, body_json):
     raw_base, _ = _strip_model_suffix(raw_model)
     m_lower = raw_base.lower()
 
-    # ---------------- 轨道一：CLI 原生占位符体系 ----------------
-    # 收到 relay-main, OPUS_MODEL, SONNET_MODEL, FAST_MODEL 等占位符时，完全按 CLI 原有逻辑
-    if is_cli_placeholder(raw_base):
-        # OPUS 档 (CLI Explore 代理专属)
-        if m_lower in ("opus_model", "relay-opus"):
-            m = (tier.get("opus") or hv).strip()
-            return _up(m), m, "hybrid:opus"
-        # SONNET 档
-        if m_lower in ("sonnet_model", "relay-sonnet"):
-            m = (tier.get("sonnet") or dd).strip()
-            return _up(m), m, "hybrid:sonnet"
-        # FAST 档
-        if m_lower in ("fast_model", "relay-fast"):
-            m = (tier.get("fast") or dd).strip()
-            return _up(m), m, "hybrid:fast"
-        # relay-main / 其它占位符: 子代理走 agent 档，主会话走 main 档
-        if _is_subagent(headers, body_json):
-            m = (tier.get("agent") or dd).strip()
-            return _up(m), m, "hybrid:agent"
-        m = (tier.get("main") or dd).strip()
-        return _up(m), m, "hybrid:main"
+    # ---------------- 阶段一：显式专属占位符 ----------------
+    # 显式指定某档位的占位符，直接映射到对应档位
+    if m_lower in ("opus_model", "relay-opus"):
+        m = (tier.get("opus") or hv).strip()
+        return _up(m), m, "hybrid:opus"
+    if m_lower in ("sonnet_model", "relay-sonnet"):
+        m = (tier.get("sonnet") or dd).strip()
+        return _up(m), m, "hybrid:sonnet"
+    if m_lower in ("fast_model", "relay-fast"):
+        m = (tier.get("fast") or dd).strip()
+        return _up(m), m, "hybrid:fast"
 
-    # ---------------- 直连已知 provider 模型 (gpt-*, gemini-*, deepseek-*) ----------------
+    # ---------------- 阶段二：直连已知 provider 模型 (gpt-*, gemini-*, deepseek-*) ----------------
     if provider_for_model(model, conf) == "codex":
         return "codex", model, "hybrid:gpt-direct"
     if provider_for_model(model, conf) == "antigravity":
         return "antigravity", model, "hybrid:antigravity-direct"
 
-    # ---------------- 轨道二：客户端/官方模型名称体系 (如 claude-opus-5, claude-sonnet-5 等) ----------------
-    # 完全由 system 提示词内容来区分角色分流，避免主循环的 claude-opus-5 误入 opus 档
-    role = _route_by_system_prompt(headers, body_json, requested_model=raw_base)
+    # ---------------- 阶段三：统一智能分流引擎 ----------------
+    # 无论收到的是 relay-main 占位符、无模型请求，还是官方模型名 (如 claude-opus-5, claude-sonnet-5 等)，
+    # 统一通过提示词与 Agent 特征进行智能角色分流：
+    role = _classify_request_role(headers, body_json, requested_model=raw_base)
     if role == "agent":
         m = (tier.get("agent") or dd).strip()
         return _up(m), m, "hybrid:agent"

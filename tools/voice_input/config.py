@@ -21,8 +21,8 @@ class VoiceConfig:
     port: int = 8401
     auto_start: bool = False
 
-    # 引擎模式: "sensevoice_offline" (推荐轻量极速，纯 CPU) | "paraformer_streaming_2pass" (FunASR 进阶)
-    engine: str = "sensevoice_offline"
+    # 引擎模式: "sherpa_2pass" (统一 2-Pass：流式 Zipformer + 离线 SenseVoice) | "sensevoice_offline" (轻量极速，纯 CPU) | "paraformer_streaming_2pass" (兼容向后兼容别名)
+    engine: str = "sherpa_2pass"
 
     # 音频参数
     sample_rate: int = 16000
@@ -62,6 +62,30 @@ class VoiceConfig:
     def sensevoice_tokens_path(self) -> Path:
         return self.models_dir / self.sensevoice_model_name / self.sensevoice_tokens_filename
 
+    @property
+    def model_path(self) -> Path:
+        """向后兼容属性别名"""
+        return self.sensevoice_model_path
+
+    @property
+    def tokens_path(self) -> Path:
+        """向后兼容属性别名"""
+        return self.sensevoice_tokens_path
+
+    @property
+    def streaming_model_dir(self) -> Path:
+        return self.models_dir / "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+
+    def is_streaming_model_installed(self) -> bool:
+        d = self.streaming_model_dir
+        if not d.is_dir():
+            return False
+        has_encoder = any(d.glob("encoder*.onnx"))
+        has_decoder = any(d.glob("decoder*.onnx"))
+        has_joiner = any(d.glob("joiner*.onnx"))
+        has_tokens = (d / "tokens.txt").is_file()
+        return has_encoder and has_decoder and has_joiner and has_tokens
+
     def is_sensevoice_installed(self) -> bool:
         return self.sensevoice_model_path.is_file() and self.sensevoice_tokens_path.is_file()
 
@@ -76,7 +100,8 @@ class VoiceConfig:
             raise ValueError(f"vad_mode 必须为 0~3，当前: {self.vad_mode}")
         if self.min_recording_seconds <= 0 or self.max_recording_seconds <= self.min_recording_seconds:
             raise ValueError("录音时长阈值非法")
-        if self.engine not in ("paraformer_streaming_2pass", "sensevoice_offline"):
+        valid_engines = ("sherpa_2pass", "paraformer_streaming_2pass", "sensevoice_offline")
+        if self.engine not in valid_engines:
             raise ValueError(f"不支持的引擎: {self.engine}")
         if not (1024 <= self.port <= 65535):
             raise ValueError(f"端口超出范围: {self.port}")

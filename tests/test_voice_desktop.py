@@ -50,11 +50,7 @@ class TestDesktopVoiceWidget(unittest.TestCase):
         self.widget = DesktopVoiceWidget(self.coord, default_x=100, default_y=100)
 
     def tearDown(self):
-        if self.widget.root:
-            try:
-                self.widget.root.destroy()
-            except Exception:
-                pass
+        self.widget.stop()
 
     @mock.patch("tools.voice_input.desktop.user32")
     def test_create_window_and_non_activate_style(self, mock_user32):
@@ -114,6 +110,46 @@ class TestDesktopVoiceWidget(unittest.TestCase):
         self.coord.last_error = "麦克风设备未就绪"
         self.widget._apply_state_change(SessionState.ERROR, None)
         self.assertIn("麦克风设备未就绪", self.widget.status_label.cget("text"))
+
+    @mock.patch.object(VoiceConfig, "is_sensevoice_installed", return_value=True)
+    def test_model_badge_and_vertical_expansion(self, mock_sv):
+        from tools.voice_input.session import SessionState
+        self.widget.create_window()
+
+        # 检查模型徽章在 SenseVoice 就绪时显示 SenseVoice
+        self.assertIsNotNone(self.widget.model_badge)
+        self.assertEqual(self.widget.model_badge.cget("text"), "SenseVoice")
+
+        # 触发录音，验证向下竖向展开抽屉
+        self.widget._apply_state_change(SessionState.RECORDING, None)
+        self.widget.root.update()
+        self.assertTrue(self.widget.drawer_frame.winfo_ismapped())
+        self.assertEqual(self.widget.status_label.cget("text"), "● 正在聆听")
+
+        # 触发流式文字更新
+        self.widget._apply_partial_text("测试流式语音输入")
+        self.assertIn("测试流式语音输入", self.widget.stream_label.cget("text"))
+
+        # 恢复折叠
+        self.widget._collapse_capsule()
+        self.widget.root.update()
+        self.assertFalse(self.widget.drawer_frame.winfo_ismapped())
+        self.assertEqual(self.widget.status_label.cget("text"), "点击语音输入")
+
+    @mock.patch.object(VoiceConfig, "is_sensevoice_installed", return_value=False)
+    def test_preflight_fallback_detection(self, mock_sv):
+        # 当 SenseVoice 未下载但本地已缓存 Paraformer 时，启动前预检直接显示 Paraformer
+        self.widget.create_window()
+        self.assertEqual(self.widget.model_badge.cget("text"), "Paraformer")
+
+    def test_paraformer_badge_detection(self):
+        class FakeParaformerEngine:
+            is_loaded = True
+            def get_capabilities(self):
+                return {"engine": "paraformer_streaming_2pass"}
+        self.coord.engine = FakeParaformerEngine()
+        self.widget.create_window()
+        self.assertEqual(self.widget.model_badge.cget("text"), "Paraformer")
 
 
 if __name__ == "__main__":

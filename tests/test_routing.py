@@ -15,6 +15,7 @@ from cc_relay import (
     _strip_model_suffix,
     is_relay_placeholder,
     _is_subagent,
+    _classify_request_role,
     pick_route,
 )
 
@@ -104,13 +105,49 @@ class TestRoutingAndSubagent(unittest.TestCase):
         self.assertFalse(_is_subagent({}, {}))
 
     def test_pick_route_relay_main_subagent(self):
-        # relay-main[1m] + 子代理请求头 -> 应命中 hybrid:agent 并选用 agent 档模型
-        headers = {"x-claude-code-agent-id": "plan-agent-001"}
+        # relay-main[1m] + 普通子代理请求头(无特定提示词) -> 默认命中 hybrid:agent 并选用 agent 档模型
+        headers = {"x-claude-code-agent-id": "agent-001"}
         body = {"model": "relay-main[1m]", "system": "test"}
         up, model, reason = pick_route(self.conf, headers, body)
         self.assertEqual(reason, "hybrid:agent")
         self.assertEqual(model, "gpt-5.6-sol")
         self.assertEqual(up, "codex")
+
+    def test_pick_route_relay_main_explore_subagent(self):
+        # relay-main[1m] + Explore 代理 (即使带 agent-id，也精准分流到 hybrid:opus)
+        headers = {"x-claude-code-agent-id": "explore-agent-001"}
+        body = {
+            "model": "relay-main[1m]",
+            "system": "You are a file search specialist for Claude Code. Thoroughly navigating and exploring codebases.",
+        }
+        up, model, reason = pick_route(self.conf, headers, body)
+        self.assertEqual(reason, "hybrid:opus")
+        self.assertEqual(model, "gpt-5.6-sol")
+        self.assertEqual(up, "codex")
+
+    def test_pick_route_relay_main_plan_subagent(self):
+        # relay-main[1m] + Plan 代理 (带 agent-id，精准命中 hybrid:agent)
+        headers = {"x-claude-code-agent-id": "plan-agent-001"}
+        body = {
+            "model": "relay-main[1m]",
+            "system": "You are a software architect and planning specialist for Claude Code.",
+        }
+        up, model, reason = pick_route(self.conf, headers, body)
+        self.assertEqual(reason, "hybrid:agent")
+        self.assertEqual(model, "gpt-5.6-sol")
+        self.assertEqual(up, "codex")
+
+    def test_pick_route_relay_main_guide_subagent(self):
+        # relay-main[1m] + Guide / 辅助代理 -> 命中 hybrid:sonnet
+        headers = {"x-claude-code-agent-id": "guide-001"}
+        body = {
+            "model": "relay-main[1m]",
+            "system": "You are the Claude guide agent.",
+        }
+        up, model, reason = pick_route(self.conf, headers, body)
+        self.assertEqual(reason, "hybrid:sonnet")
+        self.assertEqual(model, "deepseek-chat")
+        self.assertEqual(up, "deepseek")
 
     def test_pick_route_relay_main_plan_system_prompt(self):
         # relay-main[1m] + Plan 代理 system prompt (即使无 header) -> 命中 hybrid:agent

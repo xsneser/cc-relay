@@ -107,10 +107,20 @@ class AudioRecorder:
         self.speech_detected = False
         self._last_speech_time: float = 0.0
         self._trailing_silence_seconds: float = 0.0
+        self._silence_timeout_triggered: bool = False
+        self._max_duration_triggered: bool = False
 
     @property
     def is_recording(self) -> bool:
         return self._recording
+
+    def feed_pre_roll(self, pcm_bytes: bytes) -> None:
+        """非录音期间注入环境静默/预录音频帧，保持 ring buffer 处于预热状态"""
+        step = self.frame_bytes
+        for i in range(0, len(pcm_bytes), step):
+            frame = pcm_bytes[i : i + step]
+            if len(frame) == step:
+                self._pre_roll_buffer.append(frame)
 
     def _callback(self, indata, frames, time_info, status):
         """sounddevice 回调函数：将接收到的 float32 音频转换为 int16 PCM 字节"""
@@ -133,6 +143,17 @@ class AudioRecorder:
         step = self.frame_bytes
         now = time.monotonic()
 
+        # 检查是否达到单次最大录音时长
+        if self.max_duration > 0 and (now - self._start_time) >= self.max_duration:
+            if not self._max_duration_triggered:
+                self._max_duration_triggered = True
+                if self.on_silence_timeout is not None:
+                    try:
+                        self.on_silence_timeout()
+                    except Exception:
+                        pass
+            return
+
         for i in range(0, len(pcm_bytes), step):
             frame = pcm_bytes[i : i + step]
             if len(frame) == step:
@@ -141,11 +162,13 @@ class AudioRecorder:
                 if is_speech:
                     self.speech_detected = True
                     self._last_speech_time = now
+                    self._silence_timeout_triggered = False
 
-                # 如果已经检测到说话，检查静音是否超时
+                # 如果已经检测到说话，检查静音是否超时 (单次触发，防止高频重复调用)
                 if self.speech_detected and self.silence_timeout_seconds > 0:
                     silence_duration = now - self._last_speech_time
-                    if silence_duration >= self.silence_timeout_seconds:
+                    if silence_duration >= self.silence_timeout_seconds and not self._silence_timeout_triggered:
+                        self._silence_timeout_triggered = True
                         if self.on_silence_timeout is not None:
                             try:
                                 self.on_silence_timeout()
@@ -172,9 +195,11 @@ class AudioRecorder:
                     break
             self._all_pcm_chunks.clear()
 
-            # 重置 VAD 跟踪
+            # 重置 VAD 跟踪与超时状态
             self.speech_detected = False
             self._last_speech_time = time.monotonic()
+            self._silence_timeout_triggered = False
+            self._max_duration_triggered = False
 
             # 将 pre-roll 帧预注入队列与完整音频归档
             for frame in self._pre_roll_buffer:
