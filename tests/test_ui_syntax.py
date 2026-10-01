@@ -365,26 +365,34 @@ class TestUISyntax(unittest.TestCase):
         self.assertEqual(res.returncode, 0, f"Node verification failed: {res.stderr}")
 
     def test_model_efforts_definitions(self):
-        # 验证 gpt-6 系列模型的推理挡位定义
-        self.assertIn("'gpt-6-sol':                   ['instant', 'medium', 'high', 'xhigh', 'max']", self.html)
-        self.assertIn("'gpt-6-luna':                  ['instant', 'medium', 'high', 'xhigh']", self.html)
+        # 验证 gpt-6 系列模型的推理挡位定义 (原生档位: low, medium, high, xhigh, max)
+        self.assertIn("'gpt-6-sol':                   ['low', 'medium', 'high', 'xhigh', 'max']", self.html)
+        self.assertIn("'gpt-6.1-sol':                 ['low', 'medium', 'high', 'xhigh', 'max']", self.html)
+        self.assertIn("'gpt-6-luna':                  ['low', 'medium', 'high', 'xhigh']", self.html)
 
         node_bin = shutil.which("node")
         if not node_bin:
             self.skipTest("Node.js is not installed or not in PATH")
 
         js_code = self.html[self.html.index("const MODEL_EFFORTS = {"):self.html.index("let st = null, busy = false;")] + """
-        // gpt-6-sol 必须支持 5 挡 (包含 max)
+        // gpt-6-sol 必须支持 5 挡 (low 到 max)
         const solEffs = effortsFor('gpt-6-sol');
-        if (!Array.isArray(solEffs) || solEffs.length !== 5 || !solEffs.includes('max')) {
-            console.error('gpt-6-sol should have 5 efforts including max, got:', solEffs);
+        if (!Array.isArray(solEffs) || solEffs.length !== 5 || !solEffs.includes('low') || !solEffs.includes('max')) {
+            console.error('gpt-6-sol should have 5 efforts including low and max, got:', solEffs);
+            process.exit(1);
+        }
+
+        // gpt-6.1-sol 同样必须支持 5 挡 (包含 max)
+        const sol61Effs = effortsFor('gpt-6.1-sol');
+        if (!Array.isArray(sol61Effs) || sol61Effs.length !== 5 || !sol61Effs.includes('low') || !sol61Effs.includes('max')) {
+            console.error('gpt-6.1-sol should have 5 efforts including low and max, got:', sol61Effs);
             process.exit(1);
         }
 
         // gpt-6-luna 必须支持 4 挡 (不含 max)
         const lunaEffs = effortsFor('gpt-6-luna');
-        if (!Array.isArray(lunaEffs) || lunaEffs.length !== 4 || lunaEffs.includes('max')) {
-            console.error('gpt-6-luna should have 4 efforts without max, got:', lunaEffs);
+        if (!Array.isArray(lunaEffs) || lunaEffs.length !== 4 || !lunaEffs.includes('low') || lunaEffs.includes('max')) {
+            console.error('gpt-6-luna should have 4 efforts with low and without max, got:', lunaEffs);
             process.exit(1);
         }
         """
