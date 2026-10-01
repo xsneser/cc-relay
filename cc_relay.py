@@ -1300,7 +1300,7 @@ def voice_owned(conf=None):
 
 # ---------- 路由决策 ----------
 
-CODEX_MODELS = ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna",
+CODEX_MODELS = ["gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna",
                 "gpt-5.6-terra", "gpt-5.5", "gpt-5.3-codex-spark"]
 DEEPSEEK_MODELS = ["deepseek-flash", "deepseek-v4-pro"]
 # Antigravity 8045 的运行时模型优先; 这些只用于上游不可用时的安全回退。
@@ -1309,17 +1309,17 @@ DEFAULT_CODEX_MAP = "gpt-5.6-sol"
 DEFAULT_DS_MAP = "deepseek-flash"
 DEFAULT_GEMINI_MAP = "gemini-3.7-flash-low"
 # 推理强度 -> 请求 body 的 thinking 参数
-# 档位依据: GPT-5.6 API 支持 none/low/medium/high/xhigh/max; 经 CLIProxyAPI 转换后
-#   budget 阈值映射到 codex 的 reasoning effort(本地实测 xhigh/32768 触发思考 token)
+# 档位依据: GPT API 原生档位支持 low/medium/high/xhigh/max; 经 CLIProxyAPI 转换后
+#   budget 阈值映射到 codex 的 reasoning effort (513-1024->low, 1025-8192->medium, 8193-24576->high, 24577+->xhigh/max)
 REASONING_MAP = {
     "off":     {"type": "disabled"},
     "on":      {"type": "enabled"},
-    "instant": {"type": "enabled", "budget_tokens": 512},
-    "low":     {"type": "enabled", "budget_tokens": 2048},
-    "medium":  {"type": "enabled", "budget_tokens": 8192},
-    "high":    {"type": "enabled", "budget_tokens": 16384},
-    "xhigh":   {"type": "enabled", "budget_tokens": 32768},
-    "max":     {"type": "enabled", "budget_tokens": 65536},
+    "instant": {"type": "enabled", "budget_tokens": 1024},  # 兼容别名, 映射至 low
+    "low":     {"type": "enabled", "budget_tokens": 1024},  # CLIProxyAPI 513-1024 为 low
+    "medium":  {"type": "enabled", "budget_tokens": 8192},  # 1025-8192 为 medium
+    "high":    {"type": "enabled", "budget_tokens": 16384}, # 8193-24576 为 high
+    "xhigh":   {"type": "enabled", "budget_tokens": 32768}, # 24577+ 为 xhigh
+    "max":     {"type": "enabled", "budget_tokens": 65536}, # 65536+ 为 max
 }
 EFFORT_VALUES = tuple(REASONING_MAP)
 _MODELS_CACHE = {"ts": 0, "ds": list(DEEPSEEK_MODELS), "cx": list(CODEX_MODELS),
@@ -2369,11 +2369,11 @@ def stats_snapshot():
             'modifier_file_exists': os.path.exists(MODIFIER_FILE),
             'modifier_error': _MOD_MGR._err,
             'tier_efforts': {
-                'main':   ((rt.get('tier_efforts') or {}).get('main')   or rt.get('effort') or 'medium'),
-                'opus':   ((rt.get('tier_efforts') or {}).get('opus')   or rt.get('effort') or 'medium'),
-                'sonnet': ((rt.get('tier_efforts') or {}).get('sonnet') or rt.get('effort') or 'medium'),
-                'fast':   ((rt.get('tier_efforts') or {}).get('fast')   or rt.get('effort') or 'medium'),
-                'agent':  ((rt.get('tier_efforts') or {}).get('agent')  or rt.get('effort') or 'medium'),
+                'main':   ('low' if (rt.get('tier_efforts') or {}).get('main') == 'instant' else ((rt.get('tier_efforts') or {}).get('main') or ('low' if rt.get('effort') == 'instant' else rt.get('effort')) or 'medium')),
+                'opus':   ('low' if (rt.get('tier_efforts') or {}).get('opus') == 'instant' else ((rt.get('tier_efforts') or {}).get('opus') or ('low' if rt.get('effort') == 'instant' else rt.get('effort')) or 'medium')),
+                'sonnet': ('low' if (rt.get('tier_efforts') or {}).get('sonnet') == 'instant' else ((rt.get('tier_efforts') or {}).get('sonnet') or ('low' if rt.get('effort') == 'instant' else rt.get('effort')) or 'medium')),
+                'fast':   ('low' if (rt.get('tier_efforts') or {}).get('fast') == 'instant' else ((rt.get('tier_efforts') or {}).get('fast') or ('low' if rt.get('effort') == 'instant' else rt.get('effort')) or 'medium')),
+                'agent':  ('low' if (rt.get('tier_efforts') or {}).get('agent') == 'instant' else ((rt.get('tier_efforts') or {}).get('agent') or ('low' if rt.get('effort') == 'instant' else rt.get('effort')) or 'medium')),
             },
             'deepseek_profile': {'default_model': 'deepseek-flash'},
             'hybrid_pins': {'ANTHROPIC_DEFAULT_OPUS_MODEL': 'gpt-5.6-sol'},
@@ -3343,6 +3343,8 @@ class UIHandler(BaseHTTPRequestHandler):
                 # 推理强度 effort 为全局设置, 任何路由下都可修改 (档位见 EFFORT_VALUES)
                 if data.get("effort") is not None:
                     v = str(data.get("effort") or "").strip()
+                    if v == "instant":
+                        v = "low"
                     if v in EFFORT_VALUES:
                         rt["effort"] = v
                     else:
@@ -3353,6 +3355,8 @@ class UIHandler(BaseHTTPRequestHandler):
                     cur = dict(rt.get("tier_efforts") or {})
                     for k in ("main", "opus", "sonnet", "fast", "agent"):
                         v = str((t or {}).get(k) or "").strip()
+                        if v == "instant":
+                            v = "low"
                         if v in EFFORT_VALUES:
                             cur[k] = v
                     if cur:
