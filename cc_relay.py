@@ -14,7 +14,7 @@ CC 统一中转 (unified relay)
     python cc_relay.py stats | last [n] | dump <idx>
     python cc_relay.py startproxy | stopproxy     # 手动管理 codex 上游
 """
-import os, sys, json, time, threading, argparse, subprocess, socket, re, shutil
+import os, sys, json, time, threading, argparse, subprocess, socket, select, re, shutil
 import urllib.request, urllib.error
 from urllib.parse import urlsplit
 from cpa_updater import CPAUpdater
@@ -85,6 +85,44 @@ def _save_conf(conf):
 def traffic_paused(conf):
     """返回流量闸门状态: True 表示用户已手动暂停所有上游流量."""
     return (conf or {}).get("traffic_paused", False) is True
+
+
+_TRAFFIC_UNPAUSED_EVENT = threading.Event()
+_PAUSED_WAITING_COUNT = 0
+_PAUSED_WAITING_LOCK = threading.Lock()
+
+
+def _paused_waiting_inc():
+    global _PAUSED_WAITING_COUNT
+    with _PAUSED_WAITING_LOCK:
+        _PAUSED_WAITING_COUNT += 1
+
+
+def _paused_waiting_dec():
+    global _PAUSED_WAITING_COUNT
+    with _PAUSED_WAITING_LOCK:
+        if _PAUSED_WAITING_COUNT > 0:
+            _PAUSED_WAITING_COUNT -= 1
+
+
+def _paused_waiting_count():
+    with _PAUSED_WAITING_LOCK:
+        return _PAUSED_WAITING_COUNT
+
+
+def _sync_traffic_unpaused_event(conf=None):
+    if conf is None:
+        try:
+            conf = load_conf()
+        except Exception:
+            conf = None
+    if traffic_paused(conf):
+        _TRAFFIC_UNPAUSED_EVENT.clear()
+    else:
+        _TRAFFIC_UNPAUSED_EVENT.set()
+
+
+_sync_traffic_unpaused_event()
 
 
 _RESTART_LOCK = threading.Lock()
@@ -2327,6 +2365,7 @@ def stats_snapshot():
     # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶。
     res = {'route': route, 'mode': route,
             'traffic_paused': traffic_paused(conf),
+            'paused_waiting_requests': _paused_waiting_count(),
             'antigravity_auto_start': antigravity_auto_start_enabled(conf),
             'instance_id': _PROCESS_INSTANCE_ID,
             'model': rt.get('model', ''),
@@ -2482,6 +2521,7 @@ def _calls_snapshot(n):
                 "has_custom_prompt": bool(r.get("custom_prompt")),
                 "stripped_banner": bool(r.get("stripped_banner")),
                 "traffic_paused": bool(r.get("traffic_paused") or r.get("route") == "paused"),
+                "paused_wait_sec": r.get("paused_wait_sec"),
                 "duration": duration,
                 "output_tokens": out_tok or 0,
                 "speed": speed,
@@ -2494,6 +2534,35 @@ def _calls_snapshot(n):
 
 
 # ---------- HTTP ----------
+
+def _send_sse_error(wfile, err_payload, is_anthropic=True):
+    """向已建立 200 chunked SSE 连接的客户端下发协议级错误事件并正常关闭分块流."""
+    try:
+        if is_anthropic:
+            chunk = f"event: error\ndata: {json.dumps(err_payload, ensure_ascii=False)}\n\n".encode("utf-8")
+        else:
+            chunk = f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n\ndata: [DONE]\n\n".encode("utf-8")
+        wfile.write(f"{len(chunk):x}\r\n".encode("ascii") + chunk + b"\r\n")
+        wfile.write(b"0\r\n\r\n")
+        wfile.flush()
+    except Exception:
+        pass
+
+
+def _is_client_socket_closed(sock):
+    """检测下游客户端 TCP 连接是否已断开 (FIN / RST / 异常)."""
+    if not sock:
+        return False
+    try:
+        r, _, _ = select.select([sock], [], [], 0)
+        if r:
+            peek = sock.recv(1, socket.MSG_PEEK)
+            if not peek:
+                return True
+    except Exception:
+        return True
+    return False
+
 
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -2560,62 +2629,148 @@ class Relay(BaseHTTPRequestHandler):
             except Exception:
                 body_json = None
 
-        # 流量闸门: 用户手动暂停所有上游流量时短路拦截，返回 503
+        is_anthropic = path.startswith("/v1/messages") or "anthropic" in self.headers.get("anthropic-version", "").lower()
+
+        # 流量闸门: 用户手动暂停所有上游流量时，流式请求模拟挂起与保活，非流式请求等待恢复
+        is_stream_early = False
+        t_pause_wait = 0.0
         if traffic_paused(conf):
-            err_payload = {
-                "type": "error",
-                "error": {
-                    "type": "api_error",
-                    "message": "cc-relay traffic is paused by the operator; resume it in the local relay UI",
-                },
-            }
-            resp_bytes = json.dumps(err_payload, ensure_ascii=False).encode("utf-8")
-            orig_m = (body_json or {}).get("model") if isinstance(body_json, dict) else None
+            is_stream = False
+            if isinstance(body_json, dict) and body_json.get("stream") is True:
+                is_stream = True
+            elif "text/event-stream" in self.headers.get("Accept", "").lower():
+                is_stream = True
+
+            t_pause_start = time.time()
+            _paused_waiting_inc()
+            client_aborted = False
+
             try:
-                record({
-                    "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "method": method, "path": path,
-                    "client": self.client_address[0] if self.client_address else "127.0.0.1",
-                    "headers": {k: v for k, v in self.headers.items()},
-                    "body": body_json,
-                    "body_raw": raw.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)],
-                    "route": "paused", "route_reason": "traffic_paused",
-                    "orig_model": orig_m, "sent_model": None,
-                    "stripped_banner": 0,
-                    "custom_prompt": False,
-                    "upstream": None, "resp_status": 503,
-                    "resp_body": resp_bytes.decode("utf-8", "replace"),
-                    "cache": None,
-                    "resp_error": "traffic_paused",
-                    "traffic_paused": True,
-                })
-            except Exception:
-                pass
-            try:
-                self.send_response(503)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("X-CC-Relay-Traffic-Paused", "1")
-                self.send_header("Content-Length", str(len(resp_bytes)))
-                self.end_headers()
-                if method != "HEAD":
-                    self.wfile.write(resp_bytes)
-            except Exception:
-                pass
-            return
+                if is_stream:
+                    # 模拟流式响应: 先行发送 HTTP 200 与分块传输头，使 Agent 认为请求已成功受理并进入流式接收
+                    try:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                        self.send_header("Cache-Control", "no-cache, no-transform")
+                        self.send_header("Connection", "keep-alive")
+                        self.send_header("Transfer-Encoding", "chunked")
+                        self.send_header("X-CC-Relay-Traffic-Paused", "1")
+                        self.end_headers()
+                    except Exception:
+                        client_aborted = True
+
+                    # 针对协议类型选用标准保活帧:
+                    # Anthropic (/v1/messages): 标准 ping 事件 (SDK 自动 ignore 并重置超时计时器)
+                    # OpenAI 等: 标准 SSE 注释行 (: keep-alive\n\n, SDK 自动丢弃注释保持长连接)
+                    if is_anthropic:
+                        ping_payload = b"event: ping\ndata: {\"type\": \"ping\"}\n\n"
+                    else:
+                        ping_payload = b": keep-alive\n\n"
+
+                    # 立即发送首个保活 chunk
+                    if not client_aborted:
+                        try:
+                            self.wfile.write(f"{len(ping_payload):x}\r\n".encode("ascii") + ping_payload + b"\r\n")
+                            self.wfile.flush()
+                        except Exception:
+                            client_aborted = True
+
+                    # 挂起轮询保活循环
+                    last_ping_t = time.time()
+                    while not client_aborted:
+                        if _is_client_socket_closed(self.connection):
+                            client_aborted = True
+                            break
+                        # 检查恢复事件 (设置 0.25s 超时以便定期发送保活 chunk 并快速感知断开)
+                        if _TRAFFIC_UNPAUSED_EVENT.wait(timeout=0.25):
+                            with CONF_LOCK:
+                                conf = load_conf()
+                            if not traffic_paused(conf):
+                                break
+                        else:
+                            # 超时兜底校验磁盘配置
+                            with CONF_LOCK:
+                                conf = load_conf()
+                            if not traffic_paused(conf):
+                                _TRAFFIC_UNPAUSED_EVENT.set()
+                                break
+
+                        # 仍处于暂停状态，每 3 秒发送一次保活 chunk (同时探测客户端写断开)
+                        now = time.time()
+                        if now - last_ping_t >= 3.0:
+                            last_ping_t = now
+                            try:
+                                self.wfile.write(f"{len(ping_payload):x}\r\n".encode("ascii") + ping_payload + b"\r\n")
+                                self.wfile.flush()
+                            except Exception:
+                                client_aborted = True
+                                break
+
+                    is_stream_early = not client_aborted
+                else:
+                    # 非流式请求: 不提前发响应头，在 socket 上等待恢复信号
+                    while True:
+                        if _is_client_socket_closed(self.connection):
+                            client_aborted = True
+                            break
+                        if _TRAFFIC_UNPAUSED_EVENT.wait(timeout=0.25):
+                            with CONF_LOCK:
+                                conf = load_conf()
+                            if not traffic_paused(conf):
+                                break
+                        else:
+                            with CONF_LOCK:
+                                conf = load_conf()
+                            if not traffic_paused(conf):
+                                _TRAFFIC_UNPAUSED_EVENT.set()
+                                break
+            finally:
+                _paused_waiting_dec()
+
+            t_pause_wait = round(time.time() - t_pause_start, 2)
+
+            if client_aborted:
+                # 客户端在挂起期间主动断开 (例如 Ctrl+C)
+                self.close_connection = True
+                try:
+                    record({
+                        "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "method": method, "path": path,
+                        "client": self.client_address[0] if self.client_address else "127.0.0.1",
+                        "headers": {k: v for k, v in self.headers.items()},
+                        "body": body_json,
+                        "body_raw": raw.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)],
+                        "route": "paused", "route_reason": "traffic_paused_aborted",
+                        "orig_model": (body_json or {}).get("model") if isinstance(body_json, dict) else None,
+                        "sent_model": None,
+                        "stripped_banner": 0, "custom_prompt": False,
+                        "upstream": None, "resp_status": 499,
+                        "resp_body": "client disconnected while traffic was paused",
+                        "cache": None,
+                        "resp_error": "client_aborted",
+                        "duration": t_pause_wait,
+                        "paused_wait_sec": t_pause_wait,
+                        "traffic_paused": True,
+                    })
+                except Exception:
+                    pass
+                return
 
         up_name, map_model, reason = pick_route(conf, self.headers, body_json)
         if up_name == "codex":
             with _CODEX_MAINTENANCE:
                 if _CODEX_MAINTENANCE_ACTIVE:
                     msg = json.dumps({"error": {"type": "api_error", "message": "Codex proxy is updating; retry shortly"}}).encode()
-                    self.send_response(503)
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Content-Length", str(len(msg)))
-                    self.send_header("Retry-After", "3")
-                    self.end_headers()
-                    if method != "HEAD":
-                        self.wfile.write(msg)
+                    if is_stream_early:
+                        _send_sse_error(self.wfile, {"type": "error", "error": {"type": "api_error", "message": "Codex proxy is updating; retry shortly"}}, is_anthropic=is_anthropic)
+                    else:
+                        self.send_response(503)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(msg)))
+                        self.send_header("Retry-After", "3")
+                        self.end_headers()
+                        if method != "HEAD":
+                            self.wfile.write(msg)
                     return
 
         # 若路由到外部 sidecar, 尽量懒启动; 不因启动失败吞掉后续可诊断错误。
@@ -2629,12 +2784,15 @@ class Relay(BaseHTTPRequestHandler):
         base = (up.get("base") or "").strip()
         if not base:
             msg = json.dumps({"error": {"type": "relay_error", "message": "upstream is not configured: " + up_name}}).encode()
-            self.send_response(502)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(msg)))
-            self.end_headers()
-            if method != "HEAD":
-                self.wfile.write(msg)
+            if is_stream_early:
+                _send_sse_error(self.wfile, {"type": "error", "error": {"type": "relay_error", "message": "upstream is not configured: " + up_name}}, is_anthropic=is_anthropic)
+            else:
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                if method != "HEAD":
+                    self.wfile.write(msg)
             return
         codex_request_active = False
         upstream = base.rstrip("/") + path
@@ -2778,13 +2936,16 @@ class Relay(BaseHTTPRequestHandler):
         if up_name == "codex":
             if not _codex_request_enter():
                 msg = json.dumps({"error": {"type": "api_error", "message": "Codex proxy is updating; retry shortly"}}).encode()
-                self.send_response(503)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(msg)))
-                self.send_header("Retry-After", "3")
-                self.end_headers()
-                if method != "HEAD":
-                    self.wfile.write(msg)
+                if is_stream_early:
+                    _send_sse_error(self.wfile, {"type": "error", "error": {"type": "api_error", "message": "Codex proxy is updating; retry shortly"}}, is_anthropic=is_anthropic)
+                else:
+                    self.send_response(503)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(msg)))
+                    self.send_header("Retry-After", "3")
+                    self.end_headers()
+                    if method != "HEAD":
+                        self.wfile.write(msg)
                 return
             codex_request_active = True
 
@@ -2806,13 +2967,48 @@ class Relay(BaseHTTPRequestHandler):
             else:
                 op = urllib.request.build_opener()
             resp = op.open(req, timeout=900)
-            rbody = resp.read(); status = resp.status; rheaders = dict(resp.headers)
+            status = resp.status
+            rheaders = dict(resp.headers)
+            if is_stream_early:
+                rbody_chunks = []
+                while True:
+                    chunk = resp.read(4096)
+                    if not chunk:
+                        break
+                    rbody_chunks.append(chunk)
+                    try:
+                        self.wfile.write(f"{len(chunk):x}\r\n".encode("ascii") + chunk + b"\r\n")
+                        self.wfile.flush()
+                    except Exception:
+                        break
+                try:
+                    self.wfile.write(b"0\r\n\r\n")
+                    self.wfile.flush()
+                except Exception:
+                    pass
+                self.close_connection = True
+                rbody = b"".join(rbody_chunks)
+            else:
+                rbody = resp.read()
         except urllib.error.HTTPError as e:
-            rbody = e.read(); status = e.code; rheaders = dict(e.headers) if e.headers else {}
+            status = e.code
+            rbody = e.read()
+            rheaders = dict(e.headers) if e.headers else {}
+            if is_stream_early:
+                self.close_connection = True
+                try:
+                    err_json = json.loads(rbody.decode("utf-8", "replace"))
+                except Exception:
+                    err_json = {"type": "error", "error": {"type": "upstream_error", "message": rbody.decode("utf-8", "replace")[:500]}}
+                _send_sse_error(self.wfile, err_json, is_anthropic=is_anthropic)
         except Exception as e:
             err = repr(e)
             rbody = json.dumps({"error": {"type": "relay_error", "message": err}}).encode()
             rheaders = {"Content-Type": "application/json"}
+            if is_stream_early:
+                self.close_connection = True
+                err_json = {"type": "error", "error": {"type": "relay_error", "message": err}}
+                _send_sse_error(self.wfile, err_json, is_anthropic=is_anthropic)
         finally:
             if codex_request_active:
                 _codex_request_leave()
@@ -2839,6 +3035,8 @@ class Relay(BaseHTTPRequestHandler):
                 "cache": cache_data,
                 "resp_error": err,
                 "duration": duration,
+                "paused_wait_sec": t_pause_wait if t_pause_wait > 0 else None,
+                "traffic_paused": bool(t_pause_wait > 0),
                 "output_tokens": out_tok,
                 "speed": speed,
             })
@@ -2878,16 +3076,17 @@ class Relay(BaseHTTPRequestHandler):
 
         _UP["last"] = up_name; _UP["last_model"] = sent_model or ""; _UP["last_ts"] = time.time()
 
-        # 回写
-        try:
-            self.send_response(status)
-            self.send_header("Content-Type", rheaders.get("Content-Type", "application/json"))
-            self.send_header("Content-Length", str(len(rbody)))
-            self.end_headers()
-            if method != "HEAD":
-                self.wfile.write(rbody)
-        except Exception:
-            pass
+        # 回写 (若之前在暂停期间已建立 chunked 流，此处不再重复发送头与包体)
+        if not is_stream_early:
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", rheaders.get("Content-Type", "application/json"))
+                self.send_header("Content-Length", str(len(rbody)))
+                self.end_headers()
+                if method != "HEAD":
+                    self.wfile.write(rbody)
+            except Exception:
+                pass
 
     def do_GET(self): self._do("GET")
     def do_POST(self): self._do("POST")
@@ -3023,6 +3222,7 @@ class UIHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "instance_id": _PROCESS_INSTANCE_ID,
                 "traffic_paused": traffic_paused(conf),
+                "paused_waiting_requests": _paused_waiting_count(),
             })
         elif self.path.split("?")[0] == "/api/cpa/version":
             try:
@@ -3281,7 +3481,11 @@ class UIHandler(BaseHTTPRequestHandler):
                         conf["traffic_paused"] = paused
                         _save_conf(conf)
                         changed = True
-                self._json({"ok": True, "traffic_paused": paused, "changed": changed})
+                        if not paused:
+                            _TRAFFIC_UNPAUSED_EVENT.set()
+                        else:
+                            _TRAFFIC_UNPAUSED_EVENT.clear()
+                self._json({"ok": True, "traffic_paused": paused, "changed": changed, "paused_waiting_requests": _paused_waiting_count()})
             except Exception as e:
                 self._json({"error": f"failed to update traffic state: {e}"}, 500)
             return
@@ -3484,6 +3688,7 @@ def serve_ui(conf):
 
 def serve(a):
     conf = load_conf()
+    _sync_traffic_unpaused_event(conf)
     _get_cpa_updater(conf).start(auto_update=lambda: _cpa_auto_update_enabled() and _cpa_auto_update_idle(),
                                  installer=_install_cpa_update)
     ru_conf = (conf.get("tools") or {}).get("relay_update") or {}

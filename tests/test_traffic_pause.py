@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive tests for traffic pause / resume gate."""
+"""Comprehensive tests for traffic pause / resume gate with streaming keep-alive simulation."""
 
 import http.server
 import json
@@ -26,21 +26,41 @@ class MockUpstreamHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        _ = self.rfile.read(length) if length else b""
+        raw = self.rfile.read(length) if length else b""
         self.server.request_count += 1
-        resp = json.dumps({
-            "id": "msg_mock_01",
-            "type": "message",
-            "role": "assistant",
-            "content": [{"type": "text", "text": "hello from upstream"}],
-            "model": "deepseek-flash",
-            "usage": {"input_tokens": 10, "output_tokens": 5},
-        }).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(resp)))
-        self.end_headers()
-        self.wfile.write(resp)
+
+        is_stream = False
+        try:
+            body = json.loads(raw.decode("utf-8"))
+            is_stream = bool(body.get("stream"))
+        except Exception:
+            pass
+
+        if is_stream:
+            sse_content = (
+                b"event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_01\", \"role\": \"assistant\"}}\n\n"
+                b"event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"text_delta\", \"text\": \"hello from stream\"}}\n\n"
+                b"event: message_stop\ndata: {\"type\": \"message_stop\"}\n\n"
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Content-Length", str(len(sse_content)))
+            self.end_headers()
+            self.wfile.write(sse_content)
+        else:
+            resp = json.dumps({
+                "id": "msg_mock_01",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hello from upstream"}],
+                "model": "deepseek-flash",
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
 
 
 class TrafficPauseUnitTests(unittest.TestCase):
@@ -51,6 +71,22 @@ class TrafficPauseUnitTests(unittest.TestCase):
         self.assertFalse(cc_relay.traffic_paused({"traffic_paused": "true"}))  # strict bool check
         self.assertFalse(cc_relay.traffic_paused({"traffic_paused": 1}))
         self.assertTrue(cc_relay.traffic_paused({"traffic_paused": True}))
+
+    def test_paused_waiting_counter_and_event(self):
+        self.assertEqual(cc_relay._paused_waiting_count(), 0)
+        cc_relay._paused_waiting_inc()
+        self.assertEqual(cc_relay._paused_waiting_count(), 1)
+        cc_relay._paused_waiting_dec()
+        self.assertEqual(cc_relay._paused_waiting_count(), 0)
+        # Verify no underflow
+        cc_relay._paused_waiting_dec()
+        self.assertEqual(cc_relay._paused_waiting_count(), 0)
+
+        # Event sync
+        cc_relay._sync_traffic_unpaused_event({"traffic_paused": True})
+        self.assertFalse(cc_relay._TRAFFIC_UNPAUSED_EVENT.is_set())
+        cc_relay._sync_traffic_unpaused_event({"traffic_paused": False})
+        self.assertTrue(cc_relay._TRAFFIC_UNPAUSED_EVENT.is_set())
 
 
 class TrafficPauseIntegrationTests(unittest.TestCase):
@@ -102,6 +138,7 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         self.orig_records = cc_relay.RECORDS
         cc_relay.CONF = self.conf_path
         cc_relay.RECORDS = self.records_path
+        cc_relay._sync_traffic_unpaused_event(self.config_data)
 
         with cc_relay._STATS_LOCK:
             cc_relay._STATS_CACHE.update({"fingerprint": None, "rows": None, "total": 0})
@@ -123,6 +160,7 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         self.relay_thread.start()
 
     def tearDown(self):
+        cc_relay._TRAFFIC_UNPAUSED_EVENT.set()
         self.relay_server.shutdown()
         self.relay_server.server_close()
         self.ui_server.shutdown()
@@ -176,6 +214,8 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("traffic_paused", data)
         self.assertFalse(data["traffic_paused"])
+        self.assertIn("paused_waiting_requests", data)
+        self.assertEqual(data["paused_waiting_requests"], 0)
 
     def test_api_traffic_control(self):
         # 1. Invalid payload: missing 'paused'
@@ -195,6 +235,7 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         self.assertTrue(res.get("ok"))
         self.assertTrue(res.get("traffic_paused"))
         self.assertTrue(res.get("changed"))
+        self.assertFalse(cc_relay._TRAFFIC_UNPAUSED_EVENT.is_set())
 
         # Verify config on disk
         with open(self.conf_path, "r", encoding="utf-8") as f:
@@ -220,6 +261,7 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         self.assertTrue(res3.get("ok"))
         self.assertFalse(res3.get("traffic_paused"))
         self.assertTrue(res3.get("changed"))
+        self.assertTrue(cc_relay._TRAFFIC_UNPAUSED_EVENT.is_set())
 
         with open(self.conf_path, "r", encoding="utf-8") as f:
             disk_conf = json.load(f)
@@ -227,39 +269,42 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         _, _, ping_st2 = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/ping")
         self.assertFalse(ping_st2.get("traffic_paused"))
 
-    def test_relay_pause_interception_and_records(self):
+    def test_relay_pause_streaming_simulation_and_resume(self):
         msg_payload = {
             "model": "deepseek-flash",
             "messages": [{"role": "user", "content": "hello"}],
             "max_tokens": 100,
+            "stream": True,
         }
         auth_hdr = {"x-api-key": self.fake_key}
 
         # Step 1: Normal traffic flows when unpaused
         count_before = self.upstream_server.request_count
-        status, _, res = self._post_json(
+        req0 = urllib.request.Request(
             f"http://127.0.0.1:{self.relay_port}/v1/messages",
-            msg_payload,
-            headers=auth_hdr,
+            data=json.dumps(msg_payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", **auth_hdr},
+            method="POST",
         )
-        self.assertEqual(status, 200)
-        self.assertEqual(res.get("role"), "assistant")
+        with urllib.request.urlopen(req0) as r0:
+            self.assertEqual(r0.status, 200)
+            body0 = r0.read().decode("utf-8")
+            self.assertIn("message_start", body0)
         self.assertEqual(self.upstream_server.request_count, count_before + 1)
 
         # Step 2: Pause traffic via API
         status, _, _ = self._post_json(f"http://127.0.0.1:{self.ui_port}/api/traffic", {"paused": True})
         self.assertEqual(status, 200)
 
-        # Step 3: Paused behavior
-        # 3a. Invalid auth still returns 401
-        bad_auth_status, _, bad_auth_res = self._post_json(
+        # Step 3: Bad auth check still returns 401 even when paused
+        bad_auth_status, _, _ = self._post_json(
             f"http://127.0.0.1:{self.relay_port}/v1/messages",
             msg_payload,
             headers={"x-api-key": "invalid-key"},
         )
         self.assertEqual(bad_auth_status, 401)
 
-        # 3b. Local /v1/models is still allowed through
+        # Step 4: Local /v1/models is still allowed through
         models_status, _, models_res = self._get_json(
             f"http://127.0.0.1:{self.relay_port}/v1/models",
             headers=auth_hdr,
@@ -267,59 +312,137 @@ class TrafficPauseIntegrationTests(unittest.TestCase):
         self.assertEqual(models_status, 200)
         self.assertIn("data", models_res)
 
-        # 3c. /v1/messages is intercepted and returns 503
+        # Step 5: Streaming request arrives during pause
+        # It must receive 200 OK immediately with chunked transfer and event: ping
         count_during = self.upstream_server.request_count
-        pause_status, pause_headers, pause_res = self._post_json(
+        req1 = urllib.request.Request(
             f"http://127.0.0.1:{self.relay_port}/v1/messages",
-            msg_payload,
-            headers=auth_hdr,
+            data=json.dumps(msg_payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", **auth_hdr},
+            method="POST",
         )
-        self.assertEqual(pause_status, 503)
-        self.assertEqual(pause_headers.get("x-cc-relay-traffic-paused"), "1")
-        self.assertEqual(pause_headers.get("cache-control"), "no-store")
-        self.assertIn("error", pause_res)
-        self.assertEqual(pause_res["error"]["type"], "api_error")
-        self.assertIn("paused by the operator", pause_res["error"]["message"])
+        r1 = urllib.request.urlopen(req1, timeout=10)
+        self.assertEqual(r1.status, 200)
+        self.assertEqual(r1.headers.get("Content-Type"), "text/event-stream; charset=utf-8")
+        self.assertEqual(r1.headers.get("Transfer-Encoding"), "chunked")
+        self.assertEqual(r1.headers.get("X-CC-Relay-Traffic-Paused"), "1")
 
-        # Upstream request count MUST NOT increase during pause
+        # Read the first ping event from stream
+        first_chunk = r1.readline()
+        self.assertTrue(b"ping" in first_chunk or b"event" in first_chunk)
+
+        # Upstream request count MUST NOT have increased yet!
         self.assertEqual(self.upstream_server.request_count, count_during)
 
-        # 3d. Verify audit log entry for paused request
-        records = cc_relay.read_records()
-        self.assertTrue(len(records) >= 2)
-        paused_records = [r for r in records if r.get("route") == "paused"]
-        self.assertEqual(len(paused_records), 1)
-        pr = paused_records[0]
-        self.assertEqual(pr.get("resp_status"), 503)
-        self.assertEqual(pr.get("route_reason"), "traffic_paused")
-        self.assertTrue(pr.get("traffic_paused"))
-        self.assertEqual(pr.get("orig_model"), "deepseek-flash")
-        self.assertIsNone(pr.get("sent_model"))
-        self.assertIsNone(pr.get("upstream"))
-        clean_hdrs = {k.lower(): v for k, v in pr.get("headers", {}).items()}
-        self.assertEqual(clean_hdrs.get("x-api-key"), "<redacted>")
+        # Check /api/status shows waiting requests >= 1
+        _, _, st = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/status")
+        self.assertEqual(st.get("paused_waiting_requests"), 1)
 
-        # 3e. Verify calls snapshot includes traffic_paused flag
-        _, _, calls_data = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/calls")
-        paused_calls = [c for c in calls_data.get("calls", []) if c.get("route") == "paused"]
-        self.assertEqual(len(paused_calls), 1)
-        self.assertTrue(paused_calls[0].get("traffic_paused"))
-        self.assertEqual(paused_calls[0].get("status"), 503)
-
-        # Step 4: Resume traffic
+        # Step 6: Resume traffic
         status, _, _ = self._post_json(f"http://127.0.0.1:{self.ui_port}/api/traffic", {"paused": False})
         self.assertEqual(status, 200)
 
-        # Step 5: Traffic flows normally again
-        count_after = self.upstream_server.request_count
-        resume_status, _, resume_res = self._post_json(
-            f"http://127.0.0.1:{self.relay_port}/v1/messages",
-            msg_payload,
-            headers=auth_hdr,
-        )
-        self.assertEqual(resume_status, 200)
-        self.assertEqual(resume_res.get("role"), "assistant")
-        self.assertEqual(self.upstream_server.request_count, count_after + 1)
+        # Step 7: Read the remainder of the stream; it should receive upstream response
+        rest = r1.read()
+        r1.close()
+        self.assertIn(b"hello from stream", rest)
+        self.assertIn(b"message_stop", rest)
+
+        # Upstream count must now have increased by 1!
+        self.assertEqual(self.upstream_server.request_count, count_during + 1)
+
+        # Check /api/status shows waiting requests back to 0
+        _, _, st_after = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/status")
+        self.assertEqual(st_after.get("paused_waiting_requests"), 0)
+
+        # Verify records.jsonl
+        records = cc_relay.read_records()
+        self.assertTrue(len(records) >= 2)
+        last_rec = records[-1]
+        self.assertEqual(last_rec.get("resp_status"), 200)
+        self.assertTrue(last_rec.get("traffic_paused"))
+        self.assertIsNotNone(last_rec.get("paused_wait_sec"))
+
+    def test_relay_pause_client_disconnect(self):
+        # Pause traffic
+        self._post_json(f"http://127.0.0.1:{self.ui_port}/api/traffic", {"paused": True})
+
+        msg_payload = {
+            "model": "deepseek-flash",
+            "messages": [{"role": "user", "content": "test disconnect"}],
+            "stream": True,
+        }
+        body_bytes = json.dumps(msg_payload).encode("utf-8")
+
+        # Connect directly via socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("127.0.0.1", self.relay_port))
+        req_text = (
+            f"POST /v1/messages HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{self.relay_port}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(body_bytes)}\r\n"
+            f"x-api-key: {self.fake_key}\r\n"
+            f"\r\n"
+        ).encode("utf-8") + body_bytes
+        s.sendall(req_text)
+
+        # Read initial 200 response line
+        res_line = s.recv(1024)
+        self.assertIn(b"200 OK", res_line)
+
+        # Close client socket immediately
+        s.close()
+        time.sleep(0.3)
+
+        # Resume traffic and verify waiting requests is 0
+        self._post_json(f"http://127.0.0.1:{self.ui_port}/api/traffic", {"paused": False})
+        _, _, st = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/status")
+        self.assertEqual(st.get("paused_waiting_requests"), 0)
+
+        records = cc_relay.read_records()
+        aborted_recs = [r for r in records if r.get("resp_status") == 499]
+        self.assertTrue(len(aborted_recs) >= 1)
+        self.assertEqual(aborted_recs[-1].get("route_reason"), "traffic_paused_aborted")
+
+    def test_relay_pause_non_streaming(self):
+        # Pause traffic
+        self._post_json(f"http://127.0.0.1:{self.ui_port}/api/traffic", {"paused": True})
+
+        msg_payload = {
+            "model": "deepseek-flash",
+            "messages": [{"role": "user", "content": "non streaming test"}],
+            "stream": False,
+        }
+        auth_hdr = {"x-api-key": self.fake_key}
+
+        result = {}
+
+        def _worker():
+            status, _, res = self._post_json(
+                f"http://127.0.0.1:{self.relay_port}/v1/messages",
+                msg_payload,
+                headers=auth_hdr,
+            )
+            result["status"] = status
+            result["res"] = res
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        time.sleep(0.3)
+
+        # Thread is still running and waiting for unpause
+        self.assertTrue(t.is_alive())
+        _, _, st = self._get_json(f"http://127.0.0.1:{self.ui_port}/api/status")
+        self.assertEqual(st.get("paused_waiting_requests"), 1)
+
+        # Unpause
+        self._post_json(f"http://127.0.0.1:{self.ui_port}/api/traffic", {"paused": False})
+        t.join(timeout=5.0)
+
+        self.assertFalse(t.is_alive())
+        self.assertEqual(result.get("status"), 200)
+        self.assertEqual(result.get("res", {}).get("role"), "assistant")
 
 
 if __name__ == "__main__":

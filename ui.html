@@ -3107,8 +3107,8 @@
     <div class="banner-msg">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <div>
-        <strong>所有上游流量已手动暂停</strong>
-        <div style="font-size:11px;opacity:0.85;">发往 Relay 的模型请求将直接返回 HTTP 503。Web 控制台与模型发现不受影响。</div>
+        <strong id="traffic-banner-title">所有上游流量已手动暂停</strong>
+        <div style="font-size:11px;opacity:0.85;" id="traffic-banner-desc">发往 Relay 的请求将保持流式挂起等待（不转发至上游），恢复后自动继续处理，防止 Agent 报错中断。</div>
       </div>
     </div>
     <button type="button" class="banner-action-btn" id="btn-banner-resume">
@@ -5525,6 +5525,7 @@ function renderTrafficControl() {
   if (!btn) return;
 
   const isPaused = !!(st && st.traffic_paused);
+  const waitingReqs = (st && typeof st.paused_waiting_requests === 'number') ? st.paused_waiting_requests : 0;
   btn.setAttribute('aria-pressed', isPaused ? 'true' : 'false');
   // 仅切换 paused 修饰类, 保留 .btn-action 的按钮形态与交互反馈
   btn.classList.toggle('paused', isPaused);
@@ -5540,16 +5541,35 @@ function renderTrafficControl() {
   btn.disabled = false;
   if (bannerBtn) bannerBtn.disabled = false;
 
+  const bannerTitle = $('#traffic-banner-title');
+  const bannerDesc = $('#traffic-banner-desc');
+
   if (isPaused) {
     if (dot) dot.className = 'dot dot-paused';
     if (txt) txt.textContent = '已暂停';
-    if (act) act.textContent = '恢复';
+    if (act) act.textContent = waitingReqs > 0 ? ('恢复 (' + waitingReqs + ')') : '恢复';
     if (banner) banner.style.display = 'flex';
+    if (bannerTitle) {
+      bannerTitle.textContent = waitingReqs > 0 ? ('所有上游流量已手动暂停 (' + waitingReqs + ' 个请求挂起保活中)') : '所有上游流量已手动暂停';
+    }
+    if (bannerDesc) {
+      if (waitingReqs > 0) {
+        bannerDesc.textContent = '当前有 ' + waitingReqs + ' 个 Agent 请求正在挂起等待中（已建立心跳保活），恢复流量后将立即转发处理。';
+      } else {
+        bannerDesc.textContent = '发往 Relay 的请求将保持流式挂起等待（不转发至上游），恢复后自动继续处理，防止 Agent 报错中断。';
+      }
+    }
+    if (bannerBtn) {
+      bannerBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> ' + (waitingReqs > 0 ? ('恢复流量并放行 (' + waitingReqs + ')') : '恢复流量');
+    }
   } else {
     if (dot) dot.className = 'dot on';
     if (txt) txt.textContent = '运行中';
     if (act) act.textContent = '暂停';
     if (banner) banner.style.display = 'none';
+    if (bannerBtn) {
+      bannerBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;"><polygon points="5 3 19 12 5 21 5 3"/></svg> 恢复流量';
+    }
   }
 }
 
