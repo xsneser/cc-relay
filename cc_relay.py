@@ -2016,7 +2016,7 @@ def _resp_cache_usage(resp_body):
         if not isinstance(usage, dict):
             return
         fields = ("input_tokens", "cache_read_input_tokens",
-                  "cache_creation_input_tokens")
+                  "cache_creation_input_tokens", "output_tokens")
         found = False
         cache_found = False
         for name in fields:
@@ -2025,7 +2025,12 @@ def _resp_cache_usage(resp_body):
                 if value is not None:
                     merged[name] = value
                     found = True
-                    cache_found = cache_found or name != "input_tokens"
+                    cache_found = cache_found or (name != "input_tokens" and name != "output_tokens")
+        if "completion_tokens" in usage and "output_tokens" not in merged:
+            c_val = token_count(usage.get("completion_tokens"))
+            if c_val is not None:
+                merged["output_tokens"] = c_val
+                found = True
         # Some compatible providers expose cache breakdowns instead of a total.
         if "cache_creation_input_tokens" not in merged:
             breakdown = usage.get("cache_creation")
@@ -2039,7 +2044,7 @@ def _resp_cache_usage(resp_body):
                     cache_found = True
         # count_tokens responses often contain only input_tokens; they are not
         # message cache diagnostics and should remain unavailable in the viewer.
-        saw_usage = saw_usage or cache_found or (found and "output_tokens" in usage)
+        saw_usage = saw_usage or cache_found or (found and "output_tokens" in merged)
 
     def walk(value):
         if isinstance(value, dict):
@@ -2076,6 +2081,7 @@ def _resp_cache_usage(resp_body):
     input_tokens = merged.get("input_tokens", 0)
     cache_read = merged.get("cache_read_input_tokens", 0)
     cache_creation = merged.get("cache_creation_input_tokens", 0)
+    output_tokens = merged.get("output_tokens", 0)
     total = input_tokens + cache_read + cache_creation
     return {
         "input_tokens": input_tokens,
@@ -2083,6 +2089,7 @@ def _resp_cache_usage(resp_body):
         "cache_creation_tokens": cache_creation,
         "cache_total_tokens": total,
         "cache_hit_rate": (cache_read / total) if total else None,
+        "output_tokens": output_tokens,
     }
 
 
@@ -2202,7 +2209,7 @@ def _find_record_by_idx(target_idx, max_bytes=800_000_000):
 _STATUS_TAIL_BYTES = 500_000_000
 _CALLS_TAIL_BYTES = 600_000_000
 _CALLS_CACHE_LIMIT = 8
-_STATS_CACHE = {"fingerprint": None, "rows": None, "total": 0}
+_STATS_CACHE = {"fingerprint": None, "rows": None, "total": 0, "overall_avg_speed": None}
 _CALLS_CACHE = {}
 _STATS_LOCK = threading.Lock()
 _CALLS_LOCK = threading.Lock()
@@ -2229,19 +2236,38 @@ def stats_snapshot():
         else:
             recs = _iter_records_tail(max_records=400, max_bytes=_STATUS_TAIL_BYTES)
             by = {}
+            total_duration_all = 0.0
+            total_output_tokens_all = 0
             for r in recs:
                 real_model = _resp_model(r.get('resp_body')) or r.get('sent_model') or r.get('orig_model')
                 key = (r.get('route'), real_model)
                 b = by.setdefault(key, {'route': r.get('route'), 'model': real_model,
                                         'sent': r.get('sent_model'), 'req': 0, 'ok': 0, 'err': 0, 'last': 0,
                                         'input_tokens': 0, 'cache_read_tokens': 0,
-                                        'cache_creation_tokens': 0, 'cache_requests': 0})
+                                        'cache_creation_tokens': 0, 'cache_requests': 0,
+                                        'output_tokens': 0, 'total_duration': 0.0, 'speed_count': 0})
                 usage = r.get('cache') if r.get('cache') is not None else _resp_cache_usage(r.get('resp_body'))
                 if usage:
                     b['input_tokens'] += usage.get('cache_total_tokens', 0) or 0
                     b['cache_read_tokens'] += usage.get('cache_read_tokens', 0) or 0
                     b['cache_creation_tokens'] += usage.get('cache_creation_tokens', 0) or 0
                     b['cache_requests'] += 1
+
+                dur = r.get('duration')
+                out_tok = r.get('output_tokens')
+                if out_tok is None and usage:
+                    out_tok = usage.get('output_tokens')
+                spd = r.get('speed')
+                if spd is None and dur and out_tok and dur > 0 and out_tok > 0:
+                    spd = round(out_tok / dur, 1)
+
+                if dur and out_tok and dur > 0 and out_tok > 0:
+                    b['output_tokens'] += out_tok
+                    b['total_duration'] += dur
+                    b['speed_count'] += 1
+                    total_output_tokens_all += out_tok
+                    total_duration_all += dur
+
                 b['req'] += 1
                 st = r.get('resp_status') or 0
                 if st and st < 400:
@@ -2252,9 +2278,14 @@ def stats_snapshot():
             for b in by.values():
                 total = b['input_tokens']
                 b['cache_hit_rate'] = (b['cache_read_tokens'] / total) if total else None
+                if b['total_duration'] > 0 and b['output_tokens'] > 0:
+                    b['avg_speed'] = round(b['output_tokens'] / b['total_duration'], 1)
+                else:
+                    b['avg_speed'] = None
+            overall_avg_speed = round(total_output_tokens_all / total_duration_all, 1) if (total_duration_all > 0 and total_output_tokens_all > 0) else None
             rows = sorted(by.values(), key=lambda x: -x['last'])
             total_records = len(recs)
-            _STATS_CACHE.update({"fingerprint": fingerprint, "rows": rows, "total": total_records})
+            _STATS_CACHE.update({"fingerprint": fingerprint, "rows": rows, "total": total_records, "overall_avg_speed": overall_avg_speed})
             rows = [dict(row) for row in rows]
     conf = load_conf()
     rt = conf.get('router') or {}
@@ -2327,6 +2358,7 @@ def stats_snapshot():
             'hybrid_pins': {'ANTHROPIC_DEFAULT_OPUS_MODEL': 'gpt-5.6-sol'},
             'proxy_running': codex_available,
             'rows': rows, 'total': total_records,
+            'overall_avg_speed': _STATS_CACHE.get('overall_avg_speed'),
             'codex_up': codex_available, 'antigravity_up': antigravity_available,
             'antigravity_owned': antigravity_owned(),
             'voice_up': voice_available,
@@ -2403,6 +2435,13 @@ def _calls_snapshot(n):
             body = r.get("body") or {}
             headers = {k.lower(): v for k, v in (r.get("headers") or {}).items()}
             cache = r.get("cache") if r.get("cache") is not None else _resp_cache_usage(r.get("resp_body"))
+            duration = r.get("duration")
+            out_tok = r.get("output_tokens")
+            if out_tok is None and isinstance(cache, dict):
+                out_tok = cache.get("output_tokens")
+            speed = r.get("speed")
+            if speed is None and duration and out_tok and duration > 0 and out_tok > 0:
+                speed = round(out_tok / duration, 1)
             calls.append({
                 "idx": r.get("idx"),
                 "ts": r.get("ts"),
@@ -2422,6 +2461,9 @@ def _calls_snapshot(n):
                 "has_custom_prompt": bool(r.get("custom_prompt")),
                 "stripped_banner": bool(r.get("stripped_banner")),
                 "traffic_paused": bool(r.get("traffic_paused") or r.get("route") == "paused"),
+                "duration": duration,
+                "output_tokens": out_tok or 0,
+                "speed": speed,
             })
         # Keep a bounded number of small summaries even when the UI changes n.
         if len(_CALLS_CACHE) >= _CALLS_CACHE_LIMIT:
@@ -2730,6 +2772,7 @@ class Relay(BaseHTTPRequestHandler):
         rbody = b""
         rheaders = {}
         err = None
+        t0 = time.time()
         try:
             req = urllib.request.Request(upstream, data=data, method=method)
             for k, v in fwd.items():
@@ -2753,6 +2796,11 @@ class Relay(BaseHTTPRequestHandler):
             if codex_request_active:
                 _codex_request_leave()
 
+        duration = max(0.001, round(time.time() - t0, 2))
+        cache_data = _resp_cache_usage(rbody.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)])
+        out_tok = (cache_data.get("output_tokens") if isinstance(cache_data, dict) else 0) or 0
+        speed = round(out_tok / duration, 1) if (out_tok > 0 and duration > 0) else None
+
         # 记录
         try:
             record({
@@ -2767,8 +2815,11 @@ class Relay(BaseHTTPRequestHandler):
                 "custom_prompt": custom_prompt_applied,
                 "upstream": upstream, "resp_status": status,
                 "resp_body": rbody.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)],
-                "cache": _resp_cache_usage(rbody.decode("utf-8", "replace")[:conf.get("max_body_capture", 2000000)]),
+                "cache": cache_data,
                 "resp_error": err,
+                "duration": duration,
+                "output_tokens": out_tok,
+                "speed": speed,
             })
         except Exception:
             pass
@@ -2918,7 +2969,18 @@ class UIHandler(BaseHTTPRequestHandler):
         r = _find_record_by_idx(idx)
         if r:
             out = dict(r)
-            out["cache"] = r.get("cache") if r.get("cache") is not None else _resp_cache_usage(r.get("resp_body"))
+            cache = r.get("cache") if r.get("cache") is not None else _resp_cache_usage(r.get("resp_body"))
+            out["cache"] = cache
+            duration = r.get("duration")
+            out_tok = r.get("output_tokens")
+            if out_tok is None and isinstance(cache, dict):
+                out_tok = cache.get("output_tokens")
+            speed = r.get("speed")
+            if speed is None and duration and out_tok and duration > 0 and out_tok > 0:
+                speed = round(out_tok / duration, 1)
+            out["duration"] = duration
+            out["output_tokens"] = out_tok or 0
+            out["speed"] = speed
             return out
         return {"error": "not found"}
 

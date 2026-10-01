@@ -256,7 +256,6 @@ class CPAUpdater:
             self._snapshot["checking"] = True
         def run():
             with self._lock:
-                self._snapshot["checking"] = False
                 self._snapshot["last_checked"] = 0
             self.check(force=True)
         threading.Thread(target=run, name="cpa-manual-check", daemon=True).start()

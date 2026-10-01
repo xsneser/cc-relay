@@ -130,6 +130,26 @@ class CPAUpdaterTests(unittest.TestCase):
             self.assertIn("download_progress", status)
             self.assertEqual(status["download_progress"], 0.0)
 
+    def test_request_check_keeps_checking_true_until_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            updater = cpa_updater.CPAUpdater(directory, os.path.join(directory, "missing.exe"), "")
+            import threading
+            check_started = threading.Event()
+            can_finish = threading.Event()
+
+            def slow_check(force=False):
+                check_started.set()
+                can_finish.wait(timeout=5)
+                return updater.status()
+
+            with mock.patch.object(updater, "check", side_effect=slow_check):
+                st = updater.request_check()
+                self.assertTrue(st["checking"])
+                check_started.wait(timeout=2)
+                # Ensure checking remains True while check is running (no premature reset to False)
+                self.assertTrue(updater.status()["checking"])
+                can_finish.set()
+
 
 if __name__ == "__main__":
     unittest.main()

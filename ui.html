@@ -1864,7 +1864,7 @@
   /* 指标卡矩阵 (4 Matrix Vital Signs Cards) */
   .metrics-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 16px;
   }
@@ -1956,8 +1956,14 @@
     border: 1px solid var(--glass-border);
     background: #000000;
   }
-  table.tf, table.cl {
+  table.tf {
     width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  table.cl {
+    width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 12px;
   }
@@ -1965,18 +1971,22 @@
     color: var(--text-dim);
     font-weight: 800;
     text-align: left;
-    padding: 12px 16px;
+    padding: 12px 10px;
     background: rgba(255, 255, 255, 0.02);
     border-bottom: 1px solid var(--glass-border);
     font-size: 9.5px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   table.tf td, table.cl td {
-    padding: 11px 16px;
+    padding: 11px 10px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   table.tf tbody tr:last-child td, table.cl tbody tr:last-child td { border-bottom: none; }
   table.tf tbody tr, table.cl tbody tr { transition: background 0.15s ease; }
@@ -2312,6 +2322,47 @@
   table.cl tr.err-row td { background: rgba(239, 68, 68, 0.05); }
   .arrow { color: var(--text-dim); }
   .mdl-out { color: #ffffff; font-weight: 700; }
+
+  /* 抓包列宽与间距百分比比例控制 (table-layout: fixed) */
+  table.cl th.col-idx,    table.cl td.col-idx    { width: 4.5%; }
+  table.cl th.col-ts,     table.cl td.col-ts     { width: 7.5%; }
+  table.cl th.col-orig,   table.cl td.col-orig   { width: 15%; }
+  table.cl th.col-arrow,  table.cl td.col-arrow  { width: 2.5%; text-align: center; }
+  table.cl th.col-model,  table.cl td.col-model  { width: 19.5%; padding-right: 3px; }
+  table.cl th.col-route,  table.cl td.col-route  { width: 11%; padding-left: 3px; }
+  table.cl th.col-speed,  table.cl td.col-speed  { width: 9%; }
+  table.cl th.col-rule,   table.cl td.col-rule   { width: 11%; }
+  table.cl th.col-status, table.cl td.col-status { width: 6%; }
+  table.cl th.col-cache,  table.cl td.col-cache  { width: 7%; }
+  table.cl th.col-source, table.cl td.col-source { width: 7%; }
+
+  table.cl .mdl-text {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  .col-speed {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .col-speed .speed-num {
+    font-weight: 700;
+    color: #38bdf8;
+  }
+  .col-speed .speed-unit {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-left: 2px;
+  }
+  .col-speed .speed-none {
+    color: var(--text-faint);
+  }
 
   .src {
     display: inline-block;
@@ -2771,22 +2822,23 @@
   @media (max-width: 1100px) {
     .hb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .detail-grid { grid-template-columns: 1fr; }
 
-    /* 抓包表格自适应缩窄：在窄屏/分屏下自动隐藏非核心的 CC 请求模型(3) 与 箭头(4) 列 */
-    table.cl th:nth-child(3), table.cl tr[data-idx] td:nth-child(3),
-    table.cl th:nth-child(4), table.cl tr[data-idx] td:nth-child(4) {
+    /* 抓包表格自适应缩窄：在窄屏/分屏下自动隐藏非核心的 CC 请求模型 与 箭头 列 (9 列百分比分配，合计 100%) */
+    table.cl th.col-orig, table.cl tr[data-idx] td.col-orig,
+    table.cl th.col-arrow, table.cl tr[data-idx] td.col-arrow {
       display: none;
     }
-    table.cl .mdl-out {
-      max-width: 160px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      display: inline-block;
-      vertical-align: middle;
-    }
+    table.cl th.col-idx,    table.cl td.col-idx    { width: 5%; }
+    table.cl th.col-ts,     table.cl td.col-ts     { width: 8%; }
+    table.cl th.col-model,  table.cl td.col-model  { width: 26%; }
+    table.cl th.col-route,  table.cl td.col-route  { width: 13%; }
+    table.cl th.col-speed,  table.cl td.col-speed  { width: 10%; }
+    table.cl th.col-rule,   table.cl td.col-rule   { width: 13%; }
+    table.cl th.col-status, table.cl td.col-status { width: 7%; }
+    table.cl th.col-cache,  table.cl td.col-cache  { width: 9%; }
+    table.cl th.col-source, table.cl td.col-source { width: 9%; }
     .tf-mdl {
       max-width: 160px;
       overflow: hidden;
@@ -2812,18 +2864,31 @@
     .detail-topbar .pm-act-btn {
       align-self: flex-start;
     }
-    /* 进一步缩窄表格列间距与隐藏次要列，彻底杜绝横向滚动条 */
+    .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    /* 抓包表格百分比比例：隐藏时间与序号，加回分流规则与命中率，7列等比满宽100% */
     table.cl th, table.cl td {
-      padding: 8px 10px;
+      padding: 7px 4px;
     }
-    table.cl th:nth-child(1), table.cl tr[data-idx] td:nth-child(1),
-    table.cl th:nth-child(10), table.cl tr[data-idx] td:nth-child(10) {
-      display: none; /* 隐藏序号与请求来源，展开详情顶部均有完整呈现 */
+    table.cl th.col-idx,   table.cl tr[data-idx] td.col-idx,
+    table.cl th.col-ts,    table.cl tr[data-idx] td.col-ts,
+    table.cl th.col-orig,  table.cl tr[data-idx] td.col-orig,
+    table.cl th.col-arrow, table.cl tr[data-idx] td.col-arrow {
+      display: none;
     }
+
+    table.cl th.col-model,  table.cl tr[data-idx] td.col-model  { display: table-cell; width: 24%; padding-right: 2px; }
+    table.cl th.col-route,  table.cl tr[data-idx] td.col-route  { display: table-cell; width: 14%; padding-left: 2px; padding-right: 2px; }
+    table.cl th.col-speed,  table.cl tr[data-idx] td.col-speed  { display: table-cell; width: 12%; }
+    table.cl th.col-rule,   table.cl tr[data-idx] td.col-rule   { display: table-cell; width: 13%; }
+    table.cl th.col-status, table.cl tr[data-idx] td.col-status { display: table-cell; width: 10%; }
+    table.cl th.col-cache,  table.cl tr[data-idx] td.col-cache  { display: table-cell; width: 13%; }
+    table.cl th.col-source, table.cl tr[data-idx] td.col-source { display: table-cell; width: 14%; }
+
     table.tf th, table.tf td {
-      padding: 8px 10px;
+      padding: 8px 6px;
     }
-    table.tf th:nth-child(8), table.tf td:nth-child(8) {
+    table.tf th:nth-child(9), table.tf td:nth-child(9) {
       display: none; /* 隐藏监控表中次要的“最近请求序号” */
     }
     .tf-mdl {
@@ -2844,10 +2909,28 @@
     .row2 { grid-template-columns: 1fr; }
     .hb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .detail-grid { grid-template-columns: 1fr; }
-    .metrics-grid { grid-template-columns: 1fr 1fr; }
   }
 
   @media (max-width: 680px) {
+    table.cl th, table.cl td {
+      padding: 6px 3px;
+      font-size: 11px;
+    }
+    table.cl th {
+      font-size: 9px;
+      letter-spacing: 0.05em;
+    }
+    table.cl .tagc {
+      padding: 2px 4px;
+      font-size: 8.5px;
+    }
+    table.cl .src {
+      padding: 2px 4px;
+      font-size: 8.5px;
+    }
+    table.cl .col-speed {
+      font-size: 10px;
+    }
     table.tf th:nth-child(6), table.tf td:nth-child(6) {
       display: none; /* 极窄窗口下隐藏输入 Token 列 */
     }
@@ -2881,14 +2964,22 @@
     .nav-tab { flex: 1 1 0; justify-content: center; }
   }
 
-  @media (max-width: 540px) {
-    .hb-grid { grid-template-columns: 1fr; }
+  @media (max-width: 500px) {
     .metrics-grid { grid-template-columns: 1fr; }
-    .status-group .badge, .action-group .btn-action { flex: 1 1 100%; }
-    .upstream-provider { flex-wrap: wrap; }
-    .upstream-status { flex: 1 1 100%; }
-    .upstream-actions { width: 100%; margin-left: 0; }
-    .upstream-btn { flex: 1 1 0; }
+    table.cl th, table.cl td {
+      padding: 5px 2px;
+      font-size: 10px;
+    }
+    table.cl th {
+      font-size: 8px;
+    }
+    table.cl .tagc, table.cl .src {
+      padding: 1px 3px;
+      font-size: 8px;
+    }
+    table.cl .col-speed {
+      font-size: 9px;
+    }
   }
 </style>
 </head>
@@ -3527,6 +3618,14 @@
           <span class="metric-val" id="sum-cache" style="font-size:22px;">—</span>
           <div style="font-size:10px;color:var(--text-dim);margin-top:10px;font-family:var(--font-mono);">PROMPT CACHE INDEX</div>
         </div>
+        <div class="metric-card cyan">
+          <div class="metric-label-row">
+            <span class="metric-label">VELOCITY // 平均速率</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:#38bdf8;"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <span class="metric-val" id="sum-speed" style="color:#38bdf8;font-size:24px;">—</span>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:10px;font-family:var(--font-mono);">AVG TOKENS / SEC</div>
+        </div>
       </div>
 
       <div class="tablewrap">
@@ -3808,6 +3907,7 @@ if (cpaBadgeButton) cpaBadgeButton.addEventListener('click', async () => {
 let _cpaCardTimer = null;
 let _cpaFastPollTimer = null;
 let _cpaCardDismissedVer = null;
+let _cpaManualCheck = false;
 
 function renderCpaProgressCard(data) {
   const card = $('#cpa-progress-card');
@@ -3924,22 +4024,27 @@ function renderCpaProgressCard(data) {
   spinner.style.display = showSpinner ? 'inline-block' : 'none';
   actions.style.display = showActions ? 'flex' : 'none';
 
-  const isActive = checking || ['queued', 'downloading', 'verifying', 'staged', 'installing', 'rolling_back'].includes(state);
-  const shouldShow = isActive || (hasUpdate && _cpaCardDismissedVer !== latVer);
+  const isUpdating = ['queued', 'downloading', 'verifying', 'staged', 'installing', 'rolling_back'].includes(state);
+  const isManual = !!_cpaManualCheck;
+  const hasNewUpdate = hasUpdate && _cpaCardDismissedVer !== latVer;
+  const shouldShow = isUpdating || isManual || hasNewUpdate;
 
   if (shouldShow) {
     card.classList.add('show');
     clearTimeout(_cpaCardTimer);
   }
 
-  if (state === 'complete' || (descText.includes('已是最新版本') && !checking)) {
-    clearTimeout(_cpaCardTimer);
-    _cpaCardTimer = setTimeout(() => {
-      card.classList.remove('show');
-    }, 3500);
+  if (card.classList.contains('show')) {
+    if (state === 'complete' || (descText.includes('已是最新版本') && !checking)) {
+      clearTimeout(_cpaCardTimer);
+      _cpaCardTimer = setTimeout(() => {
+        card.classList.remove('show');
+        _cpaManualCheck = false;
+      }, 3500);
+    }
   }
 
-  if (isActive) {
+  if (isUpdating || (isManual && checking)) {
     startCpaFastPoll();
   } else {
     stopCpaFastPoll();
@@ -3951,6 +4056,13 @@ function startCpaFastPoll() {
   _cpaFastPollTimer = setInterval(async () => {
     try {
       const res = await api('/api/cpa/version');
+      if (st) {
+        st.cpa_update_checking = res.checking;
+        st.cpa_has_update = res.has_update;
+        st.cpa_latest_version = res.latest_version;
+        st.cpa_update_state = res.update_state;
+        st.cpa_update_error = res.update_error;
+      }
       renderCpaProgressCard(res);
       if (!res.checking && !['queued', 'downloading', 'verifying', 'staged', 'installing', 'rolling_back'].includes(res.update_state)) {
         stopCpaFastPoll();
@@ -3973,7 +4085,10 @@ const cpaCardClose = $('#cpa-card-close');
 if (cpaCardClose) cpaCardClose.addEventListener('click', () => {
   const card = $('#cpa-progress-card');
   if (card) card.classList.remove('show');
-  if (st && st.cpa_latest_version) _cpaCardDismissedVer = st.cpa_latest_version;
+  _cpaManualCheck = false;
+  clearTimeout(_cpaCardTimer);
+  const curLat = (st && st.cpa_latest_version) || '';
+  if (curLat) _cpaCardDismissedVer = curLat;
 });
 
 const cpaCardBtnUpdate = $('#cpa-card-btn-update');
@@ -3993,6 +4108,7 @@ if (cpaCardBtnUpdate) cpaCardBtnUpdate.addEventListener('click', async () => {
 let _relayCardTimer = null;
 let _relayFastPollTimer = null;
 let _relayCardDismissedVer = null;
+let _relayManualCheck = false;
 
 function renderRelayProgressCard(data) {
   const card = $('#relay-progress-card');
@@ -4104,22 +4220,28 @@ function renderRelayProgressCard(data) {
   spinner.style.display = showSpinner ? 'inline-block' : 'none';
   actions.style.display = showActions ? 'flex' : 'none';
 
-  const isActive = checking || ['queued', 'downloading', 'fetching', 'applying'].includes(state);
-  const shouldShow = isActive || (hasUpdate && _relayCardDismissedVer !== latVer);
+  const isUpdating = ['queued', 'downloading', 'fetching', 'applying'].includes(state);
+  const isManual = !!_relayManualCheck;
+  const updateId = data.latest_sha || latVer;
+  const hasNewUpdate = hasUpdate && _relayCardDismissedVer !== updateId;
+  const shouldShow = isUpdating || isManual || hasNewUpdate;
 
   if (shouldShow) {
     card.classList.add('show');
     clearTimeout(_relayCardTimer);
   }
 
-  if (state === 'success' || (descText.includes('已是最新版本') && !checking)) {
-    clearTimeout(_relayCardTimer);
-    _relayCardTimer = setTimeout(() => {
-      card.classList.remove('show');
-    }, 3500);
+  if (card.classList.contains('show')) {
+    if (state === 'success' || (descText.includes('已是最新版本') && !checking)) {
+      clearTimeout(_relayCardTimer);
+      _relayCardTimer = setTimeout(() => {
+        card.classList.remove('show');
+        _relayManualCheck = false;
+      }, 3500);
+    }
   }
 
-  if (isActive) {
+  if (isUpdating || (isManual && checking)) {
     startRelayFastPoll();
   } else if (state !== 'queued') {
     stopRelayFastPoll();
@@ -4145,6 +4267,7 @@ function startRelayFastPoll() {
         }, 800);
       } else if (!res.checking && !['queued', 'downloading', 'fetching', 'applying'].includes(res.update_state)) {
         stopRelayFastPoll();
+        refresh();
       }
     } catch (_) {
       // 忽略服务重启中的短暂断连
@@ -4163,8 +4286,11 @@ const relayCardClose = $('#relay-card-close');
 if (relayCardClose) relayCardClose.addEventListener('click', () => {
   const card = $('#relay-progress-card');
   if (card) card.classList.remove('show');
+  _relayManualCheck = false;
+  clearTimeout(_relayCardTimer);
   const ru = (st && st.relay_update) || {};
-  if (ru.latest_version) _relayCardDismissedVer = ru.latest_version;
+  const updateId = ru.latest_sha || ru.latest_version;
+  if (updateId) _relayCardDismissedVer = updateId;
 });
 
 const relayCardBtnUpdate = $('#relay-card-btn-update');
@@ -4188,6 +4314,7 @@ if (relayCardBtnUpdate) relayCardBtnUpdate.addEventListener('click', async () =>
 let _antigravityCardTimer = null;
 let _antigravityFastPollTimer = null;
 let _antigravityCardDismissedVer = null;
+let _antigravityManualCheck = false;
 
 function renderAntigravityProgressCard(data) {
   const card = $('#antigravity-progress-card');
@@ -4262,21 +4389,26 @@ function renderAntigravityProgressCard(data) {
   spinner.style.display = showSpinner ? 'inline-block' : 'none';
   actions.style.display = showActions ? 'flex' : 'none';
 
-  const shouldShow = checking || (hasUpdate && _antigravityCardDismissedVer !== latVer);
+  const isManual = !!_antigravityManualCheck;
+  const hasNewUpdate = hasUpdate && _antigravityCardDismissedVer !== latVer;
+  const shouldShow = isManual || hasNewUpdate;
 
   if (shouldShow) {
     card.classList.add('show');
     clearTimeout(_antigravityCardTimer);
   }
 
-  if (descText.includes('已是最新版本') && !checking) {
-    clearTimeout(_antigravityCardTimer);
-    _antigravityCardTimer = setTimeout(() => {
-      card.classList.remove('show');
-    }, 3500);
+  if (card.classList.contains('show')) {
+    if (descText.includes('已是最新版本') && !checking) {
+      clearTimeout(_antigravityCardTimer);
+      _antigravityCardTimer = setTimeout(() => {
+        card.classList.remove('show');
+        _antigravityManualCheck = false;
+      }, 3500);
+    }
   }
 
-  if (checking) {
+  if (isManual && checking) {
     startAntigravityFastPoll();
   } else {
     stopAntigravityFastPoll();
@@ -4296,8 +4428,11 @@ function startAntigravityFastPoll() {
       renderAntigravityProgressCard(res);
       if (!res.checking) {
         stopAntigravityFastPoll();
+        refresh();
       }
-    } catch (_) {}
+    } catch (_) {
+      stopAntigravityFastPoll();
+    }
   }, 500);
 }
 
@@ -4321,6 +4456,8 @@ const antigravityCardClose = $('#antigravity-card-close');
 if (antigravityCardClose) antigravityCardClose.addEventListener('click', () => {
   const card = $('#antigravity-progress-card');
   if (card) card.classList.remove('show');
+  _antigravityManualCheck = false;
+  clearTimeout(_antigravityCardTimer);
   const ag = (st && st.antigravity_update) || {};
   if (ag.latest_version) _antigravityCardDismissedVer = ag.latest_version;
 });
@@ -4730,6 +4867,17 @@ function renderConfig(cfg) {
         inputProxy.addEventListener('input', markConfigDirty);
       }
     }
+    if (name === 'antigravity') {
+      const updateBox = document.createElement('div');
+      updateBox.className = 'cpa-update-panel';
+      updateBox.id = 'antigravity-update-panel';
+      updateBox.innerHTML = '<div class="upstream-title"><b>Antigravity Tools 更新</b><code id="antigravity-version-label">检测版本中…</code></div>' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">' +
+        '<button type="button" class="btn-action" id="antigravity-check-update">检查更新</button>' +
+        '<button type="button" class="btn-action" id="antigravity-open-app">打开客户端更新</button></div>' +
+        '<div id="antigravity-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">可在客户端中点击 设置 → 关于 → 检查更新 完成安装。</div>';
+      card.appendChild(updateBox);
+    }
     const grid = document.createElement('div'); grid.className = 'config-grid';
     const baseVal = local ? (info.base || local.base) : info.base;
     const base = configField('Base URL', 'cfg-base', 'url', baseVal, 'https://example.com/v1');
@@ -4919,9 +5067,30 @@ function renderConfig(cfg) {
   const cpaCheck = $('#cpa-check-update');
   if (cpaCheck) cpaCheck.addEventListener('click', async () => {
     cpaCheck.disabled = true;
-    try { await api('/api/cpa/check', {}); toast('已开始检查 CLIProxyAPI 更新'); }
-    catch (e) { toast('检查更新失败: ' + e, true); }
-    finally { cpaCheck.disabled = false; refresh(); }
+    _cpaManualCheck = true;
+    _cpaCardDismissedVer = null;
+    clearTimeout(_cpaCardTimer);
+    const card = $('#cpa-progress-card');
+    if (card) {
+      card.classList.add('show');
+      renderCpaProgressCard({
+        ...(typeof st !== 'undefined' ? st : {}),
+        cpa_update_checking: true,
+        checking: true
+      });
+    }
+    startCpaFastPoll();
+    try {
+      await api('/api/cpa/check', {});
+      toast('已开始检查 CLIProxyAPI 更新');
+    } catch (e) {
+      toast('检查更新失败: ' + e, true);
+      renderCpaProgressCard({ check_error: String(e) });
+      stopCpaFastPoll();
+    } finally {
+      cpaCheck.disabled = false;
+      refresh();
+    }
   });
   const cpaInstall = $('#cpa-install-update');
   if (cpaInstall) cpaInstall.addEventListener('click', async () => {
@@ -4934,6 +5103,43 @@ function renderConfig(cfg) {
     catch (e) {
       toast('升级失败: ' + e, true);
       stopCpaFastPoll();
+    }
+  });
+
+  const agCheck = $('#antigravity-check-update');
+  if (agCheck) agCheck.addEventListener('click', async () => {
+    agCheck.disabled = true;
+    _antigravityManualCheck = true;
+    _antigravityCardDismissedVer = null;
+    clearTimeout(_antigravityCardTimer);
+    const card = $('#antigravity-progress-card');
+    if (card) {
+      card.classList.add('show');
+      renderAntigravityProgressCard({
+        ...(st && st.antigravity_update ? st.antigravity_update : {}),
+        checking: true
+      });
+    }
+    startAntigravityFastPoll();
+    try {
+      await api('/api/antigravity/check', {});
+      toast('已开始检查 Antigravity Tools 更新');
+    } catch (e) {
+      toast('检查更新失败: ' + e, true);
+      renderAntigravityProgressCard({ check_error: String(e) });
+      stopAntigravityFastPoll();
+    } finally {
+      agCheck.disabled = false;
+      refresh();
+    }
+  });
+  const agOpen = $('#antigravity-open-app');
+  if (agOpen) agOpen.addEventListener('click', async () => {
+    try {
+      const res = await api('/api/antigravity/open', {});
+      toast(res.message || '已打开 Antigravity Tools 客户端界面');
+    } catch (e) {
+      toast('打开 Antigravity Tools 失败: ' + (e && e.message ? e.message : e), true);
     }
   });
 
@@ -5139,6 +5345,17 @@ function renderStatus() {
     const agLatVer = st.antigravity_latest_version || ag.latest_version;
     agBadge.textContent = agLatVer ? ('发现新版本 v' + agLatVer.replace(/^v/, '')) : '发现新版本';
     agBadge.setAttribute('aria-label', agLatVer ? ('发现 Antigravity Tools 新版本 v' + agLatVer.replace(/^v/, '')) : '发现 Antigravity Tools 新版本');
+  }
+
+  const agVersionLabel = $('#antigravity-version-label');
+  if (agVersionLabel) {
+    const current = ag.current_version || (st.antigravity_up ? '运行中' : '未知');
+    const latest = ag.latest_version || (ag.checking ? '检查中…' : '尚未检查');
+    agVersionLabel.textContent = '当前 v' + String(current).replace(/^v/, '') + ' · 最新 ' + (latest.startsWith('v') ? latest : 'v' + latest);
+  }
+  const agMessage = $('#antigravity-update-message');
+  if (agMessage) {
+    agMessage.textContent = ag.check_error || (ag.checking ? '正在检查更新…' : (ag.has_update ? '发现新版本，请前往客户端更新。' : '可在客户端中点击 设置 → 关于 → 检查更新 完成安装。'));
   }
 
   if (!_antigravityFastPollTimer) {
@@ -5501,6 +5718,7 @@ if (relayVersionBadge) {
   relayVersionBadge.onclick = () => {
     const card = $('#relay-progress-card');
     if (card) {
+      _relayCardDismissedVer = null;
       card.classList.add('show');
       renderRelayProgressCard((st && st.relay_update) || {});
     }
@@ -5510,6 +5728,9 @@ if (relayVersionBadge) {
 const relayUpdateBtn = $('#btn-relay-update');
 if (relayUpdateBtn) {
   relayUpdateBtn.onclick = async () => {
+    _relayManualCheck = true;
+    _relayCardDismissedVer = null;
+    clearTimeout(_relayCardTimer);
     const card = $('#relay-progress-card');
     if (card) {
       card.classList.add('show');
@@ -5914,6 +6135,11 @@ async function loadTraffic(snapshot) {
     } else {
       $('#sum-cache').textContent = '—';
     }
+    const avgSpd = t.overall_avg_speed;
+    const speedEl = $('#sum-speed');
+    if (speedEl) {
+      speedEl.textContent = avgSpd != null ? (avgSpd + ' t/s') : '—';
+    }
 
     // 动态波形与像素矩阵渲染
     const waveWrap = $('#slots-req');
@@ -5930,7 +6156,7 @@ async function loadTraffic(snapshot) {
       body.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:24px 0;text-align:center">暂无请求记录 · 开始使用 Claude Code 时将在此实时滚动</div>';
       return;
     }
-    let html = '<table class="tf"><thead><tr><th>上游通道</th><th>实际转发模型</th><th style="text-align:right">累计请求</th><th style="text-align:right">成功</th><th style="text-align:right">异常</th><th style="text-align:right">输入 TOKEN</th><th style="text-align:right">缓存命中率</th><th>最近请求序号</th></tr></thead><tbody>';
+    let html = '<table class="tf"><thead><tr><th>上游通道</th><th>实际转发模型</th><th style="text-align:right">累计请求</th><th style="text-align:right">成功</th><th style="text-align:right">异常</th><th style="text-align:right">输入 TOKEN</th><th style="text-align:right">平均速率</th><th style="text-align:right">缓存命中率</th><th>最近请求序号</th></tr></thead><tbody>';
     for (const r of rows) {
       const cs = trafficCacheSummary(r);
       const tokenLabel = r.cache_requests ? Number(r.input_tokens || 0).toLocaleString() : '—';
@@ -5941,6 +6167,7 @@ async function loadTraffic(snapshot) {
         '<td class="mono" style="text-align:right;color:var(--emerald)">' + r.ok + '</td>' +
         '<td class="mono" style="text-align:right;color:' + (r.err ? 'var(--red)' : 'var(--text-faint)') + '">' + r.err + '</td>' +
         '<td class="mono" style="text-align:right;color:var(--text-muted)" title="' + escHtml((r.cache_requests ? Number(r.input_tokens || 0).toLocaleString() : '暂无') + ' 输入 token') + '">' + tokenLabel + '</td>' +
+        '<td class="mono" style="text-align:right;color:#38bdf8" title="' + escHtml(r.avg_speed ? '平均生成速率 ' + r.avg_speed + ' tok/s' : '暂无速率统计') + '">' + (r.avg_speed != null ? r.avg_speed + ' t/s' : '—') + '</td>' +
         '<td class="mono ' + cs.className + '" style="text-align:right" title="' + escHtml(cs.title) + '">' + cs.label + '</td>' +
         '<td style="color:var(--text-dim);font-family:var(--font-mono);">#' + r.last + '</td></tr>';
     }
@@ -6087,7 +6314,8 @@ function renderCallsTable(calls) {
                     (c.session || '').toLowerCase().includes(kw) ||
                     (c.path || '').toLowerCase().includes(kw) ||
                     String(c.status || '').includes(kw) ||
-                    String(c.idx || '').includes(kw);
+                    String(c.idx || '').includes(kw) ||
+                    (c.speed != null && String(c.speed).includes(kw));
       if (!match) return false;
     }
     return true;
@@ -6107,16 +6335,17 @@ function renderCallsTable(calls) {
   }
 
   let html = '<table class="cl"><thead><tr>' +
-    '<th>序号</th>' +
-    '<th>时间</th>' +
-    '<th>CC 请求模型</th>' +
-    '<th></th>' +
-    '<th>实际转发模型</th>' +
-    '<th>上游通道</th>' +
-    '<th>分流规则</th>' +
-    '<th>状态码</th>' +
-    '<th>缓存命中</th>' +
-    '<th>请求来源</th>' +
+    '<th class="col-idx">序号</th>' +
+    '<th class="col-ts">时间</th>' +
+    '<th class="col-orig">CC 请求模型</th>' +
+    '<th class="col-arrow"></th>' +
+    '<th class="col-model">实际转发模型</th>' +
+    '<th class="col-route">上游通道</th>' +
+    '<th class="col-speed" title="模型生成速率 (每秒输出 token 数量)">速度</th>' +
+    '<th class="col-rule">分流规则</th>' +
+    '<th class="col-status">状态码</th>' +
+    '<th class="col-cache">缓存命中</th>' +
+    '<th class="col-source">请求来源</th>' +
     '</tr></thead><tbody>';
 
   for (const c of filtered) {
@@ -6125,20 +6354,30 @@ function renderCallsTable(calls) {
     const isErr = cst >= 400 || c.resp_error;
     const cs = cacheSummary(c);
     const routeClass = c.route === 'paused' ? 'paused' : (c.route === 'codex' ? 'codex' : ((c.route === 'antigravity' || c.route === 'gemini') ? 'gemini' : 'deepseek'));
+    const speedVal = c.speed != null && c.speed > 0 ? c.speed : null;
+    const durVal = c.duration != null ? c.duration : null;
+    const outTok = c.output_tokens || 0;
+    const speedText = speedVal != null
+      ? '<span class="speed-num">' + speedVal + '</span><span class="speed-unit">t/s</span>'
+      : '<span class="speed-none">—</span>';
+    const speedTitle = speedVal != null
+      ? '生成速率: ' + speedVal + ' tok/s (耗时 ' + (durVal != null ? durVal + 's' : '—') + ', 输出 ' + outTok.toLocaleString() + ' tokens)'
+      : (durVal != null ? '耗时 ' + durVal + 's' : '暂无生成速率数据');
 
     html += '<tr data-idx="' + c.idx + '" class="' + (isErr ? 'err-row' : '') + '">' +
-      '<td class="mono" style="color:var(--text-dim);font-size:10px;">#' + c.idx + '</td>' +
-      '<td style="color:var(--text-dim);font-family:var(--font-mono);">' + escHtml((c.ts || '').slice(11)) + '</td>' +
-      '<td class="mono" style="color:var(--text-muted);">' + escHtml(c.orig_model || '—') + '</td>' +
-      '<td class="arrow">→</td>' +
-      '<td class="mono mdl-out" title="' + escHtml(c.sent_model || '—') + '">' + escHtml(c.sent_model || '—') + '</td>' +
-      '<td><span class="tagc ' + routeClass + '">' + escHtml(c.route || 'direct') + '</span></td>' +
-      '<td style="color:var(--text-dim);" title="' + escHtml(c.route_reason || '') + '">' + escHtml(rel) + '</td>' +
-      '<td class="mono" style="font-weight:700;color:' + (isErr ? 'var(--red)' : 'var(--emerald)') + '">' + (cst || '—') + '</td>' +
-      '<td class="mono ' + cs.className + '" title="' + escHtml(cs.title) + '">' + cs.label + '</td>' +
-      '<td>' + (c.agent_id ? '<span class="src agent" title="Agent ID: ' + escHtml(c.agent_id) + '">子代理</span>' : '<span class="src main">主循环</span>') + '</td>' +
+      '<td class="mono col-idx" style="color:var(--text-dim);font-size:10px;">#' + c.idx + '</td>' +
+      '<td class="col-ts" style="color:var(--text-dim);font-family:var(--font-mono);">' + escHtml((c.ts || '').slice(11)) + '</td>' +
+      '<td class="mono col-orig" style="color:var(--text-muted);">' + escHtml(c.orig_model || '—') + '</td>' +
+      '<td class="arrow col-arrow">→</td>' +
+      '<td class="mono col-model" title="' + escHtml(c.sent_model || '—') + '"><span class="mdl-text">' + escHtml(c.sent_model || '—') + '</span></td>' +
+      '<td class="col-route"><span class="tagc ' + routeClass + '">' + escHtml(c.route || 'direct') + '</span></td>' +
+      '<td class="col-speed" title="' + escHtml(speedTitle) + '">' + speedText + '</td>' +
+      '<td class="col-rule" style="color:var(--text-dim);" title="' + escHtml(c.route_reason || '') + '">' + escHtml(rel) + '</td>' +
+      '<td class="mono col-status" style="font-weight:700;color:' + (isErr ? 'var(--red)' : 'var(--emerald)') + '">' + (cst || '—') + '</td>' +
+      '<td class="mono col-cache ' + cs.className + '" title="' + escHtml(cs.title) + '">' + cs.label + '</td>' +
+      '<td class="col-source">' + (c.agent_id ? '<span class="src agent" title="Agent ID: ' + escHtml(c.agent_id) + '">子代理</span>' : '<span class="src main">主循环</span>') + '</td>' +
       '</tr>';
-    html += '<tr><td colspan="10" style="padding:0;border:none"><div class="detail" id="dt-' + c.idx + '"></div></td></tr>';
+    html += '<tr><td colspan="11" style="padding:0;border:none"><div class="detail" id="dt-' + c.idx + '"></div></td></tr>';
   }
   html += '</tbody></table>';
   body.innerHTML = html;
@@ -6210,10 +6449,14 @@ async function fetchDetail(idx) {
         '<span class="c-badge">未缓存 <b>' + fmtN(cu.input_tokens) + '</b></span>' +
         '<span class="c-badge">命中 <b>' + fmtN(cu.cache_read_tokens) + '</b></span>' +
         '<span class="c-badge">写入 <b>' + fmtN(cu.cache_creation_tokens) + '</b></span>' +
+        (cu.output_tokens ? '<span class="c-badge">输出 <b>' + fmtN(cu.output_tokens) + '</b></span>' : '') +
+        (r.speed ? '<span class="c-badge hit" title="生成速率">速率 <b>' + r.speed + ' tok/s</b></span>' : '') +
         '<span class="c-badge hit">命中率 <b>' + (Number(cu.cache_hit_rate) * 100).toFixed(1) + '%</b></span>' +
         '</div>';
     } else {
-      cacheHtml = '<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">上游未返回缓存统计元数据</div>';
+      cacheHtml = '<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">上游未返回缓存统计元数据' +
+        (r.speed ? ' · 速率 <b>' + r.speed + ' tok/s</b>' : '') +
+        '</div>';
     }
 
     const rawJson = JSON.stringify(r, null, 2);
@@ -6230,6 +6473,9 @@ async function fetchDetail(idx) {
           <span class="detail-chip" title="${escHtml(r.path || '/v1/messages')}">接口 <b class="clip-text">${escHtml(r.path || '/v1/messages')}</b></span>
           <span class="detail-chip" title="${escHtml(routeLabel)}">上游路由 <b class="clip-text">${escHtml(routeLabel)}</b></span>
           <span class="detail-chip ${r.resp_status >= 400 ? 'warn' : 'ok'}">HTTP <b>${r.resp_status || 200}</b></span>
+          <span class="detail-chip" title="每秒输出 token 数量">速度 <b>${r.speed ? r.speed + ' tok/s' : '—'}</b></span>
+          <span class="detail-chip">耗时 <b>${r.duration != null ? r.duration + 's' : '—'}</b></span>
+          <span class="detail-chip">输出 Token <b>${r.output_tokens ? Number(r.output_tokens).toLocaleString() : '—'}</b></span>
           <span class="detail-chip">指纹清理 <b>${cleanBannerText}</b></span>
           <span class="detail-chip" title="Agent ID: ${escHtml(agentId)}">子代理 ID <b class="clip-text">${escHtml(String(agentId).slice(0, 16))}</b></span>
         </div>
