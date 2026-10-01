@@ -3747,7 +3747,7 @@
 <script>
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
-const EFFORT_CN = { off: '关', instant: '即时', low: '低', medium: '中', high: '高', xhigh: '极高', max: '最大' };
+const EFFORT_CN = { off: '关', instant: 'Low', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'X-High', max: 'Max' };
 const TIERS = ['main', 'opus', 'sonnet', 'fast', 'agent'];
 
 // ── Antigravity Spotlight V3 动效核心驱动引擎 ──
@@ -3783,12 +3783,13 @@ const MODEL_EFFORTS = {
   'deepseek-flash':              ['off', 'high'],
   'deepseek-v4-pro':             ['off', 'high'],
   'deepseek-v4-flash-vision-exp': ['off', 'high'],
-  'gpt-6-astra':                 ['instant', 'medium', 'high', 'xhigh', 'max'],
-  'gpt-6-sol':                   ['instant', 'medium', 'high', 'xhigh', 'max'],
-  'gpt-6-luna':                  ['instant', 'medium', 'high', 'xhigh'],
-  'gpt-5.6-sol':                 ['instant', 'medium', 'high', 'xhigh', 'max'],
-  'gpt-5.6-terra':               ['instant', 'medium', 'high', 'xhigh'],
-  'gpt-5.6-luna':                ['instant', 'medium', 'high', 'xhigh'],
+  'gpt-6-astra':                 ['low', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-6-sol':                   ['low', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-6.1-sol':                 ['low', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-6-luna':                  ['low', 'medium', 'high', 'xhigh'],
+  'gpt-5.6-sol':                 ['low', 'medium', 'high', 'xhigh', 'max'],
+  'gpt-5.6-terra':               ['low', 'medium', 'high', 'xhigh'],
+  'gpt-5.6-luna':                ['low', 'medium', 'high', 'xhigh'],
   'gpt-5.5':                     ['low', 'medium', 'high', 'xhigh'],
   'gpt-5.3-codex-spark':         ['low', 'high'],
   'gemini-3.7-flash-low':        ['off'],
@@ -3797,7 +3798,7 @@ const MODEL_EFFORTS = {
   'gemini-2.5-flash':            ['off'],
   'gemini-2.5-pro':              ['off'],
 };
-const DEFAULT_EFFORTS = ['instant', 'medium', 'high', 'xhigh'];
+const DEFAULT_EFFORTS = ['low', 'medium', 'high', 'xhigh'];
 const effortsFor = m => (m && m.startsWith('gemini-') ? ['off'] : (MODEL_EFFORTS[m] || DEFAULT_EFFORTS));
 let st = null, busy = false;
 let upstreamPending = { codex: false, antigravity: false, voice: false };
@@ -4488,6 +4489,7 @@ if (antigravityCardBtnOpen) antigravityCardBtnOpen.addEventListener('click', asy
 
 // ── 下拉模型选择器 ──
 function buildSel(sel, models, curModel, curEff) {
+  if (curEff === 'instant') curEff = 'low';
   const btn = sel.querySelector('.sel-btn');
   const ve = sel.querySelector('.view-effort');
   const effs = effortsFor(curModel);
