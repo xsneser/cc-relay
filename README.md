@@ -275,7 +275,7 @@ python update_antigravity.py install
       "main": "medium",
       "opus": "high",
       "sonnet": "medium",
-      "fast": "instant",
+      "fast": "low",
       "agent": "medium"
     },
     "tier_modifier": {

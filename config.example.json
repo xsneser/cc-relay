@@ -66,7 +66,7 @@
       "main": "medium",
       "opus": "high",
       "sonnet": "medium",
-      "fast": "instant",
+      "fast": "low",
       "agent": "medium"
     },
     "strip_cc_banner": {

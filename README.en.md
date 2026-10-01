@@ -267,7 +267,7 @@ The updater selects the Windows x64 installer from the official [Antigravity-Man
       "main": "medium",
       "opus": "high",
       "sonnet": "medium",
-      "fast": "instant",
+      "fast": "low",
       "agent": "medium"
     },
     "tier_modifier": {
