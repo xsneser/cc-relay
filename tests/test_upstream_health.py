@@ -54,6 +54,68 @@ class TestUpstreamHealth(unittest.TestCase):
             self.assertEqual(res["state"], "degraded")
             self.assertEqual(res["reason"], "代理未运行 (:7897)")
 
+    def test_record_upstream_health_gemini_alias(self):
+        cc_relay.record_upstream_health("gemini", False, "上游报错 (503)")
+        with cc_relay._UPSTREAM_HEALTH_LOCK:
+            h = dict(cc_relay._UPSTREAM_HEALTH["antigravity"])
+        self.assertFalse(h["api_ok"])
+        self.assertEqual(h["reason"], "上游报错 (503)")
+
+        # 标记恢复正常
+        cc_relay.record_upstream_health("gemini", True)
+        with cc_relay._UPSTREAM_HEALTH_LOCK:
+            h = dict(cc_relay._UPSTREAM_HEALTH["antigravity"])
+        self.assertTrue(h["api_ok"])
+        self.assertEqual(h["reason"], "")
+
+    def test_probe_upstream_recovers_degraded_state(self):
+        conf = {"upstreams": {"gemini": {"base": "http://127.0.0.1:8045"}}}
+        # 先模拟 degraded 状态
+        now = time.time()
+        with cc_relay._UPSTREAM_HEALTH_LOCK:
+            cc_relay._UPSTREAM_HEALTH["antigravity"] = {"api_ok": False, "reason": "API报错", "ts": now}
+        self.assertEqual(cc_relay.get_upstream_health(conf, "gemini", running=True)["state"], "degraded")
+
+        # 模拟 probe 成功返回模型列表
+        fake_payload = {"data": [{"id": "gemini-2.5-flash"}, {"id": "gemini-3.7-flash"}]}
+        mock_resp = mock.MagicMock()
+        mock_resp.read.return_value = cc_relay.json.dumps(fake_payload).encode()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+
+        with mock.patch("urllib.request.urlopen", return_value=mock_resp):
+            res = cc_relay.probe_upstream(conf, "gemini")
+            self.assertTrue(res["available"])
+            self.assertIn("gemini-2.5-flash", res["models"])
+
+        # 验证探测成功后健康状态已自动恢复为 online
+        health = cc_relay.get_upstream_health(conf, "gemini", running=True)
+        self.assertEqual(health["state"], "online")
+        self.assertEqual(health["reason"], "")
+
+    def test_probe_upstream_failure_marks_degraded(self):
+        conf = {"upstreams": {"gemini": {"base": "http://127.0.0.1:8045"}}}
+        with mock.patch("urllib.request.urlopen", side_effect=Exception("Connection refused")):
+            res = cc_relay.probe_upstream(conf, "gemini")
+            self.assertFalse(res["available"])
+
+        health = cc_relay.get_upstream_health(conf, "gemini", running=True)
+        self.assertEqual(health["state"], "degraded")
+        self.assertIn("Connection refused", health["reason"])
+
+    def test_bg_fetch_models_recovers_health_on_success(self):
+        conf = {"upstreams": {"gemini": {"base": "http://127.0.0.1:8045"}}}
+        now = time.time()
+        with cc_relay._UPSTREAM_HEALTH_LOCK:
+            cc_relay._UPSTREAM_HEALTH["antigravity"] = {"api_ok": False, "reason": "网络超时", "ts": now}
+        self.assertEqual(cc_relay.get_upstream_health(conf, "gemini", running=True)["state"], "degraded")
+
+        with mock.patch.object(cc_relay, "_fetch_models", side_effect=lambda base, key, timeout=6, prefix=None: ["gemini-2.5-flash"] if prefix == "gemini-" else []):
+            cc_relay._bg_fetch_models(conf, now)
+
+        health = cc_relay.get_upstream_health(conf, "gemini", running=True)
+        self.assertEqual(health["state"], "online")
+
     def test_stats_snapshot_includes_states(self):
         conf = {"router": {"route": "hybrid"}, "upstreams": {}}
         models = {"ds": [], "cx": [], "gm": []}

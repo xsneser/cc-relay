@@ -1780,6 +1780,15 @@
     font-family: var(--font-mono);
     font-size: 10.5px;
     white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s ease, opacity 0.15s ease;
+  }
+  .upstream-status:hover {
+    color: var(--text-bright);
+  }
+  .upstream-status:active {
+    opacity: 0.75;
   }
   .upstream-status-text { overflow: hidden; text-overflow: ellipsis; }
   .upstream-actions {
@@ -5438,11 +5447,19 @@ function renderStatus() {
         desc = reason ? ('API异常 (' + reason + ')') : 'API不可用';
       }
       text.textContent = label + ' :' + port + ' ' + desc + (detail || '');
-      if (state === 'degraded' && reason) {
-        text.title = label + ' API不可用: ' + reason;
+      const region = $(prov === 'antigravity' ? '#gemini-status-region' : (prov === 'codex' ? '#codex-status-region' : '#voice-status-region'));
+      let tip = '';
+      if (prov === 'voice') {
+        tip = '语音输入伴侣服务';
+      } else if (state === 'degraded' && reason) {
+        tip = label + ' API不可用: ' + reason + '（点击主动测试可用性）';
+      } else if (state === 'online') {
+        tip = label + ' API运行正常（点击主动测试可用性）';
       } else {
-        text.removeAttribute('title');
+        tip = label + ' 未启动';
       }
+      text.title = tip;
+      if (region) region.title = tip;
     }
   };
   renderUpstream('#codex-dot', '#codex-status', 'Codex', '8317', run, '');
@@ -5861,6 +5878,38 @@ async function controlUpstream(provider) {
 $('#b-codex-toggle').onclick = () => controlUpstream('codex');
 $('#b-gemini-toggle').onclick = () => controlUpstream('antigravity');
 $('#b-voice-toggle').onclick = () => controlUpstream('voice');
+
+async function probeUpstream(provider) {
+  const meta = UPSTREAM_METAS[provider];
+  if (!meta) return;
+  if (!isUpstreamRunning(provider)) {
+    toast(meta.label + ' 代理未启动，无法探测可用性', true);
+    return;
+  }
+  const textEl = $('#' + meta.slug + '-status');
+  if (textEl) textEl.textContent = meta.label + ' :' + meta.port + ' 探测可用性中…';
+  try {
+    const res = await fetch('/api/probe?name=' + encodeURIComponent(provider), {
+      headers: { 'X-CC-Relay-UI': '1' }
+    });
+    const data = await res.json();
+    if (data.available) {
+      const count = (data.models || []).length;
+      toast(meta.label + ' API 可用性正常' + (count ? '（已发现 ' + count + ' 个模型）' : ''));
+    } else {
+      toast(meta.label + ' API 探测异常: ' + (data.error || '不可用'), true);
+    }
+  } catch (e) {
+    toast(meta.label + ' 探测请求失败: ' + (e.message || e), true);
+  } finally {
+    await refresh();
+  }
+}
+
+const geminiRegion = $('#gemini-status-region');
+if (geminiRegion) geminiRegion.onclick = () => probeUpstream('antigravity');
+const codexRegion = $('#codex-status-region');
+if (codexRegion) codexRegion.onclick = () => probeUpstream('codex');
 
 // ── 语音实时听写测试面板与 AudioWorklet ──
 let _voiceWs = null;

@@ -533,6 +533,18 @@ _UPSTREAM_HEALTH = {
     "deepseek": {"api_ok": True, "reason": "", "ts": 0.0},
 }
 _UPSTREAM_HEALTH_LOCK = threading.Lock()
+UPSTREAM_DEGRADED_TTL = 45.0
+
+
+def record_upstream_health(name, ok, reason=""):
+    """统一记录上游运行健康状态；gemini 自动映射为 antigravity。"""
+    target = "antigravity" if name in ("gemini", "antigravity") else name
+    with _UPSTREAM_HEALTH_LOCK:
+        if ok:
+            _UPSTREAM_HEALTH[target] = {"api_ok": True, "reason": "", "ts": time.time()}
+        else:
+            _UPSTREAM_HEALTH[target] = {"api_ok": False, "reason": reason or "API报错", "ts": time.time()}
+
 _CODEX_PROXY_TARGET_CACHE = {"ts": 0.0, "target": None}
 _CODEX_PROXY_TARGET_LOCK = threading.Lock()
 _CODEX_PROXY_CHECK_CACHE = {"ts": 0.0, "ok": True, "port": None}
@@ -644,7 +656,7 @@ def get_upstream_health(conf, name, running=None):
         now = time.time()
         with _UPSTREAM_HEALTH_LOCK:
             h = dict(_UPSTREAM_HEALTH.get("codex", {}))
-        if h.get("api_ok") is False and (now - h.get("ts", 0.0) < 120.0):
+        if h.get("api_ok") is False and (now - h.get("ts", 0.0) < UPSTREAM_DEGRADED_TTL):
             return {"state": "degraded", "running": True, "reason": h.get("reason") or "API报错"}
         ok, proxy_port = _check_codex_proxy_reachable(conf)
         if not ok and proxy_port:
@@ -658,7 +670,7 @@ def get_upstream_health(conf, name, running=None):
         now = time.time()
         with _UPSTREAM_HEALTH_LOCK:
             h = dict(_UPSTREAM_HEALTH.get("antigravity", {}))
-        if h.get("api_ok") is False and (now - h.get("ts", 0.0) < 120.0):
+        if h.get("api_ok") is False and (now - h.get("ts", 0.0) < UPSTREAM_DEGRADED_TTL):
             return {"state": "degraded", "running": True, "reason": h.get("reason") or "API报错"}
         return {"state": "online", "running": True, "reason": ""}
 
@@ -1391,6 +1403,7 @@ def probe_upstream(conf, name="antigravity", timeout=6):
     up = _upstream_conf(conf, actual)
     base = (up.get("base") or "").rstrip("/")
     if not base:
+        record_upstream_health(actual, False, "missing base")
         return {"name": actual, "available": False, "error": "missing base"}
     try:
         req = urllib.request.Request(base + "/v1/models", method="GET")
@@ -1401,9 +1414,11 @@ def probe_upstream(conf, name="antigravity", timeout=6):
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = json.load(resp)
         ids = [str(x.get("id") or "") for x in payload.get("data", []) if isinstance(x, dict)]
+        record_upstream_health(actual, True)
         return {"name": actual, "available": True, "models": sorted(set(ids)),
                 "messages_path": base + "/v1/messages"}
     except Exception as e:
+        record_upstream_health(actual, False, str(e)[:240])
         return {"name": actual, "available": False, "error": str(e)[:240],
                 "messages_path": base + "/v1/messages"}
 
@@ -1417,6 +1432,12 @@ def _bg_fetch_models(conf, now):
                            _key_for(conf, _upstream_conf(conf, "codex"), "codex"), prefix="gpt-")
         gm = _fetch_models((_upstream_conf(conf, "antigravity")).get("base", ""),
                            _key_for(conf, _upstream_conf(conf, "antigravity"), "antigravity"), prefix="gemini-")
+        if gm:
+            record_upstream_health("antigravity", True)
+        if cx:
+            record_upstream_health("codex", True)
+        if ds:
+            record_upstream_health("deepseek", True)
         if not ds:
             ds = list(DEEPSEEK_MODELS)
         if not cx:
@@ -2828,8 +2849,10 @@ class Relay(BaseHTTPRequestHandler):
         if up_name in ("codex", "antigravity", "gemini", "deepseek"):
             target_up = "antigravity" if up_name == "gemini" else up_name
             if status and status < 400:
-                with _UPSTREAM_HEALTH_LOCK:
-                    _UPSTREAM_HEALTH[target_up] = {"api_ok": True, "reason": "", "ts": time.time()}
+                record_upstream_health(target_up, True)
+            elif status and (400 <= status < 500) and status not in (401, 403):
+                # 客户端请求错误 (400/404/422 等) 属于客户端请求语义问题，不影响上游服务本身的健康度
+                pass
             else:
                 err_str = ""
                 if rbody:
@@ -2851,8 +2874,7 @@ class Relay(BaseHTTPRequestHandler):
                     reason_text = f"上游报错 ({status})"
                 elif err:
                     reason_text = "网络超时"
-                with _UPSTREAM_HEALTH_LOCK:
-                    _UPSTREAM_HEALTH[target_up] = {"api_ok": False, "reason": reason_text, "ts": time.time()}
+                record_upstream_health(target_up, False, reason_text)
 
         _UP["last"] = up_name; _UP["last_model"] = sent_model or ""; _UP["last_ts"] = time.time()
 
