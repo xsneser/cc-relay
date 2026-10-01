@@ -2,7 +2,7 @@
 - 基于 Windows 原生 Tkinter + Win32 WS_EX_NOACTIVATE 扩展样式
 - 零焦点抢夺：点击悬浮麦克风不会夺走目标窗口 (VS Code/终端/记事本) 的光标焦点！
 - Win32 GDI 圆角剪裁 (CreateRoundRectRgn)：消除生硬方框，呈现现代圆角胶囊 (Pill) 造型
-- 动态 ASR 模型徽章 (Badge)：实时显示 SenseVoice / Paraformer 当前激活引擎
+- 动态 ASR 模型徽章 (Badge)：实时显示 SenseVoice / Qwen 1.7B 当前激活引擎
 - 竖向展开流式抽屉 (Vertical Streaming Drawer)：出字时向下自然展开多行文本气泡
 - 动态音量波形动画 (基于实时音频 RMS 电平)
 - 自由拖动吸附与记忆屏幕坐标
@@ -83,28 +83,18 @@ class DesktopVoiceWidget:
             try:
                 cap = engine.get_capabilities()
                 eng_type = str(cap.get("engine", "")).lower()
+                if "qwen" in eng_type:
+                    return "Qwen 1.7B"
+                if "sherpa" in eng_type:
+                    return "Sherpa 2Pass"
                 if "sensevoice" in eng_type:
                     return "SenseVoice"
-                if "paraformer" in eng_type:
-                    return "Paraformer"
             except Exception:
                 pass
 
         cfg_eng = str(getattr(self.coordinator.config, "engine", "")).lower()
-        if "sensevoice" in cfg_eng or "sherpa" in cfg_eng:
-            # 预检：若配置为 sensevoice / sherpa 但本地未安装该模型，检测是否平滑回退至 Paraformer
-            try:
-                is_sv_installed = getattr(self.coordinator.config, "is_sensevoice_installed", lambda: False)()
-                if not is_sv_installed:
-                    from .asr_engine import _find_local_model_dir
-                    if _find_local_model_dir("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch"):
-                        return "Paraformer"
-            except Exception:
-                pass
-            return "SenseVoice"
-
-        if "paraformer" in cfg_eng:
-            return "Paraformer"
+        if "qwen" in cfg_eng or "paraformer" in cfg_eng:
+            return "Qwen 1.7B"
         return "SenseVoice"
 
     def _apply_win32_non_activating(self, root: tk.Tk):

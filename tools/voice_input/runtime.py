@@ -38,7 +38,7 @@ def _score_interpreter(py_path: str) -> int:
         return -1
     code = (
         "import importlib.util\n"
-        "mods = ['numpy', 'sounddevice', 'pynput', 'websockets', 'funasr', 'sherpa_onnx']\n"
+        "mods = ['numpy', 'sounddevice', 'pynput', 'websockets', 'sherpa_onnx', 'torch', 'transformers']\n"
         "print(sum(1 for m in mods if importlib.util.find_spec(m) is not None))\n"
     )
     try:
@@ -81,9 +81,9 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
     target_mod = None
     if engine:
         eng_lower = str(engine).lower()
-        if "paraformer" in eng_lower:
-            target_mod = "funasr"
-        elif "sensevoice" in eng_lower:
+        if "qwen" in eng_lower or "paraformer" in eng_lower:
+            target_mod = "transformers"
+        elif "sensevoice" in eng_lower or "sherpa" in eng_lower:
             target_mod = "sherpa_onnx"
 
     candidates = []
@@ -93,7 +93,12 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
     if env_py:
         candidates.append(env_py)
 
-    # 2. 检查 tools/voice_input/.venv 专属独立虚拟环境
+    # 2. 检查安装包内置的自包含便携运行时 (tools/voice_input/runtime/python.exe)
+    bundled_py_win = repo_root / "tools" / "voice_input" / "runtime" / "python.exe"
+    if bundled_py_win.is_file():
+        candidates.append(str(bundled_py_win.resolve()))
+
+    # 3. 检查 tools/voice_input/.venv 专属独立虚拟环境 (开发调试环境)
     venv_py_win = repo_root / "tools" / "voice_input" / ".venv" / "Scripts" / "python.exe"
     if venv_py_win.is_file():
         candidates.append(str(venv_py_win.resolve()))
@@ -139,9 +144,10 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
     py_exe = python_exe or find_voice_python()
     modules = [
         "sherpa_onnx",
-        "funasr",
+        "transformers",
         "torch",
         "torchaudio",
+        "modelscope",
         "webrtcvad",
         "websockets",
         "sounddevice",
@@ -153,7 +159,7 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
 
     code = (
         "import importlib.util, json\n"
-        "mods = ['sherpa_onnx', 'funasr', 'torch', 'torchaudio', 'webrtcvad', 'websockets', "
+        "mods = ['sherpa_onnx', 'transformers', 'torch', 'torchaudio', 'modelscope', 'webrtcvad', 'websockets', "
         "'sounddevice', 'numpy', 'pynput', 'win32gui', 'tkinter']\n"
         "res = {m: importlib.util.find_spec(m) is not None for m in mods}\n"
         "print('__JSON_START__' + json.dumps(res))\n"

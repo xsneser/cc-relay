@@ -114,6 +114,7 @@ class TestDesktopVoiceWidget(unittest.TestCase):
     @mock.patch.object(VoiceConfig, "is_sensevoice_installed", return_value=True)
     def test_model_badge_and_vertical_expansion(self, mock_sv):
         from tools.voice_input.session import SessionState
+        self.coord.config.engine = "sensevoice_offline"
         self.widget.create_window()
 
         # 检查模型徽章在 SenseVoice 就绪时显示 SenseVoice
@@ -136,20 +137,20 @@ class TestDesktopVoiceWidget(unittest.TestCase):
         self.assertFalse(self.widget.drawer_frame.winfo_ismapped())
         self.assertEqual(self.widget.status_label.cget("text"), "点击语音输入")
 
-    @mock.patch.object(VoiceConfig, "is_sensevoice_installed", return_value=False)
-    def test_preflight_fallback_detection(self, mock_sv):
-        # 当 SenseVoice 未下载但本地已缓存 Paraformer 时，启动前预检直接显示 Paraformer
+    def test_preflight_qwen_badge(self):
+        # 当配置为 qwen 引擎时，徽章直接展示 Qwen 1.7B
+        self.coord.config.engine = "qwen_2pass"
         self.widget.create_window()
-        self.assertEqual(self.widget.model_badge.cget("text"), "Paraformer")
+        self.assertEqual(self.widget.model_badge.cget("text"), "Qwen 1.7B")
 
-    def test_paraformer_badge_detection(self):
-        class FakeParaformerEngine:
+    def test_qwen_badge_detection(self):
+        class FakeQwenEngine:
             is_loaded = True
             def get_capabilities(self):
-                return {"engine": "paraformer_streaming_2pass"}
-        self.coord.engine = FakeParaformerEngine()
+                return {"engine": "qwen_2pass"}
+        self.coord.engine = FakeQwenEngine()
         self.widget.create_window()
-        self.assertEqual(self.widget.model_badge.cget("text"), "Paraformer")
+        self.assertEqual(self.widget.model_badge.cget("text"), "Qwen 1.7B")
 
 
 if __name__ == "__main__":

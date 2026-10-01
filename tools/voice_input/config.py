@@ -21,8 +21,14 @@ class VoiceConfig:
     port: int = 8401
     auto_start: bool = False
 
-    # 引擎模式: "sherpa_2pass" (统一 2-Pass：流式 Zipformer + 离线 SenseVoice) | "sensevoice_offline" (轻量极速，纯 CPU) | "paraformer_streaming_2pass" (兼容向后兼容别名)
+    # 引擎模式: "qwen_2pass" (推荐高精流式: Zipformer + Qwen3-ASR-1.7B) | "qwen_offline" (Qwen 1.7B 离线单 Pass) | "sherpa_2pass" (统一 2-Pass：流式 Zipformer + 离线 SenseVoice) | "sensevoice_offline" (轻量极速，纯 CPU) | "paraformer_streaming_2pass" (向后兼容别名)
     engine: str = "sherpa_2pass"
+
+    # Qwen ASR 1.7B 配置
+    qwen_model_id: str = "Qwen/Qwen3-ASR-1.7B"
+    qwen_model_dir_name: str = "Qwen3-ASR-1.7B"
+    qwen_device: str = "auto"          # "auto" | "cuda" | "cpu"
+    qwen_torch_dtype: str = "auto"     # "auto" | "bfloat16" | "float16" | "float32"
 
     # 音频参数
     sample_rate: int = 16000
@@ -73,6 +79,33 @@ class VoiceConfig:
         return self.sensevoice_tokens_path
 
     @property
+    def qwen_model_dir(self) -> Path:
+        return self.models_dir / self.qwen_model_dir_name
+
+    def is_qwen_installed(self) -> bool:
+        """检查 Qwen ASR 1.7B 模型是否在本地就绪 (优先 repo/models，其次 modelscope/hf 缓存)"""
+        d = self.qwen_model_dir
+        if d.is_dir() and ((d / "config.json").is_file() or any(d.glob("*.safetensors")) or any(d.glob("*.bin"))):
+            return True
+
+        # 检查 ModelScope 默认缓存
+        ms_candidates = [
+            Path(os.path.expanduser("~/.cache/modelscope/hub/models")) / self.qwen_model_id,
+            Path(os.path.expanduser("~/.cache/modelscope/hub")) / self.qwen_model_id,
+        ]
+        for c in ms_candidates:
+            if c.is_dir() and ((c / "config.json").is_file() or any(c.glob("*.safetensors")) or any(c.glob("*.bin"))):
+                return True
+
+        # 检查 Hugging Face 默认缓存
+        hf_cache = Path(os.path.expanduser("~/.cache/huggingface/hub")) / f"models--{self.qwen_model_id.replace('/', '--')}"
+        if hf_cache.is_dir():
+            snapshots = hf_cache / "snapshots"
+            if snapshots.is_dir() and any(snapshots.iterdir()):
+                return True
+        return False
+
+    @property
     def streaming_model_dir(self) -> Path:
         return self.models_dir / "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
 
@@ -100,7 +133,7 @@ class VoiceConfig:
             raise ValueError(f"vad_mode 必须为 0~3，当前: {self.vad_mode}")
         if self.min_recording_seconds <= 0 or self.max_recording_seconds <= self.min_recording_seconds:
             raise ValueError("录音时长阈值非法")
-        valid_engines = ("sherpa_2pass", "paraformer_streaming_2pass", "sensevoice_offline")
+        valid_engines = ("qwen_2pass", "qwen_offline", "sherpa_2pass", "sensevoice_offline", "paraformer_streaming_2pass")
         if self.engine not in valid_engines:
             raise ValueError(f"不支持的引擎: {self.engine}")
         if not (1024 <= self.port <= 65535):
@@ -131,6 +164,12 @@ class VoiceConfig:
                 cfg.hotkey = v_conf["hotkey"].strip().lower()
             if "engine" in v_conf and isinstance(v_conf["engine"], str):
                 cfg.engine = v_conf["engine"].strip()
+            if "qwen_model_id" in v_conf and isinstance(v_conf["qwen_model_id"], str):
+                cfg.qwen_model_id = v_conf["qwen_model_id"].strip()
+            if "qwen_device" in v_conf and isinstance(v_conf["qwen_device"], str):
+                cfg.qwen_device = v_conf["qwen_device"].strip()
+            if "qwen_torch_dtype" in v_conf and isinstance(v_conf["qwen_torch_dtype"], str):
+                cfg.qwen_torch_dtype = v_conf["qwen_torch_dtype"].strip()
             if "port" in v_conf and isinstance(v_conf["port"], int):
                 cfg.port = v_conf["port"]
             if "vad_mode" in v_conf and isinstance(v_conf["vad_mode"], int):

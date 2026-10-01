@@ -20,6 +20,11 @@ from urllib.parse import urlsplit
 from cpa_updater import CPAUpdater
 import relay_updater
 import antigravity_updater
+from openai_adapter import (
+    anthropic_to_openai_request,
+    openai_to_anthropic_response,
+    OpenAIToAnthropicStreamAdapter,
+)
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 BASE = os.environ.get("CC_RELAY_DIR") or os.path.dirname(os.path.abspath(__file__))
@@ -344,6 +349,21 @@ def _config_public_view(conf):
             "key_mask": _mask_config_key(key),
             "has_key": bool(key),
         }
+    custom_providers = {}
+    for cp_id, cp_val in (conf.get("custom_providers") or {}).items():
+        if not isinstance(cp_val, dict):
+            continue
+        cp_key = str(cp_val.get("key") or "").strip()
+        custom_providers[str(cp_id)] = {
+            "id": str(cp_id),
+            "name": str(cp_val.get("name") or cp_id),
+            "base": str(cp_val.get("base") or ""),
+            "protocol": str(cp_val.get("protocol") or "openai").strip().lower(),
+            "proxy_url": str(cp_val.get("proxy_url") or ""),
+            "key_mask": _mask_config_key(cp_key),
+            "has_key": bool(cp_key),
+            "models": list(cp_val.get("models") or []),
+        }
     tools_conf = conf.get("tools") or {}
     codex_view = {
         "auto_update": ((tools_conf.get("codex") or {}).get("auto_update") is True),
@@ -359,6 +379,7 @@ def _config_public_view(conf):
     }
     return {
         "upstreams": upstreams,
+        "custom_providers": custom_providers,
         "tools": {
             "codex": codex_view,
             "antigravity": {
@@ -441,7 +462,7 @@ def _apply_config_update(conf, data):
                 v_conf["hotkey"] = str(v_patch["hotkey"]).strip().lower()
             if "engine" in v_patch:
                 engine = str(v_patch["engine"]).strip()
-                if engine not in ("paraformer_streaming_2pass", "sensevoice_offline"):
+                if engine not in ("qwen_2pass", "qwen_offline", "sherpa_2pass", "sensevoice_offline", "paraformer_streaming_2pass"):
                     raise ValueError(f"unsupported engine: {engine}")
                 v_conf["engine"] = engine
             if "port" in v_patch:
@@ -451,6 +472,49 @@ def _apply_config_update(conf, data):
                 v_conf["port"] = port
             if "restore_clipboard" in v_patch:
                 v_conf["restore_clipboard"] = bool(v_patch["restore_clipboard"])
+
+    cp_updates = data.get("custom_providers")
+    if cp_updates is not None:
+        if not isinstance(cp_updates, dict):
+            raise ValueError("custom_providers must be an object")
+        existing_cp = candidate.setdefault("custom_providers", {})
+        for cp_id, cp_patch in cp_updates.items():
+            cp_id_str = str(cp_id).strip()
+            if not re.match(r'^[a-zA-Z0-9_\-\.]{1,64}$', cp_id_str):
+                raise ValueError(f"invalid custom provider ID: '{cp_id}'")
+            if cp_patch is None or (isinstance(cp_patch, dict) and cp_patch.get("deleted") is True):
+                existing_cp.pop(cp_id_str, None)
+                continue
+            if not isinstance(cp_patch, dict):
+                raise ValueError(f"custom_providers.{cp_id} must be an object")
+            entry = existing_cp.setdefault(cp_id_str, {})
+            if "name" in cp_patch:
+                entry["name"] = str(cp_patch["name"] or cp_id_str).strip()
+            elif "name" not in entry:
+                entry["name"] = cp_id_str
+            if "protocol" in cp_patch:
+                proto = str(cp_patch["protocol"] or "openai").strip().lower()
+                if proto not in ("openai", "anthropic"):
+                    raise ValueError(f"custom_providers.{cp_id}.protocol must be 'openai' or 'anthropic'")
+                entry["protocol"] = proto
+            elif "protocol" not in entry:
+                entry["protocol"] = "openai"
+            if "base" in cp_patch:
+                entry["base"] = _normalize_config_url(cp_patch["base"], f"custom_providers.{cp_id}.base")
+            if "proxy_url" in cp_patch:
+                entry["proxy_url"] = _normalize_config_url(
+                    cp_patch["proxy_url"], f"custom_providers.{cp_id}.proxy_url",
+                    allow_empty=True, allow_direct=True)
+            if "key" in cp_patch:
+                key_val = str(cp_patch["key"] or "").strip()
+                if key_val and key_val != _CONFIG_KEY_MASK:
+                    entry["key"] = key_val
+            if "models" in cp_patch:
+                m_val = cp_patch["models"]
+                if isinstance(m_val, list):
+                    entry["models"] = [str(x).strip() for x in m_val if str(x).strip()]
+                elif isinstance(m_val, str):
+                    entry["models"] = [x.strip() for x in m_val.replace(",", "\n").splitlines() if x.strip()]
 
     _save_conf(candidate)
     return _config_public_view(candidate)
@@ -1391,16 +1455,24 @@ def _fetch_models(base, key, timeout=6, prefix=None):
 
 
 def _upstream_conf(conf, name):
-    """读取 provider 配置, 兼容旧配置里的 antigravity upstream 命名"""
+    """读取 provider 配置, 兼容旧配置里的 antigravity upstream 命名, 以及自定义供应商"""
     ups = conf.get("upstreams") or {}
     if name == "antigravity":
         return ups.get("gemini") or ups.get("antigravity") or {}
-    return ups.get(name) or {}
+    if name in ups:
+        return ups[name]
+    cps = conf.get("custom_providers") or {}
+    if name in cps and isinstance(cps[name], dict):
+        return cps[name]
+    return {}
 
 
 def _key_for(conf, up, name=None):
     if not isinstance(up, dict):
         return ""
+    # 自定义供应商的 key 直接存放在其对象中
+    if "key" in up and str(up.get("key") or "").strip():
+        return str(up.get("key")).strip()
     field = up.get("key_env")
     if name:
         field = _safe_key_env_name(name, field) or _canonical_key_field(name)
@@ -1418,9 +1490,16 @@ def provider_for_model(model, conf=None):
         return None
     conf = conf or {}
     routes = conf.get("model_routes") or {}
-    if routes.get(model) in ("deepseek", "codex", "antigravity", "gemini"):
+    if model in routes:
         p = routes[model]
         return "antigravity" if p == "gemini" else p
+    # 自定义供应商已声明模型列表
+    cps = conf.get("custom_providers") or {}
+    for cpid, cp in cps.items():
+        if not isinstance(cp, dict):
+            continue
+        if model in (cp.get("models") or []):
+            return cpid
     for p, values in (("deepseek", DEEPSEEK_MODELS), ("codex", CODEX_MODELS),
                       ("antigravity", GEMINI_MODELS)):
         if model in values:
@@ -1431,6 +1510,9 @@ def provider_for_model(model, conf=None):
         return "deepseek"
     if model.startswith("gemini-"):
         return "antigravity"
+    for cpid in cps:
+        if model.startswith(cpid + "/"):
+            return cpid
     return None
 
 
@@ -1443,22 +1525,47 @@ def probe_upstream(conf, name="antigravity", timeout=6):
     if not base:
         record_upstream_health(actual, False, "missing base")
         return {"name": actual, "available": False, "error": "missing base"}
+
+    proto = str(up.get("protocol") or "").strip().lower()
+    if not proto:
+        proto = "anthropic" if actual in ("deepseek", "antigravity") else "openai"
+
+    probe_url = base + ("/models" if proto == "openai" else "/v1/models")
+    key = _key_for(conf, up, actual)
+
     try:
-        req = urllib.request.Request(base + "/v1/models", method="GET")
-        key = _key_for(conf, up, actual)
+        req = urllib.request.Request(probe_url, method="GET")
         if key:
             req.add_header("Authorization", "Bearer " + key)
             req.add_header("x-api-key", key)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        proxy_url = up.get("proxy_url")
+        if proxy_url and proxy_url != "direct":
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}))
+        else:
+            opener = urllib.request.build_opener()
+        with opener.open(req, timeout=timeout) as resp:
             payload = json.load(resp)
         ids = [str(x.get("id") or "") for x in payload.get("data", []) if isinstance(x, dict)]
         record_upstream_health(actual, True)
-        return {"name": actual, "available": True, "models": sorted(set(ids)),
-                "messages_path": base + "/v1/messages"}
+        return {"name": actual, "available": True, "protocol": proto, "models": sorted(set(ids)),
+                "messages_path": base + ("/v1/messages" if proto == "anthropic" else "/chat/completions")}
     except Exception as e:
+        if proto == "openai" and not base.endswith("/v1"):
+            try:
+                probe_url = base + "/v1/models"
+                req = urllib.request.Request(probe_url, method="GET")
+                if key:
+                    req.add_header("Authorization", "Bearer " + key)
+                with opener.open(req, timeout=timeout) as resp:
+                    payload = json.load(resp)
+                ids = [str(x.get("id") or "") for x in payload.get("data", []) if isinstance(x, dict)]
+                record_upstream_health(actual, True)
+                return {"name": actual, "available": True, "protocol": proto, "models": sorted(set(ids)),
+                        "messages_path": base + "/v1/chat/completions"}
+            except Exception:
+                pass
         record_upstream_health(actual, False, str(e)[:240])
-        return {"name": actual, "available": False, "error": str(e)[:240],
-                "messages_path": base + "/v1/messages"}
+        return {"name": actual, "available": False, "protocol": proto, "error": str(e)[:240]}
 
 
 def _bg_fetch_models(conf, now):
@@ -1972,6 +2079,11 @@ def pick_route(conf, headers, body_json):
     if route == "antigravity":
         m = forced or (router.get("hybrid_antigravity_model") or "").strip() or DEFAULT_GEMINI_MAP
         return "antigravity", m, "route:antigravity"
+    cps = conf.get("custom_providers") or {}
+    if route in cps:
+        cp_models = cps[route].get("models") or []
+        m = forced or (cp_models[0] if cp_models else "")
+        return route, m, f"route:{route}"
 
     # hybrid: 高价值档(plan) -> 高价值模型; 其余按档位 -> 各自模型; 上游随所选模型决定
     hv = (router.get("hybrid_codex_model") or router.get("model") or "").strip() or DEFAULT_CODEX_MAP
@@ -1995,11 +2107,14 @@ def pick_route(conf, headers, body_json):
         m = (tier.get("fast") or dd).strip()
         return _up(m), m, "hybrid:fast"
 
-    # ---------------- 阶段二：直连已知 provider 模型 (gpt-*, gemini-*, deepseek-*) ----------------
-    if provider_for_model(model, conf) == "codex":
+    # ---------------- 阶段二：直连已知 provider 模型 (gpt-*, gemini-*, deepseek-*, 自定义模型) ----------------
+    p_direct = provider_for_model(model, conf)
+    if p_direct == "codex":
         return "codex", model, "hybrid:gpt-direct"
-    if provider_for_model(model, conf) == "antigravity":
+    if p_direct == "antigravity":
         return "antigravity", model, "hybrid:antigravity-direct"
+    if p_direct and p_direct != "deepseek":
+        return p_direct, model, f"hybrid:{p_direct}-direct"
 
     # ---------------- 阶段三：统一智能分流引擎 ----------------
     # 无论收到的是 relay-main 占位符、无模型请求，还是官方模型名 (如 claude-opus-5, claude-sonnet-5 等)，
@@ -2362,7 +2477,12 @@ def stats_snapshot():
     cpa_status = _get_cpa_updater(conf).status()
     relay_update_status = _get_relay_updater(conf).status()
     ag_update_status = antigravity_updater.get_antigravity_updater(conf).status()
-    # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶。
+    cps = conf.get("custom_providers") or {}
+    custom_all = []
+    for cp in cps.values():
+        if isinstance(cp, dict) and cp.get("models"):
+            custom_all.extend(cp["models"])
+    # 兼容旧 UI 字段名，同时暴露 Gemini 独立模型桶与自定义供应商。
     res = {'route': route, 'mode': route,
             'traffic_paused': traffic_paused(conf),
             'paused_waiting_requests': _paused_waiting_count(),
@@ -2372,7 +2492,9 @@ def stats_snapshot():
             'models_ds': lm['ds'], 'models_codex': lm['cx'], 'models_gemini': lm['gm'],
             # 旧 UI / API 兼容别名
             'deepseek_models': lm['ds'], 'codex_models': lm['cx'], 'gemini_models': lm['gm'],
-            'all_models': lm['ds'] + lm['cx'] + lm['gm'],
+            'custom_providers': cps,
+            'models_custom': {cpid: list(cp.get('models') or []) for cpid, cp in cps.items() if isinstance(cp, dict)},
+            'all_models': lm['ds'] + lm['cx'] + lm['gm'] + custom_all,
             'settings_model': rt.get('model', '') or '(自动)',
             'env_base': 'http://127.0.0.1:8400',
             'env_model': rt.get('model', '') or route,
@@ -2604,10 +2726,14 @@ class Relay(BaseHTTPRequestHandler):
                     self.wfile.write(msg)
                 return
 
-        # /v1/models 探测: 聚合三上游模型列表(供 CC 识别)
+        # /v1/models 探测: 聚合三上游及自定义供应商模型列表(供 CC 识别)
         if self.path.split("?")[0] == "/v1/models" and method == "GET":
             lm = live_models(conf)
-            names = sorted(set(lm['ds'] + lm['cx'] + lm['gm'] +
+            custom_models = []
+            for cp in (conf.get("custom_providers") or {}).values():
+                if isinstance(cp, dict) and cp.get("models"):
+                    custom_models.extend(cp["models"])
+            names = sorted(set(lm['ds'] + lm['cx'] + lm['gm'] + custom_models +
                                ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"]))
             body = json.dumps({"data": [{"id": m, "object": "model", "owned_by": "relay"} for m in names],
                                "object": "list"}).encode()
@@ -2795,7 +2921,19 @@ class Relay(BaseHTTPRequestHandler):
                     self.wfile.write(msg)
             return
         codex_request_active = False
-        upstream = base.rstrip("/") + path
+        is_custom_provider = up_name in (conf.get("custom_providers") or {})
+        provider_proto = str(up.get("protocol") or "openai").strip().lower() if is_custom_provider else "anthropic"
+
+        if is_custom_provider and provider_proto == "openai":
+            base_clean = base.rstrip("/")
+            if base_clean.endswith("/v1"):
+                upstream = base_clean + "/chat/completions"
+            elif "/v1" in base_clean:
+                upstream = base_clean + "/chat/completions"
+            else:
+                upstream = base_clean + "/chat/completions"
+        else:
+            upstream = base.rstrip("/") + path
 
         # model 改写
         orig_model = (body_json or {}).get("model") if isinstance(body_json, dict) else None
@@ -2932,6 +3070,11 @@ class Relay(BaseHTTPRequestHandler):
                         if stripped_n:
                             raw = json.dumps(body_json, ensure_ascii=False).encode("utf-8")
 
+        if is_custom_provider and provider_proto == "openai" and isinstance(body_json, dict):
+            openai_body = anthropic_to_openai_request(body_json, target_model=sent_model)
+            raw = json.dumps(openai_body, ensure_ascii=False).encode("utf-8")
+            fwd["Content-Type"] = "application/json"
+
         data = raw if raw else None
         if up_name == "codex":
             if not _codex_request_enter():
@@ -2969,7 +3112,44 @@ class Relay(BaseHTTPRequestHandler):
             resp = op.open(req, timeout=900)
             status = resp.status
             rheaders = dict(resp.headers)
-            if is_stream_early:
+            if is_custom_provider and provider_proto == "openai":
+                is_stream_req = bool(body_json.get("stream")) if isinstance(body_json, dict) else False
+                if is_stream_req:
+                    if not is_stream_early:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                        self.send_header("Cache-Control", "no-cache")
+                        self.send_header("Connection", "keep-alive")
+                        self.end_headers()
+                        is_stream_early = True
+                    stream_adapter = OpenAIToAnthropicStreamAdapter(model_name=sent_model)
+                    rbody_chunks = []
+                    for line in resp:
+                        for chunk_bytes in stream_adapter.process_chunk(line.decode("utf-8", "replace")):
+                            rbody_chunks.append(chunk_bytes)
+                            try:
+                                self.wfile.write(chunk_bytes)
+                                self.wfile.flush()
+                            except Exception:
+                                break
+                    for chunk_bytes in stream_adapter.finish():
+                        rbody_chunks.append(chunk_bytes)
+                        try:
+                            self.wfile.write(chunk_bytes)
+                            self.wfile.flush()
+                        except Exception:
+                            pass
+                    rbody = b"".join(rbody_chunks)
+                else:
+                    raw_resp = resp.read()
+                    try:
+                        openai_json = json.loads(raw_resp.decode("utf-8", "replace"))
+                        anthropic_json = openai_to_anthropic_response(openai_json, model_name=sent_model)
+                        rbody = json.dumps(anthropic_json, ensure_ascii=False).encode("utf-8")
+                    except Exception:
+                        rbody = raw_resp
+                    rheaders["Content-Type"] = "application/json"
+            elif is_stream_early:
                 rbody_chunks = []
                 while True:
                     chunk = resp.read(4096)
@@ -2994,6 +3174,14 @@ class Relay(BaseHTTPRequestHandler):
             status = e.code
             rbody = e.read()
             rheaders = dict(e.headers) if e.headers else {}
+            if is_custom_provider and provider_proto == "openai":
+                try:
+                    err_json = json.loads(rbody.decode("utf-8", "replace"))
+                    err_msg = (err_json.get("error") or {}).get("message") or str(err_json)
+                except Exception:
+                    err_msg = rbody.decode("utf-8", "replace")[:500]
+                rbody = json.dumps({"type": "error", "error": {"type": "api_error", "message": err_msg}}).encode()
+                rheaders["Content-Type"] = "application/json"
             if is_stream_early:
                 self.close_connection = True
                 try:
@@ -3493,10 +3681,12 @@ class UIHandler(BaseHTTPRequestHandler):
             route = str(data.get("route") or "").strip().lower()
             if route == "gemini":
                 route = "antigravity"
-            if route not in ("hybrid", "codex", "deepseek", "antigravity"):
-                self._json({"error": "bad route"}, 400); return
+            allowed_routes = {"hybrid", "codex", "deepseek", "antigravity"}
             with CONF_LOCK:                      # 读-改-写整体串行, 免五档连点丢更新
                 conf = load_conf()
+                allowed_routes.update((conf.get("custom_providers") or {}).keys())
+                if route not in allowed_routes:
+                    self._json({"error": "bad route"}, 400); return
                 rt = conf.setdefault("router", {})
                 rt["route"] = route
                 # 各档指纹清理开关 (与路由档位无关, 任何模式下都可改; 按档合并更新)

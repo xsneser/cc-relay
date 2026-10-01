@@ -75,8 +75,14 @@ sentinel.py
 
 # ── 语音输入伴侣工具隔离（虚拟环境与模型）──
 tools/voice_input/.venv/
+tools/voice_input/runtime/
 tools/voice_input/models/
 tools/voice_input/*.part
+tools/voice_input/.cache/
+
+# ── 打包产物与暂存目录 ──
+installer_build/staging/
+output/
 
 # ── 示例文件白名单保证 ──
 !config.example.json

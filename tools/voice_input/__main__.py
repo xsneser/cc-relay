@@ -41,12 +41,16 @@ def cmd_doctor():
     if sys.platform == "win32":
         deps.append(("win32gui", "pywin32 (Win32 焦点检测与安全注入)", True))
 
-    if cfg.engine == "sensevoice_offline":
+    if cfg.engine in ("qwen_2pass", "qwen_asr", "qwen_offline", "paraformer_streaming_2pass"):
+        deps.append(("torch", "PyTorch (Qwen ASR 1.7B 推理后端)", True))
+        deps.append(("transformers", "transformers (Qwen ASR 1.7B 模型管道)", True))
+        deps.append(("webrtcvad", "webrtcvad (WebRTC VAD 语音活动检测)", False))
+    elif cfg.engine == "sherpa_2pass":
+        deps.append(("sherpa_onnx", "sherpa-onnx (Zipformer + SenseVoice 统一 2-Pass 引擎)", True))
+        deps.append(("webrtcvad", "webrtcvad (WebRTC VAD 语音活动检测)", False))
+    else:
         deps.append(("sherpa_onnx", "sherpa-onnx (SenseVoice 本地轻量 CPU 引擎)", True))
         deps.append(("webrtcvad", "webrtcvad (WebRTC VAD，未安装时自动回退至内置 RMS 检测)", False))
-    else:
-        deps.append(("funasr", "funasr (2-Pass 流式因果 ASR 引擎)", True))
-        deps.append(("webrtcvad", "webrtcvad (WebRTC 语音活动检测 VAD)", False))
 
     for mod_name, desc, is_required in deps:
         try:
@@ -64,20 +68,29 @@ def cmd_doctor():
     print(f"    [*] 当前配置引擎: {cfg.engine}")
     print(f"    [*] 服务监听端口: {cfg.host}:{cfg.port}")
     print(f"    [*] 对讲触发热键: {cfg.hotkey}")
-    if cfg.engine == "sensevoice_offline":
+    if cfg.engine in ("qwen_2pass", "qwen_asr", "qwen_offline", "paraformer_streaming_2pass"):
+        from .asr_engine import _find_local_qwen_dir
+        qwen_dir = _find_local_qwen_dir(cfg.qwen_model_id)
+        if qwen_dir:
+            print(f"    [+] Qwen ASR 1.7B 模型: 已就绪 ({qwen_dir})")
+        else:
+            print(f"    [-] Qwen ASR 1.7B 模型: 未在本地找到 (请运行 python -m tools.voice_input download --model qwen)")
+            all_pass = False
+    elif cfg.engine == "sherpa_2pass":
+        if cfg.is_sensevoice_installed():
+            print(f"    [+] SenseVoice 离线模型: 已就绪 ({cfg.sensevoice_model_path.name})")
+        else:
+            print(f"    [-] SenseVoice 离线模型: 未下载")
+            all_pass = False
+        if cfg.is_streaming_model_installed():
+            print(f"    [+] Zipformer 流式模型: 已就绪")
+        else:
+            print(f"    [*] Zipformer 流式模型: 未下载 (将自动降级为 SenseVoice 离线单 Pass)")
+    else:
         if cfg.is_sensevoice_installed():
             print(f"    [+] SenseVoice 离线模型: 已就绪 ({cfg.sensevoice_model_path.name})")
         else:
             print(f"    [-] SenseVoice 离线模型: 未下载 (请运行 setup_voice.bat 或 python -m tools.voice_input download)")
-            all_pass = False
-    else:
-        # FunASR 模型检查
-        from .asr_engine import _find_local_model_dir
-        paraformer_id = _find_local_model_dir("iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch")
-        if paraformer_id:
-            print(f"    [+] Paraformer 模型: 已就绪")
-        else:
-            print(f"    [-] Paraformer 模型: 未在本地找到")
             all_pass = False
 
     # 4. 检查麦克风设备
@@ -149,7 +162,7 @@ def main():
     # service / listen
     p_service = subparsers.add_parser("service", help="启动全功能语音伴侣服务（含 RPC 与全局对讲）")
     p_service.add_argument("--hotkey", help="触发热键 (mouse_x1, mouse_x2, f8, caps_lock)")
-    p_service.add_argument("--engine", help="ASR 引擎模式 (paraformer_streaming_2pass, sensevoice_offline)")
+    p_service.add_argument("--engine", help="ASR 引擎模式 (qwen_2pass, qwen_offline, sherpa_2pass, sensevoice_offline)")
     p_service.add_argument("--port", type=int, help="RPC 服务端口 (默认 8401)")
     p_service.add_argument("--headless", action="store_true", help="无头后台运行 (不弹出桌面悬浮胶囊)")
 
@@ -159,6 +172,7 @@ def main():
 
     # download
     p_dl = subparsers.add_parser("download", help="下载 ASR 离线模型")
+    p_dl.add_argument("--model", choices=["sensevoice", "qwen", "all"], default="sensevoice", help="模型类型 (sensevoice, qwen, all)")
     p_dl.add_argument("--source", default="hf-mirror", help="模型下载源")
     p_dl.add_argument("--check", action="store_true", help="仅检查模型是否已就绪")
     p_dl.add_argument("--force", action="store_true", help="强制重新下载已有模型文件")
@@ -182,17 +196,23 @@ def main():
     elif args.command == "normalize":
         cmd_normalize(args.text)
     elif args.command == "download":
-        from .model_download import ensure_models
+        from .model_download import ensure_models, ensure_qwen_model
         cfg = VoiceConfig.from_relay_config()
         if args.check:
-            if cfg.is_sensevoice_installed():
-                print(f"[+] 模型已完整安装于: {cfg.sensevoice_model_path.parent}")
-                sys.exit(0)
-            else:
-                print("[-] 模型未安装或文件缺失")
-                sys.exit(1)
-        ok = ensure_models(cfg, source=args.source, force=args.force)
-        sys.exit(0 if ok else 1)
+            sv_ok = cfg.is_sensevoice_installed()
+            qw_ok = cfg.is_qwen_installed()
+            print(f"[*] SenseVoice 模型就绪状态: {'[+] 已安装' if sv_ok else '[-] 未安装'}")
+            print(f"[*] Qwen ASR 1.7B 就绪状态: {'[+] 已安装' if qw_ok else '[-] 未安装'}")
+            sys.exit(0 if (sv_ok or qw_ok) else 1)
+        all_ok = True
+        if args.model in ("sensevoice", "all"):
+            if not ensure_models(cfg, source=args.source, force=args.force):
+                all_ok = False
+        if args.model in ("qwen", "all"):
+            q_src = "modelscope" if args.source == "huggingface" else args.source
+            if not ensure_qwen_model(cfg, source=q_src, force=args.force):
+                all_ok = False
+        sys.exit(0 if all_ok else 1)
     elif args.command in ("service", "listen") or args.command is None:
         hotkey = getattr(args, "hotkey", None)
         engine = getattr(args, "engine", None)

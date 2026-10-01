@@ -83,7 +83,7 @@ class TestUpstreamHealth(unittest.TestCase):
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.__exit__.return_value = None
 
-        with mock.patch("urllib.request.urlopen", return_value=mock_resp):
+        with mock.patch("urllib.request.OpenerDirector.open", return_value=mock_resp):
             res = cc_relay.probe_upstream(conf, "gemini")
             self.assertTrue(res["available"])
             self.assertIn("gemini-2.5-flash", res["models"])
@@ -95,7 +95,7 @@ class TestUpstreamHealth(unittest.TestCase):
 
     def test_probe_upstream_failure_marks_degraded(self):
         conf = {"upstreams": {"gemini": {"base": "http://127.0.0.1:8045"}}}
-        with mock.patch("urllib.request.urlopen", side_effect=Exception("Connection refused")):
+        with mock.patch("urllib.request.OpenerDirector.open", side_effect=Exception("Connection refused")):
             res = cc_relay.probe_upstream(conf, "gemini")
             self.assertFalse(res["available"])
 

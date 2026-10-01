@@ -46,6 +46,10 @@
   - 支持在 Web 端一键切换全局路由、微调各档位模型、配置思考强度与指纹修剪开关。
 - 🔄 **全自动生命周期看门狗 (Lifecycle Automation)**：
   - 提供轻量 Windows Wrapper 与看门狗服务，伴随 `claude` 命令按需秒起，并在所有 Claude 实例退出后自动休眠回收资源。
+- 📦 **Windows 一键安装包与协同卸载向导 (Installer & Uninstaller)**：
+  - **自包含 ASR 离线环境**：集成免配置 Python 3.10 便携运行时与 SenseVoice INT8 语音大模型，用户电脑无需预装 Python，安装即享全局悬浮胶囊语音打字。
+  - **伴侣组件协同卸载**：卸载程序原生弹窗询问用户是否同步卸载 Codex (CPA)、Gemini (拉起 Antigravity Tools 官方卸载 exe) 及 ASR 离线大模型，一键彻底清理。
+  - **双模在线静默升级**：安装版客户端点击「检查更新」时自动流式下载最新安装包并执行 `/SILENT` 静默升级与自动重启，绝对保护现有 API Keys。
 
 ---
 
@@ -87,7 +91,19 @@
 
 ## ⚡ 快速上手
 
-### 1. 克隆与初始化配置
+### 方式 1：Windows 一键安装包（推荐，开箱即用）
+
+1. 下载最新的 `CC-Relay-Setup-v2.4.8.exe`（内置便携 ASR 语音环境与 SenseVoice 模型，免 Python 配置）；
+2. 运行安装包，按照向导完成安装，默认安装至 `%LOCALAPPDATA%\Programs\CC-Relay`；
+3. 安装完成后自动启动中转并在浏览器打开 Web 监控大盘 **[http://127.0.0.1:8610](http://127.0.0.1:8610)**；
+4. 开发者如需从源码构建安装包，双击运行根目录下批处理即可：
+   ```cmd
+   build_installer.bat
+   ```
+
+### 方式 2：源码多平台运行（开发者模式）
+
+#### 1. 克隆与初始化配置
 
 ```bash
 git clone https://github.com/xsneser/cc-relay.git
@@ -105,7 +121,7 @@ cp config.example.json config.json
 }
 ```
 
-### 2. 启动服务
+#### 2. 启动服务
 
 ```bash
 # 前台运行（包含核心 Relay 8400 与 Web UI 8610）
@@ -114,7 +130,7 @@ python cc_relay.py serve
 
 访问浏览器控制台：**[http://127.0.0.1:8610](http://127.0.0.1:8610)**
 
-### 3. 配置客户端连接
+#### 3. 配置客户端连接
 
 #### A. Claude 桌面客户端 (GUI) 官方 3P 推理网关（推荐）
 运行配置工具一键接入桌面客户端（完全隔离写入独立的本地 3P 配置文件，绝不污染 CLI）：

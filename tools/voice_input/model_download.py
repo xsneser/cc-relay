@@ -160,13 +160,71 @@ def ensure_models(
     return all_ok
 
 
+def ensure_qwen_model(
+    config: Optional[VoiceConfig] = None,
+    source: str = "modelscope",
+    force: bool = False,
+) -> bool:
+    """检查并下载 Qwen ASR 1.7B 模型权重"""
+    if config is None:
+        config = VoiceConfig()
+
+    target_dir = config.qwen_model_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    if not force and config.is_qwen_installed():
+        print(f"[+] Qwen ASR 1.7B 模型已就绪: {target_dir}")
+        return True
+
+    print(f"[*] 准备下载 Qwen ASR 1.7B 模型 ({config.qwen_model_id}) 至: {target_dir}")
+    print(f"[*] 推荐源: {source}")
+
+    # 1. 尝试使用 ModelScope (国内极速)
+    if source == "modelscope":
+        try:
+            from modelscope import snapshot_download
+            print("[*] 正在通过 ModelScope 高速通道下载...")
+            snapshot_download(config.qwen_model_id, local_dir=str(target_dir))
+            print(f"[+] Qwen ASR 1.7B 下载完成: {target_dir}")
+            return True
+        except ImportError:
+            print("[!] 未安装 modelscope 库，尝试回退到 huggingface_hub / hf-mirror...")
+        except Exception as e:
+            print(f"[!] ModelScope 下载异常: {e}，尝试备用源...")
+
+    # 2. 尝试使用 huggingface_hub / hf-mirror
+    try:
+        from huggingface_hub import snapshot_download
+        endpoint = "https://hf-mirror.com" if source in ("hf-mirror", "modelscope") else None
+        print(f"[*] 正在通过 huggingface_hub (endpoint={endpoint or '官方源'}) 下载...")
+        snapshot_download(
+            repo_id=config.qwen_model_id,
+            local_dir=str(target_dir),
+            endpoint=endpoint,
+        )
+        print(f"[+] Qwen ASR 1.7B 下载完成: {target_dir}")
+        return True
+    except ImportError:
+        print("[-] 未安装 huggingface_hub 或 modelscope，请先运行: pip install modelscope 或 pip install huggingface_hub")
+        return False
+    except Exception as e:
+        print(f"[-] Qwen ASR 1.7B 下载失败: {e}")
+        return False
+
+
 def main():
-    parser = argparse.ArgumentParser(description="下载 SenseVoice-Small 离线 ASR 模型")
+    parser = argparse.ArgumentParser(description="下载 SenseVoice / Qwen ASR 离线 ASR 模型")
+    parser.add_argument(
+        "--model",
+        choices=["sensevoice", "qwen", "all"],
+        default="sensevoice",
+        help="待下载模型类别 (默认: sensevoice, 可选: qwen, all)",
+    )
     parser.add_argument(
         "--source",
         choices=list(DOWNLOAD_SOURCES.keys()),
         default="huggingface",
-        help="下载源选择 (默认: huggingface 官方源)",
+        help="下载源选择 (默认: huggingface 官方源，Qwen 推荐 modelscope)",
     )
     parser.add_argument("--force", action="store_true", help="强制重新下载已有模型文件")
     parser.add_argument("--check", action="store_true", help="仅检查模型是否已就绪")
@@ -174,19 +232,27 @@ def main():
 
     cfg = VoiceConfig()
     if args.check:
-        if cfg.is_sensevoice_installed():
-            print(f"[+] 模型已完整安装于: {cfg.models_dir / cfg.sensevoice_model_name}")
-            sys.exit(0)
-        else:
-            print("[-] 模型未安装或文件缺失")
-            sys.exit(1)
+        sv_ok = cfg.is_sensevoice_installed()
+        qw_ok = cfg.is_qwen_installed()
+        print(f"[*] SenseVoice 模型就绪状态: {'[+] 已安装' if sv_ok else '[-] 未安装'}")
+        print(f"[*] Qwen ASR 1.7B 就绪状态: {'[+] 已安装' if qw_ok else '[-] 未安装'}")
+        sys.exit(0 if (sv_ok or qw_ok) else 1)
 
-    success = ensure_models(cfg, source=args.source, force=args.force)
-    if success:
-        print("[+] 所有模型文件已成功下载并就绪！")
+    all_ok = True
+    if args.model in ("sensevoice", "all"):
+        if not ensure_models(cfg, source=args.source, force=args.force):
+            all_ok = False
+
+    if args.model in ("qwen", "all"):
+        q_source = "modelscope" if args.source == "huggingface" else args.source
+        if not ensure_qwen_model(cfg, source=q_source, force=args.force):
+            all_ok = False
+
+    if all_ok:
+        print("[+] 选定的模型已全部成功下载并就绪！")
         sys.exit(0)
     else:
-        print("[-] 模型下载失败，请检查网络连接或更换下载源 --source modelscope / huggingface")
+        print("[-] 模型下载失败，请检查网络连接或更换下载源")
         sys.exit(1)
 
 

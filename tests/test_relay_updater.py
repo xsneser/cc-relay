@@ -201,6 +201,48 @@ class RelayUpdaterUnitTests(unittest.TestCase):
         self.assertFalse(relay_updater.is_protected_path("cc_relay.py"))
         self.assertFalse(relay_updater.is_protected_path("ui.html"))
 
+    def test_get_local_commit_reads_build_info_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            build_info = {
+                "version": "2.4.8",
+                "commit": "2b48888abcdef",
+                "short_sha": "2b48888",
+                "branch": "master",
+            }
+            with open(os.path.join(td, "build_info.json"), "w", encoding="utf-8") as f:
+                json.dump(build_info, f)
+
+            updater = relay_updater.RelayUpdater(td)
+            local_info = updater._get_local_commit()
+            self.assertEqual(local_info["sha"], "2b48888abcdef")
+            self.assertEqual(local_info["short_sha"], "2b48888")
+            self.assertEqual(local_info["branch"], "master")
+
+    def test_compile_check_skips_when_frozen(self):
+        with tempfile.TemporaryDirectory() as td:
+            updater = relay_updater.RelayUpdater(td)
+            with mock.patch("sys.frozen", True, create=True):
+                ok, err = updater._compile_check()
+                self.assertTrue(ok)
+                self.assertEqual(err, "")
+
+    def test_apply_update_frozen_mode_launches_installer(self):
+        with tempfile.TemporaryDirectory() as td:
+            updater = relay_updater.RelayUpdater(td)
+            with mock.patch("sys.frozen", True, create=True), \
+                 mock.patch.object(updater, "_find_release_installer", return_value=("https://example.com/CC-Relay-Setup.exe", "CC-Relay-Setup.exe")), \
+                 mock.patch("relay_updater._download_file", return_value=True) as mock_dl, \
+                 mock.patch("subprocess.Popen") as mock_popen, \
+                 mock.patch("os._exit") as mock_exit:
+
+                ok, msg = updater.apply_update()
+                self.assertTrue(ok)
+                mock_dl.assert_called_once()
+                mock_popen.assert_called()
+                cmd_called = mock_popen.call_args_list[0][0][0]
+                self.assertIn("/SILENT", cmd_called)
+                mock_exit.assert_called_once_with(0)
+
 
 if __name__ == "__main__":
     unittest.main()

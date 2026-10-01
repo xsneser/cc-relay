@@ -9,36 +9,74 @@
 ## 📋 目录
 
 1. [前置环境要求](#1-前置环境要求)
-2. [获取源码与初始配置](#2-获取源码与初始配置)
-3. [三大上游对接实操](#3-三大上游对接实操)
-   - [3.1 DeepSeek 上游直连](#31-deepseek-上游直连)
-   - [3.2 Codex (CLIProxyAPI) 桥接](#32-codex-cliproxyapi-桥接)
-   - [3.3 Gemini (Antigravity Tools) 桥接](#33-gemini-antigravity-tools-桥接)
-4. [客户端配置接入 (Desktop 3P & CLI)](#4-客户端配置接入)
-   - [4.1 Claude 桌面客户端 (GUI) 3P 推理网关配置](#41-claude-桌面客户端-gui-3p-推理网关配置推荐)
-   - [4.2 Claude Code CLI 配置注入](#42-claude-code-cli-配置注入)
-5. [Windows 无感自动化体验 (Wrapper & Lifecycle)](#5-windows-无感自动化体验-wrapper--lifecycle)
-6. [macOS / Linux 守护与服务化](#6-macos--linux-守护与服务化)
-7. [日常运维与诊断命令](#7-日常运维与诊断命令)
-8. [常见故障排查 FAQ](#8-常见故障排查-faq)
+2. [Windows 一键安装包与协同卸载 (推荐)](#2-windows-一键安装包与协同卸载-推荐)
+   - [2.1 安装包特性 (内置 ASR 离线环境)](#21-安装包核心特性)
+   - [2.2 卸载向导与三组件协同清理 (CPA / Anti / Voice)](#22-卸载向导与三组件协同清理)
+   - [2.3 开发者自行打包构建流程](#23-开发者自行打包构建流程)
+3. [获取源码与初始配置 (开发者模式)](#3-获取源码与初始配置-开发者模式)
+4. [三大上游对接实操](#4-三大上游对接实操)
+   - [4.1 DeepSeek 上游直连](#41-deepseek-上游直连)
+   - [4.2 Codex (CLIProxyAPI) 桥接](#42-codex-cliproxyapi-桥接)
+   - [4.3 Gemini (Antigravity Tools) 桥接](#43-gemini-antigravity-tools-桥接)
+5. [客户端配置接入 (Desktop 3P & CLI)](#5-客户端配置接入)
+   - [5.1 Claude 桌面客户端 (GUI) 3P 推理网关配置](#51-claude-桌面客户端-gui-3p-推理网关配置推荐)
+   - [5.2 Claude Code CLI 配置注入](#52-claude-code-cli-配置注入)
+6. [Windows 无感自动化体验 (Wrapper & Lifecycle)](#6-windows-无感自动化体验-wrapper--lifecycle)
+7. [macOS / Linux 守护与服务化](#7-macos--linux-守护与服务化)
+8. [日常运维与诊断命令](#8-日常运维与诊断命令)
+9. [常见故障排查 FAQ](#9-常见故障排查-faq)
 
 ---
 
 ## 1. 前置环境要求
 
-- **Python 3.8 或更高版本**（必须已加入系统 PATH）
-  - 验证命令：`python --version` 或 `python3 --version`
-  - *注：cc-relay 采用纯标准库构建，无需安装任何 pip 扩展包。*
-- **Claude Code CLI**（官方已正常安装可用）
-  - 验证命令：`claude --version`
-- **Git**
-  - 验证命令：`git --version`
+- **Windows 一键安装包模式**：
+  - Windows 10 / Windows 11 (64位)
+  - **无需安装 Python、无需配置 C++ 运行环境、无需预装 Git**，安装包自包含完整便携运行时与 SenseVoice INT8 离线模型。
+- **源码开发运行模式**：
+  - **Python 3.8 或更高版本**（必须已加入系统 PATH）
+    - 验证命令：`python --version` 或 `python3 --version`
+    - *注：cc-relay 核心中转采用纯标准库构建，无需安装任何 pip 扩展包。*
+  - **Claude Code CLI**（官方已正常安装可用）
+    - 验证命令：`claude --version`
+  - **Git**
+    - 验证命令：`git --version`
 
 ---
 
-## 2. 获取源码与初始配置
+## 2. Windows 一键安装包与协同卸载 (推荐)
 
-### 2.1 克隆仓库
+### 2.1 安装包核心特性
+- **开箱即用**：采用 Inno Setup 6 封装为标准安装包 `CC-Relay-Setup-v2.4.8.exe`，安装路径默认位于 `%LOCALAPPDATA%\Programs\CC-Relay`，**无需管理员提权**即可完成安装。
+- **集成离线 ASR 语音环境**：内置独立的便携式 Python 3.10 运行时、`sherpa-onnx` 依赖库以及 **228MB SenseVoice INT8 语音大模型**。用户即使在无网络或无系统 Python 的纯净机上，双击安装即可立即使用全局语音打字与悬浮胶囊。
+- **环境自动配置**：安装向导自动将 `{app}\wrapper` 目录追加到当前用户的 `PATH` 环境变量中，并实时广播 `WM_SETTINGCHANGE` 消息，用户打开任何终端直接输入 `claude` 即可无感直通本地中转。
+- **用户资产保护**：升级安装时严格保护已存在的 `config.json`，用户填写的各上游 API Key、路由规则及历史记录绝不被覆盖。
+
+### 2.2 卸载向导与三组件协同清理
+当在 Windows 11 设置「已安装的应用」或控制面板中卸载 `CC Relay` 时，卸载程序 (`unins000.exe`) 会原生弹出交互对话框，针对 UI 顶栏常态托管的三大伴侣组件进行智能协同检测与询问：
+1. **[X] 语音伴侣 (Voice ASR) 离线运行环境与 SenseVoice 模型 (~380MB)** *(默认勾选)*：强制终止端口 8401 进程，彻底清理便携 Python 运行时与模型缓存，为用户释放磁盘空间。
+2. **[ ] Codex 代理网关 (CLIProxyAPI :8317)** *(默认不勾选)*：优先检测是否存在独立卸载程序并拉起执行；便携绿色版则安全清空目录与登录凭据。
+3. **[ ] Gemini 伴侣 (拉起 Antigravity Tools 官方卸载程序)** *(默认不勾选)*：自动探测注册表与本地安装路径，**直接拉起 Antigravity Tools 官方原生的 `uninstall.exe`** 执行独立卸载。
+4. **[ ] 彻底清除用户个人配置文件 (包含 config.json、历史记录与 API 密钥)** *(默认不勾选)*。
+5. **环境变量还原**：卸载完成后自动从当前用户的 `PATH` 环境变量中干净剔除 wrapper 路径，绝无任何系统残留。
+
+### 2.3 开发者自行打包构建流程
+如果需要基于当前源码重新生成安装包，仅需在根目录下运行一键构建流水线：
+```cmd
+build_installer.bat
+```
+构建脚本将全自动执行：
+1. 环境探针：检查 Inno Setup 6 编译器 `ISCC.exe`（缺失时支持通过 `winget` 自动安装）；
+2. 主程序编译：通过 PyInstaller 根据 `cc-relay.spec` 编译生成后台静默版 `dist\cc-relay.exe`；
+3. ASR 运行时封装：调用 `tools\voice_input\bundle_runtime.py` 自动化组装便携 Python 运行时并验证模型；
+4. 静态元数据固化：调用 `installer_build\prepare_staging.py` 写入 Git Commit Hash 至 `build_info.json`；
+5. 生成安装包：调用 Inno Setup 进行 LZMA2 高压缩打包，产物生成在 `output\CC-Relay-Setup-v2.4.8.exe`。
+
+---
+
+## 3. 获取源码与初始配置 (开发者模式)
+
+### 3.1 克隆仓库
 
 ```bash
 # 克隆仓库至本地
@@ -46,7 +84,7 @@ git clone https://github.com/xsneser/cc-relay.git
 cd cc-relay
 ```
 
-### 2.2 生成本地配置文件
+### 3.2 生成本地配置文件
 
 ```bash
 # Windows (CMD / PowerShell)

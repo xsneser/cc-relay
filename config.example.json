@@ -28,6 +28,19 @@
       "proxy_url": "direct"
     }
   },
+  "custom_providers": {
+    "siliconflow": {
+      "name": "硅基流动 (SiliconFlow)",
+      "base": "https://api.siliconflow.cn/v1",
+      "key": "sk-your-siliconflow-key-here",
+      "protocol": "openai",
+      "proxy_url": "direct",
+      "models": [
+        "deepseek-ai/DeepSeek-V3",
+        "Qwen/Qwen2.5-72B-Instruct"
+      ]
+    }
+  },
   "tools": {
     "antigravity": {
       "auto_start": false

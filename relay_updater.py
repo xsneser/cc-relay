@@ -25,6 +25,7 @@ DEFAULT_BRANCH = "master"
 GITHUB_API_COMMITS_URL = "https://api.github.com/repos/xsneser/cc-relay/commits/master"
 GITHUB_RAW_UI_URL = "https://raw.githubusercontent.com/xsneser/cc-relay/master/ui.html"
 GITHUB_MASTER_ZIP_URL = "https://github.com/xsneser/cc-relay/archive/refs/heads/master.zip"
+GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/xsneser/cc-relay/releases/latest"
 USER_AGENT = "cc-relay-updater/1.0"
 RELAY_VERSION = "2.4.8"
 VERSION_RE = re.compile(r"v?([0-9]+(?:\.[0-9]+)+)")
@@ -114,6 +115,44 @@ def _download_and_extract_zip(url, target_dir, proxy="", retries=2, progress_cb=
                 os.unlink(tmp_zip)
         except OSError:
             pass
+
+
+def _download_file(url, target_path, proxy="", retries=2, progress_cb=None):
+    """Download a standalone installer/binary file to target_path with progress reporting."""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    tmp_path = target_path + ".part"
+    os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+    last_error = None
+    for opener in _openers(proxy):
+        for attempt in range(retries):
+            try:
+                with opener.open(req, timeout=120) as resp, open(tmp_path, "wb") as out:
+                    cl = resp.headers.get("Content-Length")
+                    expected_total = int(cl) if cl and cl.isdigit() else 0
+                    down = 0
+                    while True:
+                        block = resp.read(64 * 1024)
+                        if not block:
+                            break
+                        out.write(block)
+                        down += len(block)
+                        if progress_cb:
+                            pct = round((down / expected_total) * 100.0, 1) if expected_total > 0 else 0.0
+                            progress_cb(down, expected_total, pct)
+                if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
+                    if os.path.exists(target_path):
+                        os.remove(target_path)
+                    os.rename(tmp_path, target_path)
+                    return True
+            except Exception as exc:
+                last_error = exc
+                time.sleep(1)
+    if os.path.exists(tmp_path):
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+    raise RuntimeError(f"下载文件失败: {last_error}")
 
 
 def parse_version_tuple(val):
@@ -277,8 +316,20 @@ class RelayUpdater:
         return None
 
     def _get_local_commit(self):
-        """Query local git repository for current HEAD info."""
+        """Query local git repository for current HEAD info, or read build_info.json in frozen/installed builds."""
         if not _is_git_repo(self.base_dir):
+            build_info_path = os.path.join(self.base_dir, "build_info.json")
+            if os.path.isfile(build_info_path):
+                try:
+                    with open(build_info_path, "r", encoding="utf-8") as f:
+                        info = json.load(f)
+                    return {
+                        "sha": info.get("commit"),
+                        "short_sha": info.get("short_sha") or (info.get("commit")[:7] if info.get("commit") else None),
+                        "branch": info.get("branch", "release"),
+                    }
+                except Exception:
+                    pass
             return {"sha": None, "short_sha": None, "branch": "non-git"}
         res = _run_git(["rev-parse", "HEAD"], self.base_dir)
         sha = res.stdout.strip() if res.returncode == 0 else None
@@ -477,8 +528,34 @@ class RelayUpdater:
         """Perform an update check synchronously and return the updated snapshot."""
         return self.check(force=force)
 
+    def _find_release_installer(self, proxy=""):
+        """Query GitHub Releases API for the latest Windows installer setup exe."""
+        req = urllib.request.Request(
+            GITHUB_RELEASES_LATEST_URL,
+            headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"}
+        )
+        for opener in _openers(proxy):
+            try:
+                resp = opener.open(req, timeout=12)
+                data = json.loads(resp.read().decode("utf-8", "replace"))
+                assets = data.get("assets", [])
+                for a in assets:
+                    name = a.get("name", "")
+                    if name.endswith(".exe") and ("setup" in name.lower() or "cc-relay" in name.lower()):
+                        return a.get("browser_download_url"), name
+                for a in assets:
+                    name = a.get("name", "")
+                    if name.endswith(".exe"):
+                        return a.get("browser_download_url"), name
+            except Exception:
+                pass
+        return None, None
+
     def _compile_check(self):
         """Validate python syntax for key entry files before completing update."""
+        if getattr(sys, "frozen", False):
+            # 打包可执行文件自身为二进制字节码，语法由构建期保证，跳过 loose py_compile
+            return True, ""
         files = ["cc_relay.py", "lifecycle.py", "relay_updater.py"]
         py_files = [os.path.join(self.base_dir, f) for f in files if os.path.exists(os.path.join(self.base_dir, f))]
         try:
@@ -507,6 +584,65 @@ class RelayUpdater:
                 self._snapshot["update_state"] = "queued"
                 self._snapshot["update_error"] = None
                 self._snapshot["update_message"] = "准备更新..."
+
+            # 分支 1: 安装包打包环境 (sys.frozen) -> 通过最新 Inno Setup 安装包执行静默覆盖升级
+            if getattr(sys, "frozen", False):
+                with self._lock:
+                    self._snapshot["update_state"] = "downloading"
+                    self._snapshot["update_message"] = "正在下载新版本安装程序..."
+                    self._snapshot["downloaded_bytes"] = 0
+                    self._snapshot["total_bytes"] = 0
+                    self._snapshot["download_progress"] = 0.0
+
+                proxy = _proxy_url_from_config(self.config_path)
+
+                def _installer_progress_cb(down, tot, pct):
+                    with self._lock:
+                        self._snapshot["update_state"] = "downloading"
+                        self._snapshot["downloaded_bytes"] = down
+                        self._snapshot["total_bytes"] = tot
+                        self._snapshot["download_progress"] = pct
+                        self._snapshot["update_message"] = f"正在下载新版本安装包 ({pct:.1f}%)..." if pct > 0 else "正在下载新版本安装包..."
+
+                installer_url, installer_name = self._find_release_installer(proxy=proxy)
+                if not installer_url:
+                    err = "未在 GitHub Releases 找到新版安装包，请前往官网或仓库 Releases 手动下载"
+                    with self._lock:
+                        self._snapshot["update_state"] = "error"
+                        self._snapshot["update_error"] = err
+                    return False, err
+
+                temp_dir = os.environ.get("TEMP") or self.base_dir
+                dest_installer = os.path.join(temp_dir, installer_name or "CC-Relay-Setup-Update.exe")
+                try:
+                    _download_file(installer_url, dest_installer, proxy=proxy, progress_cb=_installer_progress_cb)
+                except Exception as exc:
+                    err = f"下载新版安装程序失败: {exc}"
+                    with self._lock:
+                        self._snapshot["update_state"] = "error"
+                        self._snapshot["update_error"] = err
+                    return False, err
+
+                with self._lock:
+                    self._snapshot["update_state"] = "applying"
+                    self._snapshot["download_progress"] = 100.0
+                    self._snapshot["update_message"] = "正在启动新版本安装程序执行静默升级..."
+
+                # 异步拉起 Inno Setup 安装包静默安装 (安装包会自动终止旧版进程、保留配置并重新启动)
+                try:
+                    subprocess.Popen(
+                        [dest_installer, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    time.sleep(1.0)
+                    os._exit(0)
+                    return True, "已启动新版安装程序"
+                except Exception as exc:
+                    err = f"拉起安装程序失败: {exc}"
+                    with self._lock:
+                        self._snapshot["update_state"] = "error"
+                        self._snapshot["update_error"] = err
+                    return False, err
 
             local_info = self._get_local_commit()
             old_sha = local_info.get("sha")

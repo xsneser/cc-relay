@@ -7,7 +7,7 @@ from unittest import mock
 
 from tools.voice_input.config import VoiceConfig
 from tools.voice_input.server import VoiceServer
-from tools.voice_input.asr_engine import SessionContext, FunASR2PassEngine
+from tools.voice_input.asr_engine import SessionContext, Qwen2PassEngine
 
 
 class TestVoiceProtocolAndSessions(unittest.TestCase):
@@ -27,7 +27,7 @@ class TestVoiceProtocolAndSessions(unittest.TestCase):
         self.assertFalse(self.server.is_allowed_origin("http://192.168.1.100:8610"))
 
     def test_session_context_isolation(self):
-        engine = FunASR2PassEngine(self.cfg)
+        engine = Qwen2PassEngine(self.cfg)
         s1 = engine.create_session("sess_001")
         s2 = engine.create_session("sess_002")
 

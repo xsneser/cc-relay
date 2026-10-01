@@ -6,8 +6,11 @@ websockets>=11.0
 pywin32>=306; sys_platform == 'win32'
 sherpa-onnx>=1.10.0
 
-# 可选扩展依赖 (FunASR 2-Pass 流式因果引擎与 WebRTC C++ VAD)
-# 若需启用 paraformer_streaming_2pass 引擎，请取消注释安装:
-# funasr>=1.0.0
+# 可选扩展依赖 (Qwen ASR 1.7B 2-Pass / 离线高精度引擎)
+# 若需启用 qwen_2pass 或 qwen_offline 引擎，请安装:
+# torch>=2.0.0
+# transformers>=4.40.0
+# accelerate>=0.26.0
+# modelscope>=1.14.0
 # webrtcvad>=2.0.10
 

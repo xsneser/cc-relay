@@ -1873,7 +1873,7 @@
   /* 指标卡矩阵 (4 Matrix Vital Signs Cards) */
   .metrics-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 16px;
   }
@@ -2827,11 +2827,361 @@
   }
   .config-cancel:hover { background: rgba(255, 255, 255, 0.12); }
 
+  /* ── 设置界面双层级架构样式 ── */
+  .cfg-level-1 { display: block; }
+  .cfg-level-2 { display: none; animation: cfgFadeIn 0.22s ease-out; }
+  @keyframes cfgFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .cfg-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .cfg-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .cfg-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .cfg-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .cfg-mod-card {
+    position: relative;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    user-select: none;
+    box-sizing: border-box;
+  }
+  .cfg-mod-card:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.24);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  }
+  .cfg-mod-card:active {
+    transform: translateY(0);
+  }
+  .cfg-mod-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .cfg-mod-head-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .cfg-mod-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+  }
+  .cfg-mod-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .cfg-mod-card[data-mod="deepseek"] .cfg-mod-icon {
+    background: rgba(14, 165, 233, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+  }
+  .cfg-mod-card[data-mod="codex"] .cfg-mod-icon {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.3);
+  }
+  .cfg-mod-card[data-mod="antigravity"] .cfg-mod-icon {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(192, 132, 252, 0.3);
+  }
+  .cfg-mod-card[data-mod="voice"] .cfg-mod-icon {
+    background: rgba(57, 201, 152, 0.15);
+    color: #39c998;
+    border: 1px solid rgba(57, 201, 152, 0.3);
+  }
+  .cfg-mod-card[data-mod="relay"] .cfg-mod-icon {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+  }
+
+  .cfg-mod-info h3 {
+    font-size: 14.5px;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0 0 2px;
+  }
+  .cfg-mod-info .cfg-mod-role {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .cfg-mod-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .cfg-mod-badge.on {
+    background: rgba(57, 201, 152, 0.12);
+    color: #39c998;
+    border: 1px solid rgba(57, 201, 152, 0.25);
+  }
+  .cfg-mod-badge.warn {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+  }
+  .cfg-mod-badge.off {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-dim);
+    border: 1px solid var(--glass-border);
+  }
+  .cfg-mod-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 10px 0 16px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+  }
+  .cfg-stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    gap: 12px;
+  }
+  .cfg-stat-label {
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .cfg-stat-val {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cfg-mod-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .cfg-mod-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .cfg-mod-enter {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--glass-border);
+    transition: all 0.15s ease;
+  }
+  .cfg-mod-card:hover .cfg-mod-enter {
+    background: #ffffff;
+    color: #000000;
+    border-color: #ffffff;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+  }
+
+  /* Level 2 一体化卡片头部与自动保存 */
+  .cfg-breadcrumb-bar.cfg-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 0 0 16px 0;
+    margin-bottom: 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0;
+    flex-wrap: wrap;
+  }
+  .cfg-crumb-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .cfg-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--glass-border);
+    color: #ffffff;
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    transition: all 0.15s ease;
+  }
+  .cfg-back-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateX(-2px);
+  }
+  .cfg-crumb-path {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+  .cfg-crumb-path b {
+    color: #ffffff;
+    margin-left: 4px;
+  }
+  .cfg-detail-env-badge {
+    font: 10.5px var(--font-mono);
+    color: var(--text-dim);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 2px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border);
+  }
+  .cfg-crumb-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* 自动保存状态指示胶囊 */
+  .cfg-autosave-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    line-height: 1.4;
+    transition: all 0.25s ease;
+    user-select: none;
+  }
+  .cfg-autosave-pill.saved {
+    background: rgba(57, 201, 152, 0.1);
+    color: #39c998;
+    border: 1px solid rgba(57, 201, 152, 0.25);
+  }
+  .cfg-autosave-pill.saving {
+    background: rgba(59, 130, 246, 0.14);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+  }
+  .cfg-autosave-pill.error {
+    background: rgba(239, 68, 68, 0.14);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .cfg-autosave-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .cfg-autosave-pill.saving .cfg-autosave-dot {
+    animation: autosavePulse 0.9s infinite alternate;
+  }
+  @keyframes autosavePulse {
+    from { opacity: 0.3; transform: scale(0.7); }
+    to { opacity: 1; transform: scale(1.3); }
+  }
+
+  /* 二级子面板直接融入卡片，消除嵌套卡片边框 */
+  .cfg-module-panel {
+    display: none;
+  }
+  .cfg-module-panel.active {
+    display: block;
+  }
+  .cfg-detail-footer-note {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 22px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    line-height: 1.6;
+  }
+
+  .cfg-probe-box {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+  }
+  .cfg-probe-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .cfg-probe-res {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    display: none;
+  }
+
   /* 响应式优化 (适配 WinTile5 分屏槽位与各类窄窗口) */
   @media (max-width: 1100px) {
     .hb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .detail-grid { grid-template-columns: 1fr; }
 
     /* 抓包表格自适应缩窄：在窄屏/分屏下自动隐藏非核心的 CC 请求模型 与 箭头 列 (9 列百分比分配，合计 100%) */
@@ -3627,14 +3977,6 @@
           <span class="metric-val" id="sum-cache" style="font-size:22px;">—</span>
           <div style="font-size:10px;color:var(--text-dim);margin-top:10px;font-family:var(--font-mono);">PROMPT CACHE INDEX</div>
         </div>
-        <div class="metric-card cyan">
-          <div class="metric-label-row">
-            <span class="metric-label">VELOCITY // 平均速率</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:#38bdf8;"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-          </div>
-          <span class="metric-val" id="sum-speed" style="color:#38bdf8;font-size:24px;">—</span>
-          <div style="font-size:10px;color:var(--text-dim);margin-top:10px;font-family:var(--font-mono);">AVG TOKENS / SEC</div>
-        </div>
       </div>
 
       <div class="tablewrap">
@@ -3715,28 +4057,400 @@
     <div class="foot" id="cur"></div>
   </div>
 
-  <!-- 连接配置视图 -->
+  <!-- 连接配置视图 (双层级架构) -->
   <div id="config-view">
-    <div class="glass-card spotlight-card config-section">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-        <div class="cicon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <!-- 层级一：服务概览与仪表盘 (Level 1) -->
+    <div id="cfg-level-1" class="cfg-level-1">
+      <div class="glass-card spotlight-card config-section">
+        <div class="cfg-header-row">
+          <div class="cfg-header-left">
+            <div class="cicon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+            <div>
+              <h2>服务连接与工具设置</h2>
+              <div class="section-desc" style="margin-bottom:0;">统一管理各上游模型通道、本地逆向代理与伴侣工具。点击对应卡片即可进入专属设置详情。</div>
+            </div>
+          </div>
+          <div class="cfg-header-right">
+            <span id="cfg-ov-dirty-pill" style="display:none;font-size:11px;font-weight:700;color:#fbbf24;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);padding:4px 10px;border-radius:20px;">● 有未保存修改</span>
+            <button type="button" class="btn-action" id="cfg-overview-reload" style="padding:6px 12px;font-size:12px;">↻ 刷新配置</button>
+          </div>
         </div>
-        <div>
-          <h2>上游连接配置</h2>
-          <div class="section-desc" style="margin-bottom:0;">配置已注册上游的 Base URL、代理通道与 API Key。保存后中转服务将在下一次请求自动读取新配置。</div>
+
+        <div class="cfg-overview-grid" id="cfg-overview-grid">
+          <!-- DeepSeek 概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="deepseek" role="button" tabindex="0">
+            <div>
+              <div class="cfg-mod-head">
+                <div class="cfg-mod-head-left">
+                  <div class="cfg-mod-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+                  </div>
+                  <div class="cfg-mod-info">
+                    <h3>DeepSeek</h3>
+                    <div class="cfg-mod-role">官方直连 · Anthropic 兼容</div>
+                  </div>
+                </div>
+                <span class="cfg-mod-badge on" id="ov-ds-badge">● 已配置</span>
+              </div>
+              <div class="cfg-mod-stats">
+                <div class="cfg-stat-row"><span class="cfg-stat-label">基础端点</span><span class="cfg-stat-val" id="ov-ds-base">api.deepseek.com</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">上游代理</span><span class="cfg-stat-val" id="ov-ds-proxy">direct (直连)</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">API Key</span><span class="cfg-stat-val" id="ov-ds-key">sk-••••</span></div>
+              </div>
+            </div>
+            <div class="cfg-mod-footer">
+              <span class="cfg-mod-desc">支持 Claude 协议自动转接</span>
+              <span class="cfg-mod-enter">进入设置 →</span>
+            </div>
+          </div>
+
+          <!-- Codex (CLIProxyAPI) 概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="codex" role="button" tabindex="0">
+            <div>
+              <div class="cfg-mod-head">
+                <div class="cfg-mod-head-left">
+                  <div class="cfg-mod-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  </div>
+                  <div class="cfg-mod-info">
+                    <h3>Codex (CLIProxyAPI)</h3>
+                    <div class="cfg-mod-role">本地代理 :8317 · ChatGPT 逆向</div>
+                  </div>
+                </div>
+                <span class="cfg-mod-badge off" id="ov-codex-badge">○ 已停止</span>
+              </div>
+              <div class="cfg-mod-stats">
+                <div class="cfg-stat-row"><span class="cfg-stat-label">服务端口</span><span class="cfg-stat-val" id="ov-codex-port">:8317 (本地)</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">OAuth 登录</span><span class="cfg-stat-val" id="ov-codex-oauth">检查中…</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">外部网络代理</span><span class="cfg-stat-val" id="ov-codex-proxy">direct (直连)</span></div>
+              </div>
+            </div>
+            <div class="cfg-mod-footer">
+              <span class="cfg-mod-desc">GPT-5.6 / 6 官方逆向代理</span>
+              <span class="cfg-mod-enter">进入设置 →</span>
+            </div>
+          </div>
+
+          <!-- Antigravity (Gemini) 概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="antigravity" role="button" tabindex="0">
+            <div>
+              <div class="cfg-mod-head">
+                <div class="cfg-mod-head-left">
+                  <div class="cfg-mod-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  </div>
+                  <div class="cfg-mod-info">
+                    <h3>Antigravity</h3>
+                    <div class="cfg-mod-role">伴侣服务 :8045 · Gemini 通道</div>
+                  </div>
+                </div>
+                <span class="cfg-mod-badge off" id="ov-ag-badge">○ 已停止</span>
+              </div>
+              <div class="cfg-mod-stats">
+                <div class="cfg-stat-row"><span class="cfg-stat-label">伴侣端口</span><span class="cfg-stat-val" id="ov-ag-port">:8045 (本地)</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">自动拉起</span><span class="cfg-stat-val" id="ov-ag-autostart">已开启</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">API Key</span><span class="cfg-stat-val" id="ov-ag-key">sk-••••</span></div>
+              </div>
+            </div>
+            <div class="cfg-mod-footer">
+              <span class="cfg-mod-desc">Gemini 3.7 / 3.8 伴侣直通</span>
+              <span class="cfg-mod-enter">进入设置 →</span>
+            </div>
+          </div>
+
+          <!-- Voice (语音输入伴侣) 概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="voice" role="button" tabindex="0">
+            <div>
+              <div class="cfg-mod-head">
+                <div class="cfg-mod-head-left">
+                  <div class="cfg-mod-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                  </div>
+                  <div class="cfg-mod-info">
+                    <h3>Voice 语音伴侣</h3>
+                    <div class="cfg-mod-role">离线流式 ASR :8401 · 全局对讲</div>
+                  </div>
+                </div>
+                <span class="cfg-mod-badge off" id="ov-voice-badge">○ 已停止</span>
+              </div>
+              <div class="cfg-mod-stats">
+                <div class="cfg-stat-row"><span class="cfg-stat-label">伴侣端口</span><span class="cfg-stat-val" id="ov-voice-port">:8401 (本地)</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">全局热键</span><span class="cfg-stat-val" id="ov-voice-hotkey">🖱️ 鼠标侧键1</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">识别引擎</span><span class="cfg-stat-val" id="ov-voice-engine">SenseVoice 离线极速</span></div>
+              </div>
+            </div>
+            <div class="cfg-mod-footer">
+              <span class="cfg-mod-desc">按住说话松开打字 · 免复制直投</span>
+              <span class="cfg-mod-enter">进入设置 →</span>
+            </div>
+          </div>
+
+          <!-- Relay 核心网络概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="relay" role="button" tabindex="0">
+            <div>
+              <div class="cfg-mod-head">
+                <div class="cfg-mod-head-left">
+                  <div class="cfg-mod-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10v10H7z"/><path d="M4 12h3"/><path d="M17 12h3"/><path d="M12 4v3"/><path d="M12 17v3"/></svg>
+                  </div>
+                  <div class="cfg-mod-info">
+                    <h3>CC Relay 核心</h3>
+                    <div class="cfg-mod-role">路由中转与全局网络</div>
+                  </div>
+                </div>
+                <span class="cfg-mod-badge on" id="ov-relay-badge">● 核心运行中</span>
+              </div>
+              <div class="cfg-mod-stats">
+                <div class="cfg-stat-row"><span class="cfg-stat-label">中转服务</span><span class="cfg-stat-val">127.0.0.1:8400</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">Web 管理</span><span class="cfg-stat-val">:8610</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">虚拟 Key</span><span class="cfg-stat-val">sk-relay-local-0000</span></div>
+              </div>
+            </div>
+            <div class="cfg-mod-footer">
+              <span class="cfg-mod-desc">Claude Code 终端配置与运行规范</span>
+              <span class="cfg-mod-enter">查看详情 →</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.6;">
+          ⚠️ 安全提示：本配置页面专为本地开发机使用设计，请勿将 UI 端口映射至公网。
         </div>
       </div>
+    </div>
 
-      <div id="cfg-upstreams"><div style="color:var(--text-dim);padding:18px 0;text-align:center">正在加载配置…</div></div>
+    <!-- 层级二：各服务专属详情配置面板 (Level 2) -->
+    <div id="cfg-level-2" class="cfg-level-2" style="display:none;">
+      <!-- 详情面板单张卡片容器 (整合头部与配置项，彻底消除多层卡片嵌套) -->
+      <div class="glass-card spotlight-card config-section" style="margin-bottom:0;">
+        <!-- 一体化卡片头部 (面包屑 + 单一返回按钮 + 自动保存指示 + 状态胶囊) -->
+        <div class="cfg-breadcrumb-bar cfg-detail-header">
+          <div class="cfg-crumb-left">
+            <button type="button" class="cfg-back-btn" id="cfg-btn-back" title="返回概览列表">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="15 18 9 12 15 6"/></svg>
+              <span>返回服务列表</span>
+            </button>
+            <div class="cfg-crumb-path">设置 / <b id="cfg-crumb-title">DeepSeek</b></div>
+            <code id="cfg-detail-key-env" class="cfg-detail-env-badge" style="display:none;"></code>
+          </div>
+          <div class="cfg-crumb-right">
+            <span id="cfg-autosave-indicator" class="cfg-autosave-pill saved" role="status" aria-live="polite" aria-atomic="true" title="修改后自动保存">
+              <span class="cfg-autosave-dot"></span>
+              <span class="cfg-autosave-text">已保存</span>
+            </span>
+            <span id="cfg-detail-status-pill" class="cfg-mod-badge on">● 状态就绪</span>
+          </div>
+        </div>
 
-      <div style="font-size:11px;color:var(--text-faint);margin-top:14px;line-height:1.6;">
-        ⚠️ 安全提示：本配置页面专为本地开发机使用设计，请勿将 UI 端口映射至公网。
-      </div>
+        <!-- 1. DeepSeek 详情面板 (直接平铺在卡片内，无嵌套 upstream-card 边框) -->
+        <div class="cfg-module-panel" id="cfg-panel-deepseek" data-name="deepseek">
+          <div class="config-grid">
+            <div class="config-field">
+              <label>Base URL</label>
+              <input type="text" id="cfg-ds-base" class="cfg-base" value="https://api.deepseek.com/anthropic" placeholder="https://api.deepseek.com/anthropic">
+            </div>
+            <div class="config-field">
+              <label>上游代理 URL</label>
+              <input type="text" id="cfg-ds-proxy" class="cfg-up-proxy" placeholder="留空直连；可填 http://127.0.0.1:7890 或 direct">
+            </div>
+            <div class="config-field">
+              <label>API Key</label>
+              <div class="config-secret">
+                <input type="password" id="cfg-ds-key" class="cfg-key" placeholder="尚未设置">
+                <button type="button" class="cfg-reveal" id="btn-reveal-ds-key">显示</button>
+              </div>
+            </div>
+          </div>
 
-      <div class="config-actions">
-        <button type="button" class="config-save" id="cfg-save">保存连接配置</button>
-        <button type="button" class="config-cancel" id="cfg-reload">放弃修改并刷新</button>
+          <div class="cfg-probe-box">
+            <div class="cfg-probe-head">
+              <span style="font-size:12px;font-weight:700;color:#ffffff;">在线连通性检测</span>
+              <button type="button" class="btn-action" id="btn-probe-deepseek">🔍 测试 DeepSeek 连通性</button>
+            </div>
+            <div id="probe-res-deepseek" class="cfg-probe-res"></div>
+          </div>
+        </div>
+
+        <!-- 2. Codex (CLIProxyAPI) 详情面板 -->
+        <div class="cfg-module-panel" id="cfg-panel-codex" data-name="codex">
+          <!-- OAuth 登录组件挂载槽位 -->
+          <div id="cfg-codex-login-slot"></div>
+
+          <!-- CPA 更新面板 -->
+          <div class="cpa-update-panel" id="cpa-update-panel">
+            <div class="upstream-title"><b>CLIProxyAPI 更新</b><code id="cpa-version-label">检测版本中…</code></div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">
+              <button type="button" class="btn-action" id="cpa-check-update">检查更新</button>
+              <button type="button" class="btn-action" id="cpa-install-update" disabled>一键升级</button>
+            </div>
+            <div id="cpa-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">升级时 Codex 将短暂重启。</div>
+          </div>
+
+          <!-- Clash 外部网络代理 -->
+          <div class="cpa-proxy-panel" style="margin:12px 0 14px;padding:12px 14px;background:rgba(255,255,255,0.018);border:1px solid var(--glass-border);border-radius:10px;">
+            <div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:12px;font-weight:700;color:#ffffff;">外部网络代理 (clash)</span>
+              <span style="font-size:11px;color:var(--text-dim);">供 CLIProxyAPI 访问外网 OpenAI，请核对端口号与 Clash 是否一致</span>
+            </div>
+            <input type="text" id="cfg-codex-outbound-proxy" class="cfg-cpa-proxy" placeholder="例如: http://127.0.0.1:7890 (留空或 direct 为直连)">
+          </div>
+
+          <!-- Base URL 与 API Key -->
+          <div class="config-grid">
+            <div class="config-field">
+              <div class="config-field-label-row">
+                <label>Base URL</label>
+                <button type="button" class="btn-action btn-unlock-base" id="btn-unlock-codex-base" title="默认锁定以防误触；点击可解锁编辑">🔒 解锁修改</button>
+              </div>
+              <input type="text" id="cfg-codex-base" class="cfg-base config-locked-input" readonly value="http://127.0.0.1:8317">
+              <small class="config-lock-hint" id="hint-codex-base">内置 CLIProxyAPI 服务端口，由 Relay 自动拉起与管理；自定义端口需与本地服务保持一致</small>
+            </div>
+            <div class="config-field">
+              <label>API Key</label>
+              <div class="config-secret">
+                <input type="password" id="cfg-codex-key" class="cfg-key" placeholder="尚未设置">
+                <button type="button" class="cfg-reveal" id="btn-reveal-codex-key">显示</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cfg-probe-box">
+            <div class="cfg-probe-head">
+              <span style="font-size:12px;font-weight:700;color:#ffffff;">Codex 代理端点测试</span>
+              <button type="button" class="btn-action" id="btn-probe-codex">🔍 测试 Codex 连通性</button>
+            </div>
+            <div id="probe-res-codex" class="cfg-probe-res"></div>
+          </div>
+        </div>
+
+        <!-- 3. Antigravity (Gemini) 详情面板 -->
+        <div class="cfg-module-panel" id="cfg-panel-antigravity" data-name="antigravity">
+          <!-- Antigravity 更新控制面板 -->
+          <div class="cpa-update-panel" id="antigravity-update-panel">
+            <div class="upstream-title"><b>Antigravity Tools 更新</b><code id="antigravity-version-label">检测版本中…</code></div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">
+              <button type="button" class="btn-action" id="antigravity-check-update">检查更新</button>
+              <button type="button" class="btn-action" id="antigravity-open-app">打开客户端更新</button>
+            </div>
+            <div id="antigravity-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">可在客户端中点击 设置 → 关于 → 检查更新 完成安装。</div>
+          </div>
+
+          <!-- 自启动复选框 -->
+          <div class="config-field" style="margin:12px 0;">
+            <label style="display:flex;align-items:center;height:34px;gap:8px;cursor:pointer;margin:0;">
+              <input type="checkbox" id="cfg-antigravity-autostart" style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
+              <span style="font-size:12px;color:var(--text-muted);">启用后随 CC Relay 自动拉起 Antigravity Tools</span>
+            </label>
+          </div>
+
+          <!-- Base URL 与 API Key -->
+          <div class="config-grid">
+            <div class="config-field">
+              <div class="config-field-label-row">
+                <label>Base URL</label>
+                <button type="button" class="btn-action btn-unlock-base" id="btn-unlock-ag-base" title="默认锁定以防误触；点击可解锁编辑">🔒 解锁修改</button>
+              </div>
+              <input type="text" id="cfg-ag-base" class="cfg-base config-locked-input" readonly value="http://127.0.0.1:8045">
+              <small class="config-lock-hint" id="hint-ag-base">本地 Antigravity Tools 伴侣服务端口，由 Relay 自动探测；自定义端口需与本地服务保持一致</small>
+            </div>
+            <div class="config-field">
+              <label>API Key</label>
+              <div class="config-secret">
+                <input type="password" id="cfg-ag-key" class="cfg-key" placeholder="尚未设置">
+                <button type="button" class="cfg-reveal" id="btn-reveal-ag-key">显示</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cfg-probe-box">
+            <div class="cfg-probe-head">
+              <span style="font-size:12px;font-weight:700;color:#ffffff;">Gemini 伴侣端点测试</span>
+              <button type="button" class="btn-action" id="btn-probe-antigravity">🔍 测试 Gemini 连通性</button>
+            </div>
+            <div id="probe-res-antigravity" class="cfg-probe-res"></div>
+          </div>
+        </div>
+
+        <!-- 4. Voice (语音输入伴侣) 详情面板 -->
+        <div class="cfg-module-panel" id="cfg-panel-voice" data-name="voice">
+          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:14px;">
+            <label style="display:flex;align-items:center;height:34px;gap:8px;cursor:pointer;margin:0;">
+              <input type="checkbox" id="cfg-voice-autostart" style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
+              <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起</span>
+            </label>
+            <label style="display:flex;align-items:center;height:34px;gap:8px;cursor:pointer;margin:0;">
+              <input type="checkbox" id="cfg-voice-restore-clipboard" checked style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
+              <span style="font-size:12px;color:var(--text-muted);">听写完毕后自动恢复原有剪贴板文本</span>
+            </label>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-field">
+              <label>全局对讲触发热键 (点击录制按键)</label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="hidden" id="cfg-voice-hotkey" value="mouse_x1">
+                <button type="button" id="btn-record-hotkey" style="flex:1;text-align:left;cursor:pointer;padding:8px 12px;font-family:var(--font-mono);font-size:11.5px;display:flex;align-items:center;justify-content:space-between;">
+                  <span id="txt-record-hotkey">🖱️ 鼠标侧键1 (后退键 · 默认)</span>
+                  <span style="font-size:11px;color:var(--text-muted);border:1px solid var(--glass-border);padding:1px 6px;border-radius:4px;">点击录制</span>
+                </button>
+                <button type="button" id="btn-reset-hotkey" class="btn-action" style="font-size:12px;padding:8px 12px;" title="重置为默认鼠标侧键">默认</button>
+              </div>
+            </div>
+            <div class="config-field">
+              <label>ASR 引擎模式</label>
+              <select id="cfg-voice-engine">
+                <option value="sensevoice_offline">sensevoice_offline (SenseVoice 离线极速 · 推荐)</option>
+                <option value="qwen_2pass">qwen_2pass (Qwen ASR 1.7B · 高精度大模型)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;padding:14px;background:rgba(57,201,152,0.06);border:1px solid rgba(57,201,152,0.2);border-radius:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div>
+              <b style="color:#ffffff;font-size:13px;">在线麦克风与听写测试</b>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">实时收音测试，感知 SenseVoice 极速离线听写效果与波形反馈。</div>
+            </div>
+            <button type="button" class="btn-action" id="btn-test-voice-mic" style="background:rgba(57,201,152,0.15);color:#39c998;border-color:rgba(57,201,152,0.3);padding:8px 14px;font-weight:700;">🎤 打开在线麦克风测试</button>
+          </div>
+        </div>
+
+        <!-- 5. Relay Core 详情面板 -->
+        <div class="cfg-module-panel" id="cfg-panel-relay" data-name="relay">
+          <div class="config-grid">
+            <div class="config-field">
+              <label>中转核心监听端点</label>
+              <input type="text" readonly value="http://127.0.0.1:8400" class="config-locked-input">
+            </div>
+            <div class="config-field">
+              <label>Web 管理面板端口</label>
+              <input type="text" readonly value="8610" class="config-locked-input">
+            </div>
+            <div class="config-field">
+              <label>虚拟请求 API Key</label>
+              <input type="text" readonly value="sk-relay-local-0000" class="config-locked-input">
+            </div>
+          </div>
+
+          <div style="margin-top:16px;padding:14px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <b style="color:#ffffff;font-size:13px;">Claude Code 客户端接入配置指南</b>
+              <button type="button" class="btn-action" id="btn-copy-env-snippet">一键复制环境变量</button>
+            </div>
+            <pre style="margin:0;padding:10px 12px;background:rgba(0,0,0,0.4);border-radius:6px;font-family:var(--font-mono);font-size:11.5px;color:#93c5fd;line-height:1.6;overflow-x:auto;" id="snippet-env-code">export ANTHROPIC_BASE_URL="http://127.0.0.1:8400"
+export ANTHROPIC_API_KEY="sk-relay-local-0000"
+claude</pre>
+          </div>
+        </div>
+
+        <!-- 隐藏的历史节点保留容器 -->
+        <div id="cfg-upstreams" style="display:none;"></div>
+
+        <!-- 底部轻量安全提示行 (无冗余保存按钮，修改后自动保存) -->
+        <div class="cfg-detail-footer-note">
+          ⚠️ 安全提示：本配置页面专为本地开发机使用设计，请勿将 UI 端口映射至公网。参数修改将自动保存并即时生效。
+        </div>
       </div>
     </div>
   </div>
@@ -3906,9 +4620,10 @@ function showView(name) {
 }
 const cpaBadgeButton = $('#cpa-update-badge');
 if (cpaBadgeButton) cpaBadgeButton.addEventListener('click', async () => {
-  if (_configDirty && !confirm('有未保存的修改，确定离开配置页吗？')) return;
+  if (typeof flushConfigAutosave === 'function') await flushConfigAutosave();
   showView('config');
-  if (!_configLoaded || !_configDirty) await loadConfig();
+  switchConfigSubpage('codex');
+  if (!_configLoaded) await loadConfig();
   const updateButton = $('#cpa-install-update');
   if (updateButton) updateButton.focus();
 });
@@ -4799,282 +5514,578 @@ function appendCodexLogin(card) {
   row.querySelector('button').addEventListener('click', startCodexLogin);
   card.appendChild(row);
 }
-function markConfigDirty() { _configDirty = true; }
-function configField(labelText, cls, type, value, placeholder) {
-  const field = document.createElement('div'); field.className = 'config-field';
-  const label = document.createElement('label'); label.textContent = labelText; field.appendChild(label);
-  const input = document.createElement('input'); input.className = cls; input.type = type || 'text';
-  input.value = value || ''; input.placeholder = placeholder || ''; input.addEventListener('input', markConfigDirty);
-  field.appendChild(input); return { field, input };
-}
-function secretField(labelText, cls, placeholder) {
-  const field = document.createElement('div'); field.className = 'config-field';
-  const label = document.createElement('label'); label.textContent = labelText; field.appendChild(label);
-  const row = document.createElement('div'); row.className = 'config-secret';
-  const input = document.createElement('input'); input.className = cls; input.type = 'password'; input.placeholder = placeholder || '';
-  input.addEventListener('input', markConfigDirty);
-  const reveal = document.createElement('button'); reveal.type = 'button'; reveal.className = 'cfg-reveal'; reveal.textContent = '显示';
-  reveal.addEventListener('click', () => {
-    const visible = input.type === 'text';
-    input.type = visible ? 'password' : 'text';
-    reveal.textContent = visible ? '显示' : '隐藏';
-  });
-  row.appendChild(input); row.appendChild(reveal); field.appendChild(row);
-  return { field, input };
-}
-function renderConfig(cfg) {
-  window._currentVoiceHotkey = (cfg.tools && cfg.tools.voice && cfg.tools.voice.hotkey) || 'mouse_x1';
-  const root = $('#cfg-upstreams'); root.innerHTML = '';
-  const ups = cfg.upstreams || {};
-  const names = Object.keys(ups);
-  if (!names.length) { root.innerHTML = '<div style="color:var(--text-dim);padding:14px;text-align:center">暂无上游配置</div>'; return; }
-  const localUpstreams = {
-    codex: {
-      base: 'http://127.0.0.1:8317',
-      baseHint: '内置 CLIProxyAPI 服务端口，由 Relay 自动拉起与管理；自定义端口需与本地服务保持一致'
-    },
-    antigravity: {
-      base: 'http://127.0.0.1:8045',
-      baseHint: '本地 Antigravity Tools 伴侣服务端口，由 Relay 自动探测；自定义端口需与本地服务保持一致'
-    }
-  };
-  names.forEach(name => {
-    const info = ups[name] || {};
-    const local = localUpstreams[name] || null;
-    const card = document.createElement('div'); card.className = 'upstream-card'; card.dataset.name = name;
-    const title = document.createElement('div'); title.className = 'upstream-title';
-    const heading = document.createElement('div'); heading.className = 'upstream-heading';
-    const b = document.createElement('b'); b.textContent = name; heading.appendChild(b);
-    title.appendChild(heading);
-    const code = document.createElement('code'); code.textContent = info.key_env ? 'key_env: ' + info.key_env : '未配置 key_env'; title.appendChild(code);
-    card.appendChild(title);
-    if (name === 'codex') {
-      appendCodexLogin(card);
-      const updateBox = document.createElement('div');
-      updateBox.className = 'cpa-update-panel';
-      updateBox.id = 'cpa-update-panel';
-      const codexProxyVal = (cfg.tools && cfg.tools.codex && cfg.tools.codex.outbound_proxy) || '';
-      window._currentCodexProxy = codexProxyVal;
-      updateBox.innerHTML = '<div class="upstream-title"><b>CLIProxyAPI 更新</b><code id="cpa-version-label">检测版本中…</code></div>' +
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">' +
-        '<button type="button" class="btn-action" id="cpa-check-update">检查更新</button>' +
-        '<button type="button" class="btn-action" id="cpa-install-update" disabled>一键升级</button></div>' +
-        '<div id="cpa-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">升级时 Codex 将短暂重启。</div>';
-      card.appendChild(updateBox);
+let _cachedConfig = null;
+let _activeConfigSubpage = 'overview';
+let _autosaveTimer = null;
+let _autosaveInFlight = false;
+let _autosaveQueued = false;
 
-      const proxyPanel = document.createElement('div');
-      proxyPanel.className = 'cpa-proxy-panel';
-      proxyPanel.style.cssText = 'margin:12px 0 14px;padding:12px 14px;background:rgba(255,255,255,0.018);border:1px solid var(--glass-border);border-radius:10px;';
-      proxyPanel.innerHTML = '<div style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-        '<span style="font-size:12px;font-weight:700;color:#ffffff;">外部网络代理 (clash)</span>' +
-        '<span style="font-size:11px;color:var(--text-dim);">供 CLIProxyAPI 访问外网 OpenAI，请核对端口号与 Clash 是否一致</span>' +
-        '</div>' +
-        '<input type="text" id="cfg-codex-outbound-proxy" class="cfg-cpa-proxy" placeholder="例如: http://127.0.0.1:7890 (留空或 direct 为直连)">';
-      card.appendChild(proxyPanel);
+function setAutoSaveStatus(status) {
+  const pill = $('#cfg-autosave-indicator');
+  if (!pill) return;
+  pill.className = 'cfg-autosave-pill ' + status;
+  const txt = pill.querySelector('.cfg-autosave-text');
+  if (!txt) return;
+  if (status === 'saving') {
+    txt.textContent = '正在保存…';
+    pill.title = '正在保存配置并同步…';
+  } else if (status === 'error') {
+    txt.textContent = '保存失败';
+    pill.title = '自动保存失败，稍后将自动重试';
+  } else {
+    txt.textContent = '已保存';
+    pill.title = '修改已自动保存并即时生效';
+  }
+}
 
-      const inputProxy = proxyPanel.querySelector('#cfg-codex-outbound-proxy');
-      if (inputProxy) {
-        inputProxy.value = codexProxyVal;
-        inputProxy.addEventListener('input', markConfigDirty);
+function markConfigDirty() {
+  _configDirty = true;
+  scheduleConfigAutosave(false);
+}
+
+async function saveConfigDraft() {
+  if (_autosaveInFlight) {
+    _autosaveQueued = true;
+    return;
+  }
+  _autosaveInFlight = true;
+  _autosaveQueued = false;
+  setAutoSaveStatus('saving');
+  try {
+    const oldHk = (window._currentVoiceHotkey || '');
+    const oldCodexProxy = (window._currentCodexProxy || '');
+    const newCfg = collectConfig();
+    const newHk = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.hotkey) || '';
+    const newCodexProxy = (newCfg.tools && newCfg.tools.codex && newCfg.tools.codex.outbound_proxy) || '';
+
+    const r = await api('/api/config', newCfg);
+    if (r.error) throw new Error(r.error);
+
+    _cachedConfig = r.config || newCfg;
+    _configDirty = false;
+    updateOverviewCards(_cachedConfig, st);
+    setAutoSaveStatus('saved');
+
+    // 若 Codex 外发代理发生变化且正在运行，自动重启 Codex 使新代理生效
+    if (oldCodexProxy !== newCodexProxy && isUpstreamRunning('codex')) {
+      toast('Codex 代理已变更，正在自动重启 Codex…');
+      window._currentCodexProxy = newCodexProxy;
+      try {
+        await api('/api/upstream', { name: 'codex', action: 'stop' });
+        await new Promise(res => setTimeout(res, 800));
+        await api('/api/upstream', { name: 'codex', action: 'start' });
+        toast('Codex 已重启，新代理端口立即生效！');
+      } catch(err) {
+        toast('自动重启 Codex 异常: ' + err, true);
       }
     }
-    if (name === 'antigravity') {
-      const updateBox = document.createElement('div');
-      updateBox.className = 'cpa-update-panel';
-      updateBox.id = 'antigravity-update-panel';
-      updateBox.innerHTML = '<div class="upstream-title"><b>Antigravity Tools 更新</b><code id="antigravity-version-label">检测版本中…</code></div>' +
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">' +
-        '<button type="button" class="btn-action" id="antigravity-check-update">检查更新</button>' +
-        '<button type="button" class="btn-action" id="antigravity-open-app">打开客户端更新</button></div>' +
-        '<div id="antigravity-update-message" role="status" aria-live="polite" style="font-size:11px;color:var(--text-dim);">可在客户端中点击 设置 → 关于 → 检查更新 完成安装。</div>';
-      card.appendChild(updateBox);
+
+    // 若热键发生变化且语音服务正在运行，自动重启语音服务使新热键生效
+    if (oldHk && newHk && oldHk !== newHk && isUpstreamRunning('voice')) {
+      toast('热键已变更，正在自动重启语音伴侣…');
+      window._currentVoiceHotkey = newHk;
+      try {
+        await api('/api/upstream', { name: 'voice', action: 'stop' });
+        await new Promise(res => setTimeout(res, 800));
+        await api('/api/upstream', { name: 'voice', action: 'start' });
+        toast('语音伴侣已重启，新热键立即生效！');
+      } catch(err) {
+        toast('自动重启语音服务异常: ' + err, true);
+      }
     }
-    const grid = document.createElement('div'); grid.className = 'config-grid';
-    const baseVal = local ? (info.base || local.base) : info.base;
-    const base = configField('Base URL', 'cfg-base', 'url', baseVal, 'https://example.com/v1');
-    const key = secretField('API Key', 'cfg-key', info.has_key ? (info.key_mask + ' · 留空保持不变') : '尚未设置');
-    if (local) {
-      base.input.readOnly = true;
-      base.input.classList.add('config-locked-input');
-      const label = base.field.querySelector('label');
-      const labelRow = document.createElement('div');
-      labelRow.className = 'config-field-label-row';
-      base.field.insertBefore(labelRow, base.input);
-      labelRow.appendChild(label);
+  } catch (e) {
+    console.error('Auto-save config failed:', e);
+    setAutoSaveStatus('error');
+  } finally {
+    _autosaveInFlight = false;
+    if (_autosaveQueued) {
+      _autosaveQueued = false;
+      saveConfigDraft();
+    }
+  }
+}
 
-      const unlockBtn = document.createElement('button');
-      unlockBtn.type = 'button';
-      unlockBtn.className = 'btn-action btn-unlock-base';
-      unlockBtn.textContent = '🔒 解锁修改';
-      unlockBtn.title = '默认锁定以防误触；点击可解锁编辑';
-      labelRow.appendChild(unlockBtn);
+function scheduleConfigAutosave(immediate = false) {
+  clearTimeout(_autosaveTimer);
+  _configDirty = true;
+  setAutoSaveStatus('saving');
+  if (immediate) {
+    saveConfigDraft();
+  } else {
+    _autosaveTimer = setTimeout(() => {
+      saveConfigDraft();
+    }, 600);
+  }
+}
 
-      const bHint = document.createElement('small');
-      bHint.className = 'config-lock-hint';
-      bHint.textContent = local.baseHint;
-      base.field.appendChild(bHint);
+async function flushConfigAutosave() {
+  if (_autosaveTimer) {
+    clearTimeout(_autosaveTimer);
+    _autosaveTimer = null;
+  }
+  if (_configDirty || _autosaveInFlight || _autosaveQueued) {
+    await saveConfigDraft();
+  }
+}
 
-      unlockBtn.addEventListener('click', () => {
-        if (base.input.readOnly) {
-          base.input.readOnly = false;
-          base.input.classList.remove('config-locked-input');
-          base.input.classList.add('config-unlocked-input');
-          unlockBtn.classList.add('unlocked');
-          unlockBtn.textContent = '🔓 锁定';
-          bHint.textContent = '已解锁修改：请确保自定义端口与本地服务实际运行端口一致，修改后保存生效';
-          bHint.style.color = '#e0a82e';
-          base.input.focus();
-        } else {
-          base.input.readOnly = true;
-          base.input.classList.remove('config-unlocked-input');
-          base.input.classList.add('config-locked-input');
-          unlockBtn.classList.remove('unlocked');
-          unlockBtn.textContent = '🔒 解锁修改';
-          bHint.textContent = local.baseHint;
-          bHint.style.color = '';
-        }
-      });
-      grid.appendChild(base.field); grid.appendChild(key.field);
+const localUpstreams = {
+  codex: {
+    base: 'http://127.0.0.1:8317',
+    baseHint: '内置 CLIProxyAPI 服务端口，由 Relay 自动拉起与管理；自定义端口需与本地服务保持一致'
+  },
+  antigravity: {
+    base: 'http://127.0.0.1:8045',
+    baseHint: '本地 Antigravity Tools 伴侣服务端口，由 Relay 自动探测；自定义端口需与本地服务保持一致'
+  }
+};
+
+function setupBaseUrlLock(name, baseInputId, unlockBtnId, hintElId) {
+  const local = localUpstreams[name];
+  const inputEl = $(baseInputId);
+  const unlockBtn = $(unlockBtnId);
+  const bHint = $(hintElId);
+  if (!local || !inputEl || !unlockBtn || !bHint) return;
+  const base = { input: inputEl };
+  base.input.readOnly = true;
+  base.input.classList.add('config-locked-input');
+  unlockBtn.className = 'btn-action btn-unlock-base';
+  unlockBtn.textContent = '🔒 解锁修改';
+  unlockBtn.title = '默认锁定以防误触；点击可解锁编辑';
+  bHint.className = 'config-lock-hint';
+  bHint.textContent = local.baseHint;
+
+  unlockBtn.addEventListener('click', () => {
+    if (base.input.readOnly) {
+      base.input.readOnly = false;
+      base.input.classList.remove('config-locked-input');
+      base.input.classList.add('config-unlocked-input');
+      unlockBtn.classList.add('unlocked');
+      unlockBtn.textContent = '🔓 锁定';
+      bHint.textContent = '已解锁修改：请确保自定义端口与本地服务实际运行端口一致，修改后保存生效';
+      bHint.style.color = '#e0a82e';
+      base.input.focus();
     } else {
-      const proxyVal = info.proxy_url;
-      const proxy = configField('上游代理 URL', 'cfg-up-proxy', 'text', proxyVal, '留空直连；可填 direct');
-      grid.appendChild(base.field); grid.appendChild(proxy.field); grid.appendChild(key.field);
+      base.input.readOnly = true;
+      base.input.classList.remove('config-unlocked-input');
+      base.input.classList.add('config-locked-input');
+      unlockBtn.classList.remove('unlocked');
+      unlockBtn.textContent = '🔒 解锁修改';
+      bHint.textContent = local.baseHint;
+      bHint.style.color = '';
     }
-    card.appendChild(grid); root.appendChild(card);
   });
-  // 语音伴侣独立配置卡片
-  const vConf = (cfg.tools && cfg.tools.voice) || {};
-  const vCard = document.createElement('div');
-  vCard.className = 'upstream-card';
-  vCard.id = 'cfg-voice-card';
-  const autoChecked = vConf.auto_start !== false ? 'checked' : '';
-  const selH = vConf.hotkey || 'mouse_x1';
-  const selE = vConf.engine || 'sensevoice_offline';
-  const formatHotkeyLabel = k => {
-    k = String(k || 'mouse_x1').toLowerCase().trim();
-    if (k === 'mouse_x1' || k === 'x1') return '🖱️ 鼠标侧键1 (后退键 · 默认)';
-    if (k === 'mouse_x2' || k === 'x2') return '🖱️ 鼠标侧键2 (前进键)';
-    if (k === 'middle' || k === 'mouse_middle') return '🖱️ 鼠标滚轮中键';
-    if (k === 'caps_lock' || k === 'capslock') return '⌨️ CapsLock 大写锁定键';
-    if (k === 'ctrl_r' || k === 'right_ctrl') return '⌨️ 右 Ctrl 键';
-    if (k === 'shift_r' || k === 'right_shift') return '⌨️ 右 Shift 键';
-    if (k === 'alt_r' || k === 'right_alt') return '⌨️ 右 Alt 键';
-    if (/^f\d{1,2}$/.test(k)) return '⌨️ ' + k.toUpperCase() + ' 键';
-    if (k === 'space') return '⌨️ Space 空格键';
-    if (k === 'tab') return '⌨️ Tab 键';
-    return '⌨️ 按键 [' + k.toUpperCase() + ']';
+}
+
+const formatHotkeyLabel = k => {
+  k = String(k || 'mouse_x1').toLowerCase().trim();
+  if (k === 'mouse_x1' || k === 'x1') return '🖱️ 鼠标侧键1 (后退键 · 默认)';
+  if (k === 'mouse_x2' || k === 'x2') return '🖱️ 鼠标侧键2 (前进键)';
+  if (k === 'middle' || k === 'mouse_middle') return '🖱️ 鼠标滚轮中键';
+  if (k === 'caps_lock' || k === 'capslock') return '⌨️ CapsLock 大写锁定键';
+  if (k === 'ctrl_r' || k === 'right_ctrl') return '⌨️ 右 Ctrl 键';
+  if (k === 'shift_r' || k === 'right_shift') return '⌨️ 右 Shift 键';
+  if (k === 'alt_r' || k === 'right_alt') return '⌨️ 右 Alt 键';
+  if (/^f\d{1,2}$/.test(k)) return '⌨️ ' + k.toUpperCase() + ' 键';
+  if (k === 'space') return '⌨️ Space 空格键';
+  if (k === 'tab') return '⌨️ Tab 键';
+  return '⌨️ 按键 [' + k.toUpperCase() + ']';
+};
+
+function setupVoiceHotkeyRecorder() {
+  const btnRecHk = $('#btn-record-hotkey');
+  const txtRecHk = $('#txt-record-hotkey');
+  const inputHk = $('#cfg-voice-hotkey');
+  const btnResetHk = $('#btn-reset-hotkey');
+  if (!btnRecHk || !inputHk) return;
+  let listening = false;
+  const stopListening = () => {
+    listening = false;
+    window.removeEventListener('keydown', onHkKeyDown, true);
+    window.removeEventListener('pointerdown', onHkMouseDown, true);
+    btnRecHk.style.borderColor = '';
+    btnRecHk.style.background = '';
+    if (txtRecHk) txtRecHk.textContent = formatHotkeyLabel(inputHk.value);
   };
-
-  vCard.innerHTML = '<div class="upstream-title"><b>voice (语音输入伴侣)</b><code>服务端口: ' + (vConf.port || 8401) + ' · 本地离线语音识别</code></div>' +
-    '<div class="config-grid">' +
-    '  <div class="config-field" style="justify-content:center;">' +
-    '    <label style="display:flex;align-items:center;height:34px;gap:8px;cursor:pointer;margin:0;">' +
-    '      <input type="checkbox" id="cfg-voice-autostart" ' + autoChecked + ' style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">' +
-    '      <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起</span>' +
-    '    </label>' +
-    '  </div>' +
-    '  <div class="config-field"><label>全局对讲触发热键 (点击录制按键)</label>' +
-    '    <div style="display:flex;align-items:center;gap:8px;">' +
-    '      <input type="hidden" id="cfg-voice-hotkey" value="' + selH + '">' +
-    '      <button type="button" id="btn-record-hotkey" style="flex:1;text-align:left;cursor:pointer;padding:8px 12px;font-family:var(--font-mono);font-size:11.5px;display:flex;align-items:center;justify-content:space-between;">' +
-    '        <span id="txt-record-hotkey">' + formatHotkeyLabel(selH) + '</span>' +
-    '        <span style="font-size:11px;color:var(--text-muted);border:1px solid var(--glass-border);padding:1px 6px;border-radius:4px;">点击录制</span>' +
-    '      </button>' +
-    '      <button type="button" id="btn-reset-hotkey" class="btn-action" style="font-size:12px;padding:8px 12px;" title="重置为默认鼠标侧键">默认</button>' +
-    '    </div>' +
-    '  </div>' +
-    '  <div class="config-field"><label>ASR 引擎模式</label><select id="cfg-voice-engine">' +
-    '    <option value="sensevoice_offline"' + (selE === 'sensevoice_offline' ? ' selected' : '') + '>sensevoice_offline (SenseVoice 离线极速 · 推荐)</option>' +
-    '    <option value="paraformer_streaming_2pass"' + (selE === 'paraformer_streaming_2pass' ? ' selected' : '') + '>paraformer_streaming_2pass (FunASR 2-Pass 流式 · 进阶)</option>' +
-    '  </select></div>' +
-    '</div>';
-
-  const btnRecHk = vCard.querySelector('#btn-record-hotkey');
-  const txtRecHk = vCard.querySelector('#txt-record-hotkey');
-  const inputHk = vCard.querySelector('#cfg-voice-hotkey');
-  const btnResetHk = vCard.querySelector('#btn-reset-hotkey');
-  if (btnRecHk && inputHk) {
-    let listening = false;
-    const stopListening = () => {
-      listening = false;
-      window.removeEventListener('keydown', onHkKeyDown, true);
-      window.removeEventListener('pointerdown', onHkMouseDown, true);
-      btnRecHk.style.borderColor = '';
-      btnRecHk.style.background = '';
-      txtRecHk.textContent = formatHotkeyLabel(inputHk.value);
-    };
-    const applyHk = (captured) => {
-      inputHk.value = captured;
-      txtRecHk.textContent = formatHotkeyLabel(captured);
-      stopListening();
-      markConfigDirty();
-      toast('已录制热键: ' + formatHotkeyLabel(captured));
-    };
-    const onHkKeyDown = (e) => {
+  const applyHk = (captured) => {
+    inputHk.value = captured;
+    if (txtRecHk) txtRecHk.textContent = formatHotkeyLabel(captured);
+    stopListening();
+    scheduleConfigAutosave(true);
+    toast('已录制热键: ' + formatHotkeyLabel(captured));
+  };
+  const onHkKeyDown = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Escape') { stopListening(); toast('已取消按键录制'); return; }
+    const code = e.code || '';
+    const key = e.key || '';
+    let k = '';
+    if (/^F\d{1,2}$/i.test(key) || /^F\d{1,2}$/i.test(code)) {
+      k = (key || code).toLowerCase();
+    } else if (code === 'CapsLock' || key === 'CapsLock') {
+      k = 'caps_lock';
+    } else if (code === 'ControlRight') {
+      k = 'ctrl_r';
+    } else if (code === 'ShiftRight') {
+      k = 'shift_r';
+    } else if (code === 'AltRight') {
+      k = 'alt_r';
+    } else if (code === 'Space' || key === ' ') {
+      k = 'space';
+    } else if (code === 'Tab') {
+      k = 'tab';
+    } else if (code.startsWith('Key')) {
+      k = code.slice(3).toLowerCase();
+    } else if (code.startsWith('Digit')) {
+      k = code.slice(5).toLowerCase();
+    } else if (key && key.length === 1) {
+      k = key.toLowerCase();
+    } else {
+      k = (code || key).toLowerCase();
+    }
+    applyHk(k);
+  };
+  const onHkMouseDown = (e) => {
+    if (e.button === 3) {
       e.preventDefault(); e.stopPropagation();
-      if (e.key === 'Escape') { stopListening(); toast('已取消按键录制'); return; }
-      const code = e.code || '';
-      const key = e.key || '';
-      let k = '';
-      if (/^F\d{1,2}$/i.test(key) || /^F\d{1,2}$/i.test(code)) {
-        k = (key || code).toLowerCase();
-      } else if (code === 'CapsLock' || key === 'CapsLock') {
-        k = 'caps_lock';
-      } else if (code === 'ControlRight') {
-        k = 'ctrl_r';
-      } else if (code === 'ShiftRight') {
-        k = 'shift_r';
-      } else if (code === 'AltRight') {
-        k = 'alt_r';
-      } else if (code === 'Space' || key === ' ') {
-        k = 'space';
-      } else if (code === 'Tab') {
-        k = 'tab';
-      } else if (code.startsWith('Key')) {
-        k = code.slice(3).toLowerCase();
-      } else if (code.startsWith('Digit')) {
-        k = code.slice(5).toLowerCase();
-      } else if (key && key.length === 1) {
-        k = key.toLowerCase();
-      } else {
-        k = (code || key).toLowerCase();
-      }
-      applyHk(k);
-    };
-    const onHkMouseDown = (e) => {
-      if (e.button === 3) {
-        e.preventDefault(); e.stopPropagation();
-        applyHk('mouse_x1');
-      } else if (e.button === 4) {
-        e.preventDefault(); e.stopPropagation();
-        applyHk('mouse_x2');
-      } else if (e.button === 1) {
-        e.preventDefault(); e.stopPropagation();
-        applyHk('middle');
-      } else if (e.button === 0 && !btnRecHk.contains(e.target)) {
-        stopListening();
-      }
-    };
-    btnRecHk.addEventListener('click', (e) => {
+      applyHk('mouse_x1');
+    } else if (e.button === 4) {
+      e.preventDefault(); e.stopPropagation();
+      applyHk('mouse_x2');
+    } else if (e.button === 1) {
+      e.preventDefault(); e.stopPropagation();
+      applyHk('middle');
+    } else if (e.button === 0 && !btnRecHk.contains(e.target)) {
+      stopListening();
+    }
+  };
+  btnRecHk.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (listening) { stopListening(); return; }
+    listening = true;
+    btnRecHk.style.borderColor = 'var(--accent)';
+    btnRecHk.style.background = 'rgba(0,255,196,0.1)';
+    if (txtRecHk) txtRecHk.innerHTML = '<span style="color:var(--accent);">● 请按键盘任意键或鼠标侧键… (Esc 取消)</span>';
+    window.addEventListener('keydown', onHkKeyDown, true);
+    window.addEventListener('pointerdown', onHkMouseDown, true);
+  });
+  if (btnResetHk) {
+    btnResetHk.addEventListener('click', (e) => {
       e.preventDefault();
-      if (listening) { stopListening(); return; }
-      listening = true;
-      btnRecHk.style.borderColor = 'var(--accent)';
-      btnRecHk.style.background = 'rgba(0,255,196,0.1)';
-      txtRecHk.innerHTML = '<span style="color:var(--accent);">● 请按键盘任意键或鼠标侧键… (Esc 取消)</span>';
-      window.addEventListener('keydown', onHkKeyDown, true);
-      window.addEventListener('pointerdown', onHkMouseDown, true);
+      applyHk('mouse_x1');
     });
-    if (btnResetHk) {
-      btnResetHk.addEventListener('click', (e) => {
-        e.preventDefault();
-        applyHk('mouse_x1');
-      });
+  }
+}
+
+function setupSecretReveal(inputId, btnId) {
+  const input = $(inputId);
+  const btn = $(btnId);
+  if (!input || !btn) return;
+  btn.addEventListener('click', () => {
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+    btn.textContent = isPass ? '隐藏' : '显示';
+  });
+}
+
+async function runProbe(provider, resultElId, btnElId) {
+  const btn = $(btnElId);
+  const resEl = $(resultElId);
+  if (!resEl) return;
+  if (btn) { btn.disabled = true; btn.textContent = '检测中…'; }
+  resEl.style.display = 'block';
+  resEl.style.color = 'var(--text-muted)';
+  resEl.textContent = '正在发起探测请求…';
+  try {
+    const res = await api('/api/probe?name=' + encodeURIComponent(provider));
+    if (res.available) {
+      resEl.style.color = '#39c998';
+      const modelsStr = (res.models && res.models.length) ? ('发现可用模型 (' + res.models.length + '): ' + res.models.slice(0, 8).join(', ') + (res.models.length > 8 ? '…' : '')) : '端点连通成功 (HTTP 200)';
+      resEl.textContent = '● 连通正常 (HTTP 200) · ' + modelsStr;
+    } else {
+      resEl.style.color = '#ff7272';
+      resEl.textContent = '× 探测失败: ' + (res.error || '无法连接端点');
+    }
+  } catch (e) {
+    resEl.style.color = '#ff7272';
+    resEl.textContent = '× 请求异常: ' + e;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      const labels = { deepseek: '🔍 测试 DeepSeek 连通性', codex: '🔍 测试 Codex 连通性', antigravity: '🔍 测试 Gemini 连通性' };
+      btn.textContent = labels[provider] || '🔍 连通性测试';
+    }
+  }
+}
+
+function updateDetailStatusPill(subpage) {
+  const pill = $('#cfg-detail-status-pill');
+  if (!pill) return;
+  if (subpage === 'deepseek') {
+    const hasKey = _cachedConfig && _cachedConfig.upstreams && _cachedConfig.upstreams.deepseek && _cachedConfig.upstreams.deepseek.has_key;
+    pill.className = hasKey ? 'cfg-mod-badge on' : 'cfg-mod-badge warn';
+    pill.textContent = hasKey ? '● 密钥已就绪' : '○ 尚未配置密钥';
+  } else if (subpage === 'codex') {
+    const run = isUpstreamRunning('codex', st);
+    pill.className = run ? 'cfg-mod-badge on' : 'cfg-mod-badge off';
+    pill.textContent = run ? '● 服务运行中 :8317' : '○ 服务已停止';
+  } else if (subpage === 'antigravity') {
+    const run = isUpstreamRunning('antigravity', st);
+    pill.className = run ? 'cfg-mod-badge on' : 'cfg-mod-badge off';
+    pill.textContent = run ? '● 伴侣运行中 :8045' : '○ 伴侣已停止';
+  } else if (subpage === 'voice') {
+    const run = isUpstreamRunning('voice', st);
+    pill.className = run ? 'cfg-mod-badge on' : 'cfg-mod-badge off';
+    pill.textContent = run ? '● 伴侣运行中 :8401' : '○ 伴侣已停止';
+  } else {
+    pill.className = 'cfg-mod-badge on';
+    pill.textContent = '● 核心运行中 v2.4.8';
+  }
+}
+
+function updateOverviewCards(cfg, snapshot) {
+  if (!cfg) return;
+  const ups = cfg.upstreams || {};
+  const tools = cfg.tools || {};
+
+  // DeepSeek
+  const ds = ups.deepseek || {};
+  const dsBadge = $('#ov-ds-badge');
+  if (dsBadge) {
+    if (ds.has_key) {
+      dsBadge.className = 'cfg-mod-badge on';
+      dsBadge.textContent = '● 已配置 Key';
+    } else {
+      dsBadge.className = 'cfg-mod-badge warn';
+      dsBadge.textContent = '○ 未配置 Key';
+    }
+  }
+  if ($('#ov-ds-base')) $('#ov-ds-base').textContent = (ds.base || 'api.deepseek.com').replace(/^https?:\/\//, '');
+  if ($('#ov-ds-proxy')) $('#ov-ds-proxy').textContent = ds.proxy_url ? (ds.proxy_url === 'direct' ? 'direct (直连)' : ds.proxy_url) : 'direct (直连)';
+  if ($('#ov-ds-key')) $('#ov-ds-key').textContent = ds.has_key ? (ds.key_mask || 'sk-••••') : '尚未设置';
+
+  // Codex
+  const cx = ups.codex || {};
+  const cxRun = isUpstreamRunning('codex', snapshot);
+  const cxBadge = $('#ov-codex-badge');
+  if (cxBadge) {
+    cxBadge.className = cxRun ? 'cfg-mod-badge on' : 'cfg-mod-badge off';
+    cxBadge.textContent = cxRun ? '● 运行中 :8317' : '○ 已停止';
+  }
+  const cxOauth = $('#ov-codex-oauth');
+  if (cxOauth) {
+    if (_codexLogin.status === 'ok') {
+      cxOauth.textContent = '已登录 (' + (_codexLogin.account_count || 1) + ' 个账号)';
+      cxOauth.style.color = '#39c998';
+    } else if (_codexLogin.status === 'waiting') {
+      cxOauth.textContent = '等待授权…';
+      cxOauth.style.color = '#fbbf24';
+    } else {
+      cxOauth.textContent = _codexLogin.message || '未登录';
+      cxOauth.style.color = 'var(--text-muted)';
+    }
+  }
+  const cxProxy = (tools.codex && tools.codex.outbound_proxy) || '';
+  if ($('#ov-codex-proxy')) $('#ov-codex-proxy').textContent = cxProxy || 'direct (直连)';
+
+  // Antigravity
+  const agRun = isUpstreamRunning('antigravity', snapshot);
+  const agBadge = $('#ov-ag-badge');
+  if (agBadge) {
+    agBadge.className = agRun ? 'cfg-mod-badge on' : 'cfg-mod-badge off';
+    agBadge.textContent = agRun ? '● 运行中 :8045' : '○ 已停止';
+  }
+  if ($('#ov-ag-autostart')) $('#ov-ag-autostart').textContent = (tools.antigravity && tools.antigravity.auto_start) ? '开启随启动拉起' : '手动运行';
+  const ag = ups.antigravity || {};
+  if ($('#ov-ag-key')) $('#ov-ag-key').textContent = ag.has_key ? (ag.key_mask || 'sk-••••') : '尚未设置';
+
+  // Voice
+  const vRun = isUpstreamRunning('voice', snapshot);
+  const vBadge = $('#ov-voice-badge');
+  if (vBadge) {
+    vBadge.className = vRun ? 'cfg-mod-badge on' : 'cfg-mod-badge off';
+    vBadge.textContent = vRun ? '● 运行中 :8401' : '○ 已停止';
+  }
+  const vConf = tools.voice || {};
+  if ($('#ov-voice-hotkey')) $('#ov-voice-hotkey').textContent = formatHotkeyLabel(vConf.hotkey || 'mouse_x1');
+  if ($('#ov-voice-engine')) {
+    const eng = vConf.engine || 'sensevoice_offline';
+    let engName = 'SenseVoice 离线';
+    if (eng === 'qwen_2pass' || eng === 'paraformer_streaming_2pass' || eng === 'qwen_offline') engName = 'Qwen ASR 1.7B';
+    $('#ov-voice-engine').textContent = engName;
+  }
+
+  // Dirty indicators
+  const ovDirty = $('#cfg-ov-dirty-pill');
+  if (ovDirty) ovDirty.style.display = _configDirty ? 'inline-flex' : 'none';
+  const dtDirty = $('#cfg-detail-dirty-pill');
+  if (dtDirty) dtDirty.style.display = _configDirty ? 'inline-flex' : 'none';
+}
+
+async function switchConfigSubpage(subpage, updateHash = true) {
+  if (_activeConfigSubpage !== 'overview' && subpage === 'overview') {
+    await flushConfigAutosave();
+  }
+  _activeConfigSubpage = subpage || 'overview';
+  const l1 = $('#cfg-level-1');
+  const l2 = $('#cfg-level-2');
+  if (!l1 || !l2) return false;
+
+  if (_activeConfigSubpage === 'overview') {
+    l1.style.display = 'block';
+    l2.style.display = 'none';
+    $$('.cfg-module-panel').forEach(p => p.style.display = 'none');
+    updateOverviewCards(_cachedConfig, st);
+  } else {
+    l1.style.display = 'none';
+    l2.style.display = 'block';
+    $$('.cfg-module-panel').forEach(p => p.style.display = 'none');
+    const panel = $('#cfg-panel-' + _activeConfigSubpage);
+    if (panel) panel.style.display = 'block';
+    const names = {
+      deepseek: 'DeepSeek (官方直连)',
+      codex: 'Codex (CLIProxyAPI 代理)',
+      antigravity: 'Antigravity (Gemini 伴侣)',
+      voice: 'Voice (语音输入伴侣)',
+      relay: 'CC Relay 核心网络'
+    };
+    if ($('#cfg-crumb-title')) $('#cfg-crumb-title').textContent = names[_activeConfigSubpage] || _activeConfigSubpage;
+    const keyEnvs = {
+      deepseek: 'key_env: real_deepseek_key',
+      codex: 'key_env: codex_proxy_key',
+      antigravity: 'key_env: antigravity_key',
+      voice: '服务端口: 8401',
+      relay: '服务端口: 8400'
+    };
+    const envBadge = $('#cfg-detail-key-env');
+    if (envBadge) {
+      envBadge.textContent = keyEnvs[_activeConfigSubpage] || '';
+      envBadge.style.display = keyEnvs[_activeConfigSubpage] ? 'inline-block' : 'none';
+    }
+    updateDetailStatusPill(_activeConfigSubpage);
+    if (_activeConfigSubpage === 'codex') {
+      paintCodexLogin();
+      refreshCodexLogin();
     }
   }
 
-  vCard.querySelectorAll('input, select').forEach(el => el.addEventListener('change', markConfigDirty));
-  root.appendChild(vCard);
+  if (updateHash) {
+    const targetHash = _activeConfigSubpage === 'overview' ? '#config' : ('#config/' + _activeConfigSubpage);
+    if (window.location.hash !== targetHash) {
+      history.pushState(null, '', targetHash);
+    }
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  return true;
+}
+
+let _configComponentsInited = false;
+function initTwoLevelConfig() {
+  if (_configComponentsInited) return;
+  _configComponentsInited = true;
+
+  // 1. 挂载 Codex 登录
+  const codexSlot = $('#cfg-codex-login-slot');
+  if (codexSlot && !codexSlot.querySelector('#codex-login')) {
+    appendCodexLogin(codexSlot);
+  }
+
+  // 2. 绑定安全锁
+  setupBaseUrlLock('codex', '#cfg-codex-base', '#btn-unlock-codex-base', '#hint-codex-base');
+  setupBaseUrlLock('antigravity', '#cfg-ag-base', '#btn-unlock-ag-base', '#hint-ag-base');
+
+  // 3. 密码明密文显示切换
+  setupSecretReveal('#cfg-ds-key', '#btn-reveal-ds-key');
+  setupSecretReveal('#cfg-codex-key', '#btn-reveal-codex-key');
+  setupSecretReveal('#cfg-ag-key', '#btn-reveal-ag-key');
+
+  // 4. 语音热键录制器
+  setupVoiceHotkeyRecorder();
+
+  // 5. 连通性测试
+  const btnProbeDs = $('#btn-probe-deepseek');
+  if (btnProbeDs) btnProbeDs.addEventListener('click', () => runProbe('deepseek', '#probe-res-deepseek', '#btn-probe-deepseek'));
+  const btnProbeCx = $('#btn-probe-codex');
+  if (btnProbeCx) btnProbeCx.addEventListener('click', () => runProbe('codex', '#probe-res-codex', '#btn-probe-codex'));
+  const btnProbeAg = $('#btn-probe-antigravity');
+  if (btnProbeAg) btnProbeAg.addEventListener('click', () => runProbe('antigravity', '#probe-res-antigravity', '#btn-probe-antigravity'));
+
+  // 6. 复制环境变量
+  const btnCopyEnv = $('#btn-copy-env-snippet');
+  if (btnCopyEnv) {
+    btnCopyEnv.addEventListener('click', () => {
+      const code = ($('#snippet-env-code') ? $('#snippet-env-code').textContent : '') || '';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(() => {
+          toast('已复制 Claude Code 环境变量配置到剪贴板！');
+        }).catch(() => {
+          toast('复制失败，请手动选中复制', true);
+        });
+      } else {
+        toast('已选中文本，请按 Ctrl+C 复制');
+      }
+    });
+  }
+
+  // 7. 在线麦克风对讲测试快捷按钮
+  const btnVoiceMic = $('#btn-test-voice-mic');
+  if (btnVoiceMic) {
+    btnVoiceMic.addEventListener('click', () => {
+      if (typeof openVoiceModal === 'function') {
+        openVoiceModal();
+      } else {
+        toast('语音测试组件加载中…');
+      }
+    });
+  }
+
+  // 8. 概览卡片点击事件
+  $$('.cfg-mod-card').forEach(card => {
+    card.addEventListener('click', async () => {
+      const mod = card.dataset.mod;
+      if (mod) {
+        await flushConfigAutosave();
+        switchConfigSubpage(mod);
+      }
+    });
+    card.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const mod = card.dataset.mod;
+        if (mod) {
+          await flushConfigAutosave();
+          switchConfigSubpage(mod);
+        }
+      }
+    });
+  });
+
+  // 9. 单一返回按钮与刷新按钮
+  const backBtn = $('#cfg-btn-back');
+  if (backBtn) {
+    backBtn.addEventListener('click', async () => {
+      await flushConfigAutosave();
+      switchConfigSubpage('overview');
+    });
+  }
+  const ovReload = $('#cfg-overview-reload');
+  if (ovReload) {
+    ovReload.addEventListener('click', async () => {
+      await flushConfigAutosave();
+      await loadConfig();
+      toast('已刷新连接配置');
+    });
+  }
+
+  // 10. 表单变动自动保存
+  $$('#cfg-level-2 input[type="text"], #cfg-level-2 input[type="password"]').forEach(el => {
+    el.addEventListener('input', () => scheduleConfigAutosave(false));
+    el.addEventListener('blur', () => { if (_configDirty) scheduleConfigAutosave(true); });
+  });
+  $$('#cfg-level-2 input[type="checkbox"], #cfg-level-2 select').forEach(el => {
+    el.addEventListener('change', () => scheduleConfigAutosave(true));
+  });
+
+  // 11. 更新与升级按钮
   const cpaCheck = $('#cpa-check-update');
   if (cpaCheck) cpaCheck.addEventListener('click', async () => {
     cpaCheck.disabled = true;
@@ -5153,8 +6164,63 @@ function renderConfig(cfg) {
       toast('打开 Antigravity Tools 失败: ' + (e && e.message ? e.message : e), true);
     }
   });
+}
+function renderConfig(cfg) {
+  initTwoLevelConfig();
+  _cachedConfig = cfg;
+  const ups = cfg.upstreams || {};
+  const tools = cfg.tools || {};
 
-  _configDirty = false; _configLoaded = true;
+  // DeepSeek
+  const ds = ups.deepseek || {};
+  if ($('#cfg-ds-base')) $('#cfg-ds-base').value = ds.base || 'https://api.deepseek.com/anthropic';
+  if ($('#cfg-ds-proxy')) $('#cfg-ds-proxy').value = ds.proxy_url || '';
+  if ($('#cfg-ds-key')) {
+    $('#cfg-ds-key').value = '';
+    $('#cfg-ds-key').placeholder = ds.has_key ? (ds.key_mask + ' · 留空保持不变') : '尚未设置';
+  }
+
+  // Codex
+  const cx = ups.codex || {};
+  if ($('#cfg-codex-base')) $('#cfg-codex-base').value = cx.base || 'http://127.0.0.1:8317';
+  if ($('#cfg-codex-key')) {
+    $('#cfg-codex-key').value = '';
+    $('#cfg-codex-key').placeholder = cx.has_key ? (cx.key_mask + ' · 留空保持不变') : '尚未设置';
+  }
+  const codexProxyVal = (tools.codex && tools.codex.outbound_proxy) || '';
+  window._currentCodexProxy = codexProxyVal;
+  if ($('#cfg-codex-outbound-proxy')) $('#cfg-codex-outbound-proxy').value = codexProxyVal;
+
+  // Antigravity
+  const ag = ups.antigravity || {};
+  if ($('#cfg-ag-base')) $('#cfg-ag-base').value = ag.base || 'http://127.0.0.1:8045';
+  if ($('#cfg-ag-key')) {
+    $('#cfg-ag-key').value = '';
+    $('#cfg-ag-key').placeholder = ag.has_key ? (ag.key_mask + ' · 留空保持不变') : '尚未设置';
+  }
+  if ($('#cfg-antigravity-autostart')) {
+    $('#cfg-antigravity-autostart').checked = !!(tools.antigravity && tools.antigravity.auto_start);
+  }
+
+  // Voice
+  const vConf = tools.voice || {};
+  const vHk = vConf.hotkey || 'mouse_x1';
+  window._currentVoiceHotkey = vHk;
+  if ($('#cfg-voice-autostart')) $('#cfg-voice-autostart').checked = vConf.auto_start !== false;
+  if ($('#cfg-voice-restore-clipboard')) $('#cfg-voice-restore-clipboard').checked = vConf.restore_clipboard !== false;
+  if ($('#cfg-voice-hotkey')) $('#cfg-voice-hotkey').value = vHk;
+  if ($('#txt-record-hotkey')) $('#txt-record-hotkey').textContent = formatHotkeyLabel(vHk);
+  if ($('#cfg-voice-engine')) {
+    let engVal = vConf.engine || 'sensevoice_offline';
+    if (engVal === 'paraformer_streaming_2pass' || engVal === 'qwen_offline' || engVal === 'sherpa_2pass') engVal = 'qwen_2pass';
+    $('#cfg-voice-engine').value = engVal;
+  }
+
+  // Update Overview Cards
+  updateOverviewCards(cfg, st);
+
+  _configDirty = false;
+  _configLoaded = true;
   paintCodexLogin();
   refreshCodexLogin();
 }
@@ -5166,93 +6232,68 @@ async function loadConfig() {
   } catch (e) { toast('读取配置失败: ' + e, true); }
 }
 function collectConfig() {
-  const payload = { upstreams: {} };
-  document.querySelectorAll('#cfg-upstreams .upstream-card').forEach(card => {
-    if (card.id === 'cfg-voice-card') return;
-    const key = card.querySelector('.cfg-key');
-    const proxyInput = card.querySelector('.cfg-up-proxy');
-    const upItem = {
-      base: card.querySelector('.cfg-base').value,
-      key: key.value
-    };
-    if (proxyInput) {
-      upItem.proxy_url = proxyInput.value;
+  const payload = {
+    upstreams: {
+      deepseek: {
+        base: ($('#cfg-ds-base') ? $('#cfg-ds-base').value : '').trim(),
+        proxy_url: ($('#cfg-ds-proxy') ? $('#cfg-ds-proxy').value : '').trim(),
+        key: $('#cfg-ds-key') ? $('#cfg-ds-key').value : ''
+      },
+      codex: {
+        base: ($('#cfg-codex-base') ? $('#cfg-codex-base').value : '').trim(),
+        key: $('#cfg-codex-key') ? $('#cfg-codex-key').value : ''
+      },
+      antigravity: {
+        base: ($('#cfg-ag-base') ? $('#cfg-ag-base').value : '').trim(),
+        key: $('#cfg-ag-key') ? $('#cfg-ag-key').value : ''
+      }
+    },
+    tools: {
+      codex: {
+        outbound_proxy: ($('#cfg-codex-outbound-proxy') ? $('#cfg-codex-outbound-proxy').value : '').trim()
+      },
+      antigravity: {
+        auto_start: !!($('#cfg-antigravity-autostart') && $('#cfg-antigravity-autostart').checked)
+      },
+      voice: {
+        auto_start: !!($('#cfg-voice-autostart') && $('#cfg-voice-autostart').checked),
+        restore_clipboard: !$('#cfg-voice-restore-clipboard') || $('#cfg-voice-restore-clipboard').checked,
+        hotkey: ($('#cfg-voice-hotkey') ? $('#cfg-voice-hotkey').value : 'mouse_x1').trim(),
+        engine: ($('#cfg-voice-engine') ? $('#cfg-voice-engine').value : 'sensevoice_offline').trim()
+      }
     }
-    payload.upstreams[card.dataset.name] = upItem;
-  });
-  const codexProxyInput = $('#cfg-codex-outbound-proxy');
-  if (codexProxyInput) {
-    payload.tools = payload.tools || {};
-    payload.tools.codex = {
-      outbound_proxy: codexProxyInput.value.trim()
-    };
-  }
-  const vCard = $('#cfg-voice-card');
-  if (vCard) {
-    payload.tools = payload.tools || {};
-    const asEl = $('#cfg-voice-autostart');
-    const hkEl = $('#cfg-voice-hotkey');
-    const egEl = $('#cfg-voice-engine');
-    payload.tools.voice = {
-      auto_start: asEl ? asEl.checked : false,
-      hotkey: hkEl ? hkEl.value : 'mouse_x1',
-      engine: egEl ? egEl.value : 'sensevoice_offline'
-    };
-  }
+  };
   return payload;
 }
-$('#cfg-save').addEventListener('click', async () => {
-  if (!_configLoaded || busy) return;
-  const btn = $('#cfg-save'); btn.disabled = true; btn.textContent = '保存中…';
-  try {
-    const oldHk = (window._currentVoiceHotkey || '');
-    const oldCodexProxy = (window._currentCodexProxy || '');
-    const newCfg = collectConfig();
-    const newHk = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.hotkey) || '';
-    const newCodexProxy = (newCfg.tools && newCfg.tools.codex && newCfg.tools.codex.outbound_proxy) || '';
-    const r = await api('/api/config', newCfg);
-    if (r.error) throw new Error(r.error);
-    renderConfig(r.config || {}); toast('连接配置已保存，下一次请求立即生效');
-
-    // 若 Codex 外发代理发生变化且正在运行，自动重启 Codex 使新代理生效
-    if (oldCodexProxy !== newCodexProxy && isUpstreamRunning('codex')) {
-      toast('Codex 代理已变更，正在自动重启 Codex…');
-      try {
-        await api('/api/upstream', { name: 'codex', action: 'stop' });
-        await new Promise(res => setTimeout(res, 800));
-        await api('/api/upstream', { name: 'codex', action: 'start' });
-        toast('Codex 已重启，新代理端口立即生效！');
-      } catch(err) {
-        toast('自动重启 Codex 异常: ' + err, true);
-      }
-    }
-
-    // 若热键发生变化且语音服务正在运行，自动重启语音服务使新热键生效
-    if (oldHk && newHk && oldHk !== newHk && isUpstreamRunning('voice')) {
-      toast('热键已变更，正在自动重启语音伴侣…');
-      try {
-        await api('/api/upstream', { name: 'voice', action: 'stop' });
-        await new Promise(res => setTimeout(res, 800));
-        await api('/api/upstream', { name: 'voice', action: 'start' });
-        toast('语音伴侣已重启，新热键立即生效！');
-      } catch(err) {
-        toast('自动重启语音服务异常: ' + err, true);
-      }
-    }
-  } catch (e) { toast('保存配置失败: ' + e, true); }
-  finally { btn.disabled = false; btn.textContent = '保存连接配置'; refresh(); }
-});
-$('#cfg-reload').addEventListener('click', async () => {
-  if (_configDirty && !confirm('有未保存的修改，确定放弃并刷新吗？')) return;
-  await loadConfig();
-});
 $('#tab-config').addEventListener('click', async () => {
   showView('config');
+  const hash = window.location.hash;
+  if (hash.startsWith('#config/')) {
+    switchConfigSubpage(hash.slice('#config/'.length), false);
+  } else {
+    switchConfigSubpage('overview', false);
+  }
   await loadConfig();
 });
-$('#tab-dashboard').addEventListener('click', () => {
-  if (_configDirty && !confirm('有未保存的修改，确定离开配置页吗？')) return;
+
+$('#tab-dashboard').addEventListener('click', async () => {
+  await flushConfigAutosave();
   showView('dashboard');
+});
+
+window.addEventListener('hashchange', async () => {
+  const hash = window.location.hash;
+  if (hash.startsWith('#config/')) {
+    showView('config');
+    switchConfigSubpage(hash.slice('#config/'.length), false);
+  } else if (hash === '#config') {
+    await flushConfigAutosave();
+    showView('config');
+    switchConfigSubpage('overview', false);
+  } else if (hash === '#dashboard') {
+    await flushConfigAutosave();
+    showView('dashboard');
+  }
 });
 
 // ── 状态轮询与刷新 ──
@@ -5508,6 +6549,12 @@ function renderStatus() {
   $('#routedot').className = 'dot on';
 
   $('#cur').innerHTML = '本地服务入口: <b>http://127.0.0.1:8400</b> ｜ 上游: DeepSeek + Codex(:8317) + Gemini(:8045) ｜ 本地密钥: <b>sk-relay-local-0000</b>';
+  if (_cachedConfig) {
+    updateOverviewCards(_cachedConfig, st);
+    if (_activeConfigSubpage !== 'overview') {
+      updateDetailStatusPill(_activeConfigSubpage);
+    }
+  }
   renderTrafficControl();
   window.scrollTo(0, _sy);
 }
@@ -6205,11 +7252,6 @@ async function loadTraffic(snapshot) {
       $('#sum-cache').textContent = overallRate + ' (' + (cacheTokens > 10000 ? (cacheTokens / 1000).toFixed(0) + 'k' : cacheTokens) + ')';
     } else {
       $('#sum-cache').textContent = '—';
-    }
-    const avgSpd = t.overall_avg_speed;
-    const speedEl = $('#sum-speed');
-    if (speedEl) {
-      speedEl.textContent = avgSpd != null ? (avgSpd + ' t/s') : '—';
     }
 
     // 动态波形与像素矩阵渲染

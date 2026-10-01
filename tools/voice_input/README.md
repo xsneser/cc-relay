@@ -1,6 +1,6 @@
-# Claude Code CLI 中文语音输入伴侣 (SenseVoice 离线极速 / FunASR 2-Pass 流式)
+# Claude Code CLI 中文语音输入伴侣 (SenseVoice 离线极速 / Qwen ASR 1.7B 高精度 2-Pass)
 
-专为 **Claude Code CLI** 及各类 Windows 终端打造的**本地低延迟、开箱即用（无需 MSVC 编译环境/PyTorch）、支持随 cc-relay 自启动的对讲输入伴侣**。
+专为 **Claude Code CLI** 及各类 Windows 终端打造的**本地低延迟、开箱即用、支持随 cc-relay 自启动的对讲输入伴侣**。
 
 ---
 
@@ -8,7 +8,7 @@
 
 1. **一键环境与模型初始化**：
    - 双击项目根目录下的 **`setup_voice.bat`**；
-   - 脚本将自动创建隔离虚拟环境（`tools/voice_input/.venv`）、安装轻量 CPU 依赖（无需安装 Visual C++ 14.0+ 或 PyTorch），并自动下载 ~239MB 的 SenseVoice 离线模型。
+   - 脚本将自动创建隔离虚拟环境（`tools/voice_input/.venv`）、安装轻量 CPU 依赖（无需安装 Visual C++ 14.0+），并自动下载 ~239MB 的 SenseVoice 离线模型。
 2. **启动伴侣服务**：
    - 双击根目录下的 **`start_voice.bat`**；
    - *或者* 在 cc-relay Web 控制台（`http://127.0.0.1:8610`）顶栏点击「语音伴侣 -> 启动」；
@@ -23,7 +23,9 @@
 
 1. **轻量与多引擎架构**：
    - **默认引擎 (`sensevoice_offline`)**：基于 `sherpa-onnx` 纯 CPU 离线推理，资源占用极小，毫秒级转写，中英文代码术语识别准确率极高；
-   - **进阶引擎 (`paraformer_streaming_2pass`)**：FunASR 2-Pass 流式因果识别，支持实时边说边出字（Partial）与离线全局上下文纠错。
+   - **旗舰高精引擎 (`qwen_2pass`)**：Pass 1 采用 Zipformer ONNX 毫秒级边说边出字，Pass 2 采用开源大模型 **Qwen3-ASR-1.7B** 进行全音频全局重构与终审，编程专有名词及中英混读精准度顶尖；
+   - **离线高精引擎 (`qwen_offline`)**：纯 Qwen3-ASR-1.7B 单 Pass 离线高精度转写；
+   - **轻量流式引擎 (`sherpa_2pass`)**：基于 sherpa-onnx Zipformer + SenseVoice 统一轻量 2-Pass 引擎。
 2. **随 cc-relay 统一生命周期管理**：
    - 支持在 `config.json` 中配置 `"tools": { "voice": { "auto_start": true } }`，在中转启动时一键静默自启；
    - 采用 **Windows Job Object (`KILL_ON_JOB_CLOSE`) + `.voice.pid` 强校验**双重保障，主服务退出或异常崩溃时由操作系统内核自动回收伴侣子进程，彻底消除孤儿进程残留。
@@ -69,7 +71,9 @@
   - `caps_lock`：大写锁定键（短按切换大写，长按对讲）
 - `engine`: 识别引擎模式。可选：
   - `sensevoice_offline`：SenseVoice 离线极速引擎（推荐默认，极低资源占用）
-  - `paraformer_streaming_2pass`：FunASR 2-Pass 流式因果识别（进阶）
+  - `qwen_2pass`：Qwen ASR 1.7B 2-Pass 流式因果识别（推荐旗舰高精度）
+  - `qwen_offline`：Qwen ASR 1.7B 纯离线高精终审
+  - `sherpa_2pass`：Sherpa Zipformer 2-Pass 流式轻量引擎
 - `port`: 语音伴侣 RPC 与 WebSocket 监听端口（默认 8401，绑定 127.0.0.1）。
 
 ---

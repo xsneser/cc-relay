@@ -26,9 +26,9 @@ class TestVoiceRuntime(unittest.TestCase):
 
     @mock.patch("tools.voice_input.runtime._probe_interpreter")
     def test_find_voice_python_bypasses_broken_venv(self, mock_probe):
-        # 模拟 .venv python 文件存在但 probe 失败 (如缺少 numpy)
+        # 模拟 .venv 与 runtime python 均不可用时 (如缺少 numpy)
         def probe_side_effect(path):
-            if ".venv" in path:
+            if ".venv" in path or "runtime" in path:
                 return False
             return True
 
@@ -37,23 +37,48 @@ class TestVoiceRuntime(unittest.TestCase):
         resolved = find_voice_python()
         # 应自动回退至宿主系统 python
         self.assertNotIn(".venv", resolved)
+        self.assertNotIn("runtime", resolved)
         self.assertEqual(resolved, sys.executable)
 
     @mock.patch("tools.voice_input.runtime._check_module_in_interpreter", return_value=True)
     @mock.patch("tools.voice_input.runtime._probe_interpreter")
     def test_find_voice_python_prefers_healthy_venv(self, mock_probe, mock_check_mod):
-        # 模拟 .venv 完备
+        # 模拟 .venv 完备 (无 bundled runtime 时优先选择 .venv)
         mock_probe.return_value = True
 
-        with mock.patch("pathlib.Path.is_file", return_value=True):
+        def is_file_mock(path_obj=None):
+            p_str = str(path_obj) if path_obj is not None else ""
+            if "runtime" in p_str:
+                return False
+            if ".venv" in p_str:
+                return True
+            return False
+
+        with mock.patch("pathlib.Path.is_file", autospec=True, side_effect=is_file_mock):
             resolved = find_voice_python()
             self.assertIn(".venv", resolved)
+
+    @mock.patch("tools.voice_input.runtime._check_module_in_interpreter", return_value=True)
+    @mock.patch("tools.voice_input.runtime._probe_interpreter")
+    def test_find_voice_python_prefers_bundled_runtime(self, mock_probe, mock_check_mod):
+        # 模拟安装包内置便携 runtime 存在且完备时，优先选择 bundled runtime
+        mock_probe.return_value = True
+
+        def is_file_mock(path_obj=None):
+            p_str = str(path_obj) if path_obj is not None else ""
+            if "runtime" in p_str:
+                return True
+            return False
+
+        with mock.patch("pathlib.Path.is_file", autospec=True, side_effect=is_file_mock):
+            resolved = find_voice_python()
+            self.assertIn("runtime", resolved)
 
     def test_diagnose_python_environment_returns_dict(self):
         diag = diagnose_python_environment(sys.executable)
         self.assertIsInstance(diag, dict)
         self.assertIn("numpy", diag)
-        self.assertIn("funasr", diag)
+        self.assertIn("transformers", diag)
         self.assertTrue(diag["numpy"])
 
     def test_check_deps_ready_system_python(self):
@@ -80,12 +105,12 @@ class TestVoiceRuntime(unittest.TestCase):
         self.assertIn("pip", cmd)
 
     def test_find_voice_python_routes_by_engine(self):
-        # 验证针对 Paraformer 引擎能正确路由到具备 funasr 的系统解释器
-        py_para = find_voice_python(engine="paraformer_streaming_2pass")
-        self.assertNotIn(".venv", py_para)
-        # 验证针对 SenseVoice 引擎能正确路由到具备 sherpa_onnx 的 .venv
+        # 验证针对 Qwen 引擎能正确路由到具备 transformers 的系统解释器
+        py_qwen = find_voice_python(engine="qwen_2pass")
+        self.assertNotIn(".venv", py_qwen)
+        # 验证针对 SenseVoice 引擎能正确路由到具备 sherpa_onnx 的 .venv 或 bundled runtime
         py_sv = find_voice_python(engine="sensevoice_offline")
-        self.assertIn(".venv", py_sv)
+        self.assertTrue(".venv" in py_sv or "runtime" in py_sv)
 
 
 if __name__ == "__main__":
