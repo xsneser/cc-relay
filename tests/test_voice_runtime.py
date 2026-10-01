@@ -39,8 +39,9 @@ class TestVoiceRuntime(unittest.TestCase):
         self.assertNotIn(".venv", resolved)
         self.assertEqual(resolved, sys.executable)
 
+    @mock.patch("tools.voice_input.runtime._check_module_in_interpreter", return_value=True)
     @mock.patch("tools.voice_input.runtime._probe_interpreter")
-    def test_find_voice_python_prefers_healthy_venv(self, mock_probe):
+    def test_find_voice_python_prefers_healthy_venv(self, mock_probe, mock_check_mod):
         # 模拟 .venv 完备
         mock_probe.return_value = True
 
