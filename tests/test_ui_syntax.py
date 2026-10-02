@@ -168,6 +168,51 @@ class TestUISyntax(unittest.TestCase):
         self.assertIn(".header-divider", self.html)
         self.assertIn(".status-group .badge", self.html)
 
+    def test_hybrid_cards_and_prompt_tabs_order(self):
+        grid = self.html.split('<div class="hb-grid">', 1)[1]
+        grid = grid.split('<!-- 提示词实时编辑卡片 -->', 1)[0]
+        expected = ["main", "sonnet", "fast", "opus", "agent"]
+
+        self.assertEqual(
+            re.findall(r'class="sel" data-kind="hb" data-tier="([^"]+)"', grid),
+            expected,
+        )
+        self.assertEqual(
+            re.findall(r'class="tmod" data-tier="([^"]+)"', grid),
+            expected,
+        )
+        self.assertEqual(
+            re.findall(r'data-ptier="([^"]+)"', self.html),
+            expected,
+        )
+
+    def test_hybrid_card_subtitles(self):
+        grid = self.html.split('<div class="hb-grid">', 1)[1]
+        grid = grid.split('<!-- 提示词实时编辑卡片 -->', 1)[0]
+        cards = re.split(r'<!-- 档位 \d+: .*? -->', grid)[1:]
+        self.assertEqual(len(cards), 5)
+
+        # 5 张卡片均包含描述性 hint 副标题
+        for card in cards:
+            self.assertIn('<span class="hint">', card)
+
+        # Explore 为第4张卡片 (轻量搜索子agent定位)
+        self.assertIn("<em>SUBAGENT·FILE_SEARCH</em>", cards[3])
+        self.assertIn('<span class="hint">广域代码检索 · 轻量快速</span>', cards[3])
+        self.assertNotIn("DEFAULT_OPUS_MODEL", cards[3])
+
+        # Plan 为第5张卡片 (最强大模型规划定位)
+        self.assertIn("<em>SUBAGENT·ARCH_PLAN</em>", cards[4])
+        self.assertIn('<span class="hint">顶层架构规划 · 推荐顶级大模型</span>', cards[4])
+        self.assertNotIn("AGENT_SDK", cards[4])
+
+        # 栅格行高对齐规则
+        self.assertIn("grid-auto-rows: 1fr;", self.html)
+
+    def test_format_route_reason_js(self):
+        self.assertIn("function formatRouteReason(reason)", self.html)
+        self.assertIn("formatRouteReason(c.route_reason)", self.html)
+
         # 7. renderTrafficControl 不得使用 className 赋值覆盖按钮基类
         self.assertNotIn("btn.className = 'btn-traffic", self.html)
 

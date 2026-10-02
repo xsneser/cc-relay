@@ -46,7 +46,7 @@ class VoiceInputDaemon:
         # 桌面悬浮胶囊 (若环境支持 Tkinter)
         self.widget: Optional[DesktopVoiceWidget] = None
         try:
-            self.widget = DesktopVoiceWidget(self.coordinator)
+            self.widget = DesktopVoiceWidget(self.coordinator, on_close=self.stop)
         except Exception as e:
             print(f"[!] 初始化桌面悬浮窗组件跳过: {e}")
 
@@ -191,11 +191,12 @@ class VoiceInputDaemon:
         # 3. 运行桌面悬浮胶囊界面
         if not headless and self.widget is not None:
             try:
-                print("[*] 桌面悬浮胶囊已启动 (Win32 WS_EX_NOACTIVATE 零抢焦点)。")
                 self.widget.start()
             except Exception as e:
                 print(f"[!] 桌面悬浮窗异常退出 ({e})，切换至后台无头服务模式。")
                 headless = True
+                if self.server:
+                    self.server.widget = None
 
         if headless or self.widget is None:
             try:

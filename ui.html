@@ -3,10 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <meta name="ui-version" content="2.4.8">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
+    color-scheme: dark;
     /* Antigravity-Tools-LS Matrix Dark Core Palette */
     --bg: #000000;
     --text: #ffffff;
@@ -35,7 +37,8 @@
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { min-height: 100%; background-color: #000000; color: #ffffff; }
+  html, body { min-height: 100%; background-color: #000000; color: #ffffff; color-scheme: dark; }
+  select, option, input, textarea { color-scheme: dark; }
   body {
     background-color: var(--bg);
     background-image:
@@ -425,13 +428,40 @@
     font-size: 13.5px;
     font-weight: 700;
     color: #ffffff;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .cpa-card-sub {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
     line-height: 1.2;
+    flex-wrap: wrap;
+  }
+  .cpa-card-status {
+    font-size: 11px;
+    color: var(--text-dim, #94a3b8);
+    font-weight: 500;
+    transition: color 0.15s ease;
+  }
+  .cpa-card-status.has-update {
+    color: #38bdf8;
+    font-weight: 600;
   }
   .cpa-card-ver {
     font-size: 11px;
     color: var(--blue);
     font-family: var(--font-mono);
     font-weight: 600;
+  }
+  .cpa-card-status:not(:empty) + .cpa-card-ver:not(:empty)::before {
+    content: "·";
+    margin-right: 4px;
+    color: rgba(255, 255, 255, 0.35);
+  }
+  .cpa-card-status:empty, .cpa-card-ver:empty {
+    display: none;
   }
   .cpa-card-close {
     background: transparent;
@@ -1353,6 +1383,7 @@
   .hb-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-auto-rows: 1fr;
     gap: 12px;
   }
   .tier {
@@ -1371,6 +1402,7 @@
   }
   .tier-top {
     display: flex;
+    flex: 1;
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
@@ -1726,40 +1758,211 @@
     from { opacity: 0.4; }
     to { opacity: 1; }
   }
-  .voice-overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.78);
-    backdrop-filter: blur(12px);
-    z-index: 99998;
+  /* Voice Settings Redesign */
+  .voice-group {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s ease;
+  }
+  .voice-group:hover {
+    border-color: var(--glass-border-hover);
+  }
+  .voice-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .voice-group-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .voice-group-sub {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  /* ASR Engine Horizontal Rows (横条架构) */
+  .voice-engine-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .voice-engine-row,
+  .voice-model-card {
+    background: rgba(0, 0, 0, 0.45);
+    border: 1.5px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    user-select: none;
+  }
+  .voice-engine-row:hover,
+  .voice-model-card:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.035);
+  }
+  .voice-engine-row.active,
+  .voice-model-card.active {
+    border-color: #39c998;
+    background: rgba(57, 201, 152, 0.05);
+    box-shadow: 0 0 20px rgba(57, 201, 152, 0.1);
+  }
+  .ver-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .ver-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+    min-width: 260px;
+  }
+  .ver-radio,
+  .vmc-radio {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-dim);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 20px;
-    animation: fadeInBanner 0.2s ease;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    margin-top: 2px;
   }
-  .voice-modal {
-    background: #0d0e12;
-    border: 1px solid var(--glass-border-hover);
-    border-radius: 16px;
-    padding: 24px 28px;
-    max-width: 540px;
-    width: 100%;
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(59, 130, 246, 0.15);
+  .voice-engine-row.active .ver-radio,
+  .voice-model-card.active .vmc-radio {
+    border-color: #39c998;
+    background: #39c998;
   }
-  .voice-box {
-    min-height: 110px;
-    max-height: 220px;
-    overflow-y: auto;
-    padding: 14px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--glass-border);
-    border-radius: 8px;
+  .voice-engine-row.active .ver-radio::after,
+  .voice-model-card.active .vmc-radio::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #000000;
+  }
+  .ver-info {
+    flex: 1;
+  }
+  .ver-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .ver-title {
     font-size: 14px;
-    line-height: 1.6;
-    color: var(--text-bright);
-    word-break: break-all;
-    margin: 14px 0;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  .ver-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .ver-fixed-device {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: #a7f3d0;
+    background: rgba(57, 201, 152, 0.1);
+    border: 1px solid rgba(57, 201, 152, 0.25);
+    padding: 6px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+    align-self: flex-start;
+  }
+  .ver-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .ver-device-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 280px;
+  }
+  .ver-device-box label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin: 0;
+  }
+  .ver-device-box select {
+    flex: 1;
+    background: #000000;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    color: #ffffff;
+    color-scheme: dark;
+    padding: 6px 10px;
+    font: 11.5px var(--font-sans);
+    outline: none;
+    cursor: pointer;
+  }
+  .ver-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .vmc-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 99px;
+    font-weight: 600;
+  }
+  .vmc-badge.rec {
+    background: rgba(57, 201, 152, 0.2);
+    color: #39c998;
+    border: 1px solid rgba(57, 201, 152, 0.4);
+  }
+  .vmc-badge.high {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+  }
+  .vmc-tag {
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .voice-engine-row.active .vmc-tag,
+  .voice-model-card.active .vmc-tag {
+    background: rgba(57, 201, 152, 0.1);
+    color: #bbf7d0;
+    border-color: rgba(57, 201, 152, 0.2);
   }
   .upstream-provider {
     display: flex;
@@ -2737,25 +2940,37 @@
     border-color: #39c998;
     box-shadow: 0 0 0 2px rgba(57, 201, 152, 0.25);
   }
-  #cfg-voice-engine {
+  #cfg-voice-engine,
+  #cfg-voice-device,
+  #cfg-custom-protocol,
+  .config-field select {
     width: 100%;
     background: #000000;
     border: 1px solid var(--glass-border);
     border-radius: 8px;
     color: #ffffff;
+    color-scheme: dark;
     padding: 8px 12px;
     font: 12px var(--font-sans);
     outline: none;
     cursor: pointer;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
-  #cfg-voice-engine:focus {
+  #cfg-voice-engine:focus,
+  #cfg-voice-device:focus,
+  #cfg-custom-protocol:focus,
+  .config-field select:focus {
     border-color: rgba(255, 255, 255, 0.4);
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
   }
-  #cfg-voice-engine option {
-    background: #11151c;
-    color: #ffffff;
+  #cfg-voice-engine option,
+  #cfg-voice-device option,
+  #cfg-custom-protocol option,
+  .config-field select option {
+    background: #11151c !important;
+    color: #ffffff !important;
+    color-scheme: dark;
+    padding: 8px 12px;
   }
   .config-field input {
     width: 100%;
@@ -3476,8 +3691,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
         </div>
         <div class="cpa-card-titles">
-          <div class="cpa-card-title" id="cpa-card-title">CLIProxyAPI 更新</div>
-          <div class="cpa-card-ver" id="cpa-card-ver">v7.3.19</div>
+          <div class="cpa-card-title" id="cpa-card-title">Codex (CLIProxyAPI)</div>
+          <div class="cpa-card-sub" id="cpa-card-sub">
+            <span class="cpa-card-status" id="cpa-card-status">更新信息</span>
+            <span class="cpa-card-ver" id="cpa-card-ver">v7.3.19</span>
+          </div>
         </div>
         <button type="button" class="cpa-card-close" id="cpa-card-close" aria-label="关闭通知">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -3507,8 +3725,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
         </div>
         <div class="cpa-card-titles">
-          <div class="cpa-card-title" id="relay-card-title">CC Relay 更新</div>
-          <div class="cpa-card-ver" id="relay-card-ver">v2.4.1</div>
+          <div class="cpa-card-title" id="relay-card-title">CC Relay</div>
+          <div class="cpa-card-sub" id="relay-card-sub">
+            <span class="cpa-card-status" id="relay-card-status">更新信息</span>
+            <span class="cpa-card-ver" id="relay-card-ver">v2.4.1</span>
+          </div>
         </div>
         <button type="button" class="cpa-card-close" id="relay-card-close" aria-label="关闭通知">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -3544,8 +3765,11 @@
           </svg>
         </div>
         <div class="cpa-card-titles">
-          <div class="cpa-card-title" id="antigravity-card-title">Antigravity Tools 更新</div>
-          <div class="cpa-card-ver" id="antigravity-card-ver">v4.8.4</div>
+          <div class="cpa-card-title" id="antigravity-card-title">Antigravity Tools</div>
+          <div class="cpa-card-sub" id="antigravity-card-sub">
+            <span class="cpa-card-status" id="antigravity-card-status">更新信息</span>
+            <span class="cpa-card-ver" id="antigravity-card-ver">v4.8.4</span>
+          </div>
         </div>
         <button type="button" class="cpa-card-close" id="antigravity-card-close" aria-label="关闭通知">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -3580,41 +3804,6 @@
       <div class="restart-actions" id="restart-modal-actions" style="display:none;">
         <button type="button" class="footbtn btn-matrix-primary" id="btn-restart-retry">重新检测</button>
         <button type="button" class="config-cancel" id="btn-restart-close">关闭</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 语音听写测试浮窗 -->
-  <div id="voice-overlay" class="voice-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="voice-modal-title">
-    <div class="voice-modal">
-      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--glass-border);padding-bottom:12px;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="dot" id="vm-dot"></span>
-          <h2 id="voice-modal-title" style="margin:0;font-size:16px;color:var(--text-bright);font-weight:700;">在线实时流式语音听写</h2>
-        </div>
-        <button type="button" class="config-cancel" id="btn-voice-close" style="padding:4px 10px;font-size:12px;cursor:pointer;">关闭</button>
-      </div>
-      <div id="vm-secure-notice" style="display:none;margin-bottom:12px;padding:8px 12px;font-size:12px;border-radius:6px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:var(--red);">
-        ⚠️ 麦克风受浏览器安全上下文 (Secure Context) 限制，仅允许通过 http://127.0.0.1 或 http://localhost 访问。
-      </div>
-      <div style="margin-bottom:12px;padding:8px 12px;font-size:12px;border-radius:6px;background:rgba(0,255,196,0.08);border:1px solid rgba(0,255,196,0.25);color:var(--accent);display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span>💡 <b>客户端免复制自动输入</b>：语音伴侣已自带桌面悬浮麦克风胶囊，在 VS Code / 终端光标处点击即可边说边出字并自动输入。</span>
-        <button type="button" class="btn-action" id="btn-vm-toggle-capsule" style="font-size:11px;padding:3px 8px;white-space:nowrap;">唤出桌面胶囊</button>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:12px;color:var(--text-muted);font-family:var(--font-mono);">
-        <span>服务通道: <b id="vm-server-status" style="color:var(--accent);">ws://127.0.0.1:8401/ws/voice</b></span>
-        <span>采样: 16kHz PCM16 (AudioWorklet)</span>
-      </div>
-      <div class="voice-box" id="vm-transcribe-box">
-        <span id="vm-confirmed-text" style="font-weight:600;color:var(--text-bright);"></span>
-        <span id="vm-partial-text" style="color:var(--accent);font-style:italic;">点击下方按钮开始录音听写…</span>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <button type="button" class="btn-action" id="btn-vm-copy" style="font-size:12px;">复制识别文本</button>
-        <button type="button" class="upstream-btn start" id="btn-vm-record" style="padding:8px 24px;font-weight:700;font-size:13px;border-radius:20px;">
-          <span id="btn-vm-record-label">开始说话</span>
-        </button>
-        <button type="button" class="btn-action" id="btn-vm-clear" style="font-size:12px;">清空文本</button>
       </div>
     </div>
   </div>
@@ -3767,32 +3956,7 @@
           </div>
         </div>
 
-        <!-- 档位 2: explore 代理 -->
-        <div class="tier">
-          <div class="tier-top">
-            <div class="tt-l">
-              <span class="tier-label">explore代理</span>
-              <em>DEFAULT_OPUS_MODEL</em>
-              <span class="hint">高价值长思考 · 值得大模型</span>
-            </div>
-            <div class="tmod" data-tier="opus">
-              <button type="button" class="tmod-btn" data-m="original" title="原版纯透传：不改动请求体">原</button><button type="button" class="tmod-btn" data-m="builtin" title="内置清理：剔除 CC 身份与 billing 块">净</button><button type="button" class="tmod-btn" data-m="custom" title="自定义：用本档编辑器自定义内容">自</button>
-            </div>
-          </div>
-          <div class="sel" data-kind="hb" data-tier="opus">
-            <div class="sel-btn"><span class="sel-model">—</span><span class="sel-eff">中</span><span class="sel-select">选择强度</span><span class="chev">▾</span></div>
-            <div class="sel-panel">
-              <div class="view-effort">
-                <div class="ve-head"><span class="ve-eff">中</span><span class="ve-model">—</span><span class="ve-refresh" title="切换模型">↻</span></div>
-                <div class="ve-hint">点击模型名可切换模型 · 拖动调节推理强度</div>
-                <div class="ve-slider"><input type="range" class="eff-rng" min="0" max="2" step="1"><div class="eff-ticks"></div><div class="eff-labels"></div></div>
-              </div>
-              <div class="view-model"><div class="vm-title">选择模型</div><div class="opt-list"></div></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 档位 3: 审查代理 -->
+        <!-- 档位 2: 审查代理 -->
         <div class="tier">
           <div class="tier-top">
             <div class="tt-l">
@@ -3817,7 +3981,7 @@
           </div>
         </div>
 
-        <!-- 档位 4: 任务名称代理 -->
+        <!-- 档位 3: 任务名称代理 -->
         <div class="tier">
           <div class="tier-top">
             <div class="tt-l">
@@ -3842,13 +4006,38 @@
           </div>
         </div>
 
+        <!-- 档位 4: explore 代理 -->
+        <div class="tier">
+          <div class="tier-top">
+            <div class="tt-l">
+              <span class="tier-label">explore代理</span>
+              <em>SUBAGENT·FILE_SEARCH</em>
+              <span class="hint">广域代码检索 · 轻量快速</span>
+            </div>
+            <div class="tmod" data-tier="opus">
+              <button type="button" class="tmod-btn" data-m="original" title="原版纯透传：不改动请求体">原</button><button type="button" class="tmod-btn" data-m="builtin" title="内置清理：剔除 CC 身份与 billing 块">净</button><button type="button" class="tmod-btn" data-m="custom" title="自定义：用本档编辑器自定义内容">自</button>
+            </div>
+          </div>
+          <div class="sel" data-kind="hb" data-tier="opus">
+            <div class="sel-btn"><span class="sel-model">—</span><span class="sel-eff">中</span><span class="sel-select">选择强度</span><span class="chev">▾</span></div>
+            <div class="sel-panel">
+              <div class="view-effort">
+                <div class="ve-head"><span class="ve-eff">中</span><span class="ve-model">—</span><span class="ve-refresh" title="切换模型">↻</span></div>
+                <div class="ve-hint">点击模型名可切换模型 · 拖动调节推理强度</div>
+                <div class="ve-slider"><input type="range" class="eff-rng" min="0" max="2" step="1"><div class="eff-ticks"></div><div class="eff-labels"></div></div>
+              </div>
+              <div class="view-model"><div class="vm-title">选择模型</div><div class="opt-list"></div></div>
+            </div>
+          </div>
+        </div>
+
         <!-- 档位 5: plan代理 -->
         <div class="tier">
           <div class="tier-top">
             <div class="tt-l">
               <span class="tier-label">plan代理</span>
-              <em>AGENT_SDK·子代理</em>
-              <span class="hint">架构规划 · 专属独立分流</span>
+              <em>SUBAGENT·ARCH_PLAN</em>
+              <span class="hint">顶层架构规划 · 推荐顶级大模型</span>
             </div>
             <div class="tmod" data-tier="agent">
               <button type="button" class="tmod-btn" data-m="original" title="原版纯透传：不改动请求体">原</button><button type="button" class="tmod-btn" data-m="builtin" title="内置清理：剔除 CC 身份与 billing 块">净</button><button type="button" class="tmod-btn" data-m="custom" title="自定义：用本档编辑器自定义内容">自</button>
@@ -3887,9 +4076,9 @@
       <div class="pm-body" id="pm-body" style="display:none">
         <div class="pm-tabs">
           <button type="button" class="pm-tab active" data-ptier="main">主模型 <em>main</em><span class="pm-tag" id="ptag-main">原版</span></button>
-          <button type="button" class="pm-tab" data-ptier="opus">explore代理 <em>opus</em><span class="pm-tag" id="ptag-opus">原版</span></button>
           <button type="button" class="pm-tab" data-ptier="sonnet">审查代理 <em>sonnet</em><span class="pm-tag" id="ptag-sonnet">原版</span></button>
           <button type="button" class="pm-tab" data-ptier="fast">任务名称代理 <em>fast</em><span class="pm-tag" id="ptag-fast">原版</span></button>
+          <button type="button" class="pm-tab" data-ptier="opus">explore代理 <em>opus</em><span class="pm-tag" id="ptag-opus">原版</span></button>
           <button type="button" class="pm-tab" data-ptier="agent">plan代理 <em>agent</em><span class="pm-tag" id="ptag-agent">待抓包</span></button>
         </div>
 
@@ -4079,88 +4268,34 @@
         </div>
 
         <div class="cfg-overview-grid" id="cfg-overview-grid">
-          <!-- DeepSeek 概览卡片 -->
-          <div class="cfg-mod-card spotlight-card" data-mod="deepseek" role="button" tabindex="0">
+          <!-- 1. Relay 核心网络概览卡片 (置于首行) -->
+          <div class="cfg-mod-card spotlight-card" data-mod="relay" role="button" tabindex="0">
             <div>
               <div class="cfg-mod-head">
                 <div class="cfg-mod-head-left">
                   <div class="cfg-mod-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10v10H7z"/><path d="M4 12h3"/><path d="M17 12h3"/><path d="M12 4v3"/><path d="M12 17v3"/></svg>
                   </div>
                   <div class="cfg-mod-info">
-                    <h3>DeepSeek</h3>
-                    <div class="cfg-mod-role">官方直连 · Anthropic 兼容</div>
+                    <h3>CC Relay 核心</h3>
+                    <div class="cfg-mod-role">路由中转与全局网络</div>
                   </div>
                 </div>
-                <span class="cfg-mod-badge on" id="ov-ds-badge">● 已配置</span>
+                <span class="cfg-mod-badge on" id="ov-relay-badge">● 核心运行中</span>
               </div>
               <div class="cfg-mod-stats">
-                <div class="cfg-stat-row"><span class="cfg-stat-label">基础端点</span><span class="cfg-stat-val" id="ov-ds-base">api.deepseek.com</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">上游代理</span><span class="cfg-stat-val" id="ov-ds-proxy">direct (直连)</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">API Key</span><span class="cfg-stat-val" id="ov-ds-key">sk-••••</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">中转服务</span><span class="cfg-stat-val">127.0.0.1:8400</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">Web 管理</span><span class="cfg-stat-val">:8610</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">虚拟 Key</span><span class="cfg-stat-val">sk-relay-local-0000</span></div>
               </div>
             </div>
             <div class="cfg-mod-footer">
-              <span class="cfg-mod-desc">支持 Claude 协议自动转接</span>
-              <span class="cfg-mod-enter">进入设置 →</span>
+              <span class="cfg-mod-desc">Claude Code 终端配置与运行规范</span>
+              <span class="cfg-mod-enter">查看详情 →</span>
             </div>
           </div>
 
-          <!-- Codex (CLIProxyAPI) 概览卡片 -->
-          <div class="cfg-mod-card spotlight-card" data-mod="codex" role="button" tabindex="0">
-            <div>
-              <div class="cfg-mod-head">
-                <div class="cfg-mod-head-left">
-                  <div class="cfg-mod-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                  </div>
-                  <div class="cfg-mod-info">
-                    <h3>Codex (CLIProxyAPI)</h3>
-                    <div class="cfg-mod-role">本地代理 :8317 · ChatGPT 逆向</div>
-                  </div>
-                </div>
-                <span class="cfg-mod-badge off" id="ov-codex-badge">○ 已停止</span>
-              </div>
-              <div class="cfg-mod-stats">
-                <div class="cfg-stat-row"><span class="cfg-stat-label">服务端口</span><span class="cfg-stat-val" id="ov-codex-port">:8317 (本地)</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">OAuth 登录</span><span class="cfg-stat-val" id="ov-codex-oauth">检查中…</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">外部网络代理</span><span class="cfg-stat-val" id="ov-codex-proxy">direct (直连)</span></div>
-              </div>
-            </div>
-            <div class="cfg-mod-footer">
-              <span class="cfg-mod-desc">GPT-5.6 / 6 官方逆向代理</span>
-              <span class="cfg-mod-enter">进入设置 →</span>
-            </div>
-          </div>
-
-          <!-- Antigravity (Gemini) 概览卡片 -->
-          <div class="cfg-mod-card spotlight-card" data-mod="antigravity" role="button" tabindex="0">
-            <div>
-              <div class="cfg-mod-head">
-                <div class="cfg-mod-head-left">
-                  <div class="cfg-mod-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                  </div>
-                  <div class="cfg-mod-info">
-                    <h3>Antigravity</h3>
-                    <div class="cfg-mod-role">伴侣服务 :8045 · Gemini 通道</div>
-                  </div>
-                </div>
-                <span class="cfg-mod-badge off" id="ov-ag-badge">○ 已停止</span>
-              </div>
-              <div class="cfg-mod-stats">
-                <div class="cfg-stat-row"><span class="cfg-stat-label">伴侣端口</span><span class="cfg-stat-val" id="ov-ag-port">:8045 (本地)</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">自动拉起</span><span class="cfg-stat-val" id="ov-ag-autostart">已开启</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">API Key</span><span class="cfg-stat-val" id="ov-ag-key">sk-••••</span></div>
-              </div>
-            </div>
-            <div class="cfg-mod-footer">
-              <span class="cfg-mod-desc">Gemini 3.7 / 3.8 伴侣直通</span>
-              <span class="cfg-mod-enter">进入设置 →</span>
-            </div>
-          </div>
-
-          <!-- Voice (语音输入伴侣) 概览卡片 -->
+          <!-- 2. Voice (语音输入伴侣) 概览卡片 (置于首行) -->
           <div class="cfg-mod-card spotlight-card" data-mod="voice" role="button" tabindex="0">
             <div>
               <div class="cfg-mod-head">
@@ -4187,31 +4322,97 @@
             </div>
           </div>
 
-          <!-- Relay 核心网络概览卡片 -->
-          <div class="cfg-mod-card spotlight-card" data-mod="relay" role="button" tabindex="0">
+          <!-- 3. DeepSeek 概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="deepseek" role="button" tabindex="0">
             <div>
               <div class="cfg-mod-head">
                 <div class="cfg-mod-head-left">
                   <div class="cfg-mod-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10v10H7z"/><path d="M4 12h3"/><path d="M17 12h3"/><path d="M12 4v3"/><path d="M12 17v3"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
                   </div>
                   <div class="cfg-mod-info">
-                    <h3>CC Relay 核心</h3>
-                    <div class="cfg-mod-role">路由中转与全局网络</div>
+                    <h3>DeepSeek</h3>
+                    <div class="cfg-mod-role">官方直连 · Anthropic 兼容</div>
                   </div>
                 </div>
-                <span class="cfg-mod-badge on" id="ov-relay-badge">● 核心运行中</span>
+                <span class="cfg-mod-badge on" id="ov-ds-badge">● 已配置</span>
               </div>
               <div class="cfg-mod-stats">
-                <div class="cfg-stat-row"><span class="cfg-stat-label">中转服务</span><span class="cfg-stat-val">127.0.0.1:8400</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">Web 管理</span><span class="cfg-stat-val">:8610</span></div>
-                <div class="cfg-stat-row"><span class="cfg-stat-label">虚拟 Key</span><span class="cfg-stat-val">sk-relay-local-0000</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">基础端点</span><span class="cfg-stat-val" id="ov-ds-base">api.deepseek.com</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">上游代理</span><span class="cfg-stat-val" id="ov-ds-proxy">direct (直连)</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">API Key</span><span class="cfg-stat-val" id="ov-ds-key">sk-••••</span></div>
               </div>
             </div>
             <div class="cfg-mod-footer">
-              <span class="cfg-mod-desc">Claude Code 终端配置与运行规范</span>
-              <span class="cfg-mod-enter">查看详情 →</span>
+              <span class="cfg-mod-desc">支持 Claude 协议自动转接</span>
+              <span class="cfg-mod-enter">进入设置 →</span>
             </div>
+          </div>
+
+          <!-- 4. Codex (CLIProxyAPI) 概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="codex" role="button" tabindex="0">
+            <div>
+              <div class="cfg-mod-head">
+                <div class="cfg-mod-head-left">
+                  <div class="cfg-mod-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  </div>
+                  <div class="cfg-mod-info">
+                    <h3>Codex (CLIProxyAPI)</h3>
+                    <div class="cfg-mod-role">本地代理 :8317 · ChatGPT 逆向</div>
+                  </div>
+                </div>
+                <span class="cfg-mod-badge off" id="ov-codex-badge">○ 已停止</span>
+              </div>
+              <div class="cfg-mod-stats">
+                <div class="cfg-stat-row"><span class="cfg-stat-label">服务端口</span><span class="cfg-stat-val" id="ov-codex-port">:8317 (本地)</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">OAuth 登录</span><span class="cfg-stat-val" id="ov-codex-oauth">检查中…</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">外部网络代理</span><span class="cfg-stat-val" id="ov-codex-proxy">direct (直连)</span></div>
+              </div>
+            </div>
+            <div class="cfg-mod-footer">
+              <span class="cfg-mod-desc">GPT-5.6 / 6 官方逆向代理</span>
+              <span class="cfg-mod-enter">进入设置 →</span>
+            </div>
+          </div>
+
+          <!-- 5. Antigravity (Gemini) 概览卡片 -->
+          <div class="cfg-mod-card spotlight-card" data-mod="antigravity" role="button" tabindex="0">
+            <div>
+              <div class="cfg-mod-head">
+                <div class="cfg-mod-head-left">
+                  <div class="cfg-mod-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  </div>
+                  <div class="cfg-mod-info">
+                    <h3>Antigravity</h3>
+                    <div class="cfg-mod-role">伴侣服务 :8045 · Gemini 通道</div>
+                  </div>
+                </div>
+                <span class="cfg-mod-badge off" id="ov-ag-badge">○ 已停止</span>
+              </div>
+              <div class="cfg-mod-stats">
+                <div class="cfg-stat-row"><span class="cfg-stat-label">伴侣端口</span><span class="cfg-stat-val" id="ov-ag-port">:8045 (本地)</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">自动拉起</span><span class="cfg-stat-val" id="ov-ag-autostart">已开启</span></div>
+                <div class="cfg-stat-row"><span class="cfg-stat-label">API Key</span><span class="cfg-stat-val" id="ov-ag-key">sk-••••</span></div>
+              </div>
+            </div>
+            <div class="cfg-mod-footer">
+              <span class="cfg-mod-desc">Gemini 3.7 / 3.8 伴侣直通</span>
+              <span class="cfg-mod-enter">进入设置 →</span>
+            </div>
+          </div>
+
+          <!-- 6. 自定义供应商动态卡片容器 -->
+          <div id="cfg-custom-cards-container" style="display:contents;"></div>
+
+          <!-- 7. 添加新供应商占位卡片 -->
+          <div class="cfg-mod-card spotlight-card" id="card-add-custom-provider" role="button" tabindex="0" style="border:1px dashed var(--glass-border-hover);background:rgba(255,255,255,0.015);display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:180px;cursor:pointer;">
+            <div style="width:42px;height:42px;border-radius:12px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);display:flex;align-items:center;justify-content:center;color:var(--blue);margin-bottom:12px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px;height:20px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </div>
+            <div style="font-size:14px;font-weight:800;color:#ffffff;margin-bottom:4px;">+ 添加其他供应商</div>
+            <div style="font-size:11px;color:var(--text-muted);text-align:center;">支持 OpenAI / Anthropic 双协议</div>
           </div>
         </div>
 
@@ -4375,44 +4576,124 @@
 
         <!-- 4. Voice (语音输入伴侣) 详情面板 -->
         <div class="cfg-module-panel" id="cfg-panel-voice" data-name="voice">
-          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:14px;">
-            <label style="display:flex;align-items:center;height:34px;gap:8px;cursor:pointer;margin:0;">
-              <input type="checkbox" id="cfg-voice-autostart" style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
-              <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起</span>
-            </label>
-            <label style="display:flex;align-items:center;height:34px;gap:8px;cursor:pointer;margin:0;">
-              <input type="checkbox" id="cfg-voice-restore-clipboard" checked style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
-              <span style="font-size:12px;color:var(--text-muted);">听写完毕后自动恢复原有剪贴板文本</span>
-            </label>
-          </div>
-
-          <div class="config-grid">
-            <div class="config-field">
-              <label>全局对讲触发热键 (点击录制按键)</label>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <input type="hidden" id="cfg-voice-hotkey" value="mouse_x1">
-                <button type="button" id="btn-record-hotkey" style="flex:1;text-align:left;cursor:pointer;padding:8px 12px;font-family:var(--font-mono);font-size:11.5px;display:flex;align-items:center;justify-content:space-between;">
-                  <span id="txt-record-hotkey">🖱️ 鼠标侧键1 (后退键 · 默认)</span>
-                  <span style="font-size:11px;color:var(--text-muted);border:1px solid var(--glass-border);padding:1px 6px;border-radius:4px;">点击录制</span>
-                </button>
-                <button type="button" id="btn-reset-hotkey" class="btn-action" style="font-size:12px;padding:8px 12px;" title="重置为默认鼠标侧键">默认</button>
+          <!-- 区块 1: 对讲与交互控制 -->
+          <div class="voice-group">
+            <div class="voice-group-head">
+              <div class="voice-group-title">
+                <span>🎮</span>
+                <span>对讲与交互控制</span>
+              </div>
+              <span class="voice-group-sub">全局触发热键与剪贴板回写行为</span>
+            </div>
+            <div class="config-grid">
+              <div class="config-field">
+                <label>全局对讲触发热键 (点击录制按键)</label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="hidden" id="cfg-voice-hotkey" value="mouse_x1">
+                  <button type="button" id="btn-record-hotkey" style="flex:1;text-align:left;cursor:pointer;padding:8px 12px;font-family:var(--font-mono);font-size:11.5px;display:flex;align-items:center;justify-content:space-between;">
+                    <span id="txt-record-hotkey">🖱️ 鼠标侧键1 (后退键 · 默认)</span>
+                    <span style="font-size:11px;color:var(--text-muted);border:1px solid var(--glass-border);padding:1px 6px;border-radius:4px;">点击录制</span>
+                  </button>
+                  <button type="button" id="btn-reset-hotkey" class="btn-action" style="font-size:12px;padding:8px 12px;" title="重置为默认鼠标侧键">默认</button>
+                </div>
+              </div>
+              <div class="config-field" style="display:flex;flex-direction:column;justify-content:center;gap:8px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+                  <input type="checkbox" id="cfg-voice-autostart" style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
+                  <span style="font-size:12px;color:var(--text-muted);">启用后随 relay 自动拉起伴侣服务</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+                  <input type="checkbox" id="cfg-voice-restore-clipboard" checked style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
+                  <span style="font-size:12px;color:var(--text-muted);">听写完毕后自动恢复原有剪贴板文本</span>
+                </label>
               </div>
             </div>
-            <div class="config-field">
-              <label>ASR 引擎模式</label>
-              <select id="cfg-voice-engine">
-                <option value="sensevoice_offline">sensevoice_offline (SenseVoice 离线极速 · 推荐)</option>
-                <option value="qwen_2pass">qwen_2pass (Qwen ASR 1.7B · 高精度大模型)</option>
-              </select>
-            </div>
           </div>
 
-          <div style="margin-top:16px;padding:14px;background:rgba(57,201,152,0.06);border:1px solid rgba(57,201,152,0.2);border-radius:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-            <div>
-              <b style="color:#ffffff;font-size:13px;">在线麦克风与听写测试</b>
-              <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">实时收音测试，感知 SenseVoice 极速离线听写效果与波形反馈。</div>
+          <!-- 区块 2: ASR 语音识别引擎 (横条架构) -->
+          <div class="voice-group" style="margin-bottom:0;">
+            <div class="voice-group-head">
+              <div class="voice-group-title">
+                <span>🎙️</span>
+                <span>ASR 语音识别引擎</span>
+              </div>
+              <span class="voice-group-sub">点击横条切换识别模型与算力配置</span>
             </div>
-            <button type="button" class="btn-action" id="btn-test-voice-mic" style="background:rgba(57,201,152,0.15);color:#39c998;border-color:rgba(57,201,152,0.3);padding:8px 14px;font-weight:700;">🎤 打开在线麦克风测试</button>
+
+            <!-- 底层 select 保持表单绑定与自动化保存兼容 -->
+            <select id="cfg-voice-engine" style="display:none;">
+              <option value="sensevoice_offline">sensevoice_offline (SenseVoice 离线极速 · 推荐)</option>
+              <option value="qwen_2pass">qwen_2pass (Qwen ASR 1.7B · 高精度大模型)</option>
+            </select>
+
+            <div class="voice-engine-list">
+              <!-- 横条 1: SenseVoice 离线极速 -->
+              <div class="voice-engine-row active" id="card-engine-sensevoice" data-engine="sensevoice_offline" role="button" tabindex="0">
+                <div class="ver-main">
+                  <div class="ver-left">
+                    <div class="ver-radio"></div>
+                    <div class="ver-info">
+                      <div class="ver-header">
+                        <span class="ver-title">⚡ SenseVoice 离线极速</span>
+                        <span class="vmc-badge rec">首选推荐</span>
+                        <span class="vmc-tag" style="background:rgba(57,201,152,0.1);color:#a7f3d0;border-color:rgba(57,201,152,0.25);">免下载 (~200MB)</span>
+                        <span class="vmc-tag">&lt;100ms 毫秒出字</span>
+                      </div>
+                      <div class="ver-desc">阿里通义实验室轻量级端到端模型，集成标点富文本恢复，开箱即用，极低 CPU 与内存占用。</div>
+                    </div>
+                  </div>
+                  <div class="ver-fixed-device">
+                    <span>💻</span>
+                    <span>推理设备: <b>纯 CPU 毫秒极速 (免 GPU)</b></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 横条 2: Qwen ASR 1.7B -->
+              <div class="voice-engine-row" id="card-engine-qwen" data-engine="qwen_2pass" role="button" tabindex="0">
+                <div class="ver-main">
+                  <div class="ver-left">
+                    <div class="ver-radio"></div>
+                    <div class="ver-info">
+                      <div class="ver-header">
+                        <span class="ver-title">🧠 Qwen ASR 1.7B</span>
+                        <span class="vmc-badge high">高精度大模型</span>
+                        <span class="vmc-tag">17 亿参数</span>
+                        <span class="vmc-tag">🔥 推荐 NVIDIA GPU</span>
+                        <span id="qwen-installed-pill" class="vmc-badge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);">检测中…</span>
+                      </div>
+                      <div class="ver-desc">17 亿参数深度语音大模型，专业术语与长句识别准确率极高；建议配备 NVIDIA 独显加速。</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Qwen 行内专属算力选择与模型维护 (包含兼容的 voice-group-compute ID) -->
+                <div class="ver-controls" id="voice-group-compute">
+                  <div class="ver-device-box">
+                    <label>推理计算设备:</label>
+                    <select id="cfg-voice-device">
+                      <option value="auto">自动调度 (Auto · 优先 GPU 加速)</option>
+                      <option value="cpu">纯 CPU 模式</option>
+                    </select>
+                  </div>
+                  <div class="ver-buttons">
+                    <button type="button" class="btn-action" id="btn-download-qwen" style="background:#ffa657;color:#111;font-weight:700;border:none;padding:6px 14px;cursor:pointer;border-radius:6px;font-size:11.5px;">
+                      ⬇️ 一键自动下载 Qwen 1.7B
+                    </button>
+                    <button type="button" class="btn-action" id="btn-delete-qwen" style="display:none;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);padding:6px 14px;font-size:11.5px;cursor:pointer;border-radius:6px;">
+                      🗑️ 删除模型文件
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Qwen 行内通知横幅与芯片前置适配警示 -->
+                <div id="voice-qwen-download-banner" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:11.5px;">
+                  <span id="txt-qwen-download-title" style="font-weight:700;"></span>
+                  <span id="txt-qwen-download-desc" style="color:var(--text-muted);margin-left:8px;"></span>
+                </div>
+                <div id="voice-device-advice" style="display:none;"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -4441,6 +4722,69 @@
             <pre style="margin:0;padding:10px 12px;background:rgba(0,0,0,0.4);border-radius:6px;font-family:var(--font-mono);font-size:11.5px;color:#93c5fd;line-height:1.6;overflow-x:auto;" id="snippet-env-code">export ANTHROPIC_BASE_URL="http://127.0.0.1:8400"
 export ANTHROPIC_API_KEY="sk-relay-local-0000"
 claude</pre>
+          </div>
+        </div>
+
+        <!-- 6. 自定义供应商专属详情面板 (Level 2) -->
+        <div class="upstream-card cfg-module-panel" id="cfg-panel-custom" style="display:none;" data-name="custom">
+          <div class="upstream-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+            <div class="upstream-heading">
+              <b id="cfg-custom-panel-title">自定义供应商设置</b>
+              <span id="cfg-custom-proto-pill" style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(59,130,246,0.15);color:var(--blue);font-weight:700;margin-left:8px;">OpenAI 兼容</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button type="button" class="btn-action" id="btn-save-new-custom" style="display:none;color:#ffffff;background:var(--blue);border-color:rgba(59,130,246,0.6);font-weight:700;">✓ 确认创建供应商</button>
+              <button type="button" class="btn-action" id="btn-delete-custom-provider" style="color:#ef4444;border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);">🗑️ 删除此供应商</button>
+            </div>
+          </div>
+
+          <div class="config-grid">
+            <div class="config-field">
+              <label>供应商显示名称</label>
+              <input type="text" id="cfg-custom-name" placeholder="例如: 硅基流动 / OpenRouter / Moonshot">
+            </div>
+            <div class="config-field">
+              <label>唯一标识 ID (英文标识符)</label>
+              <input type="text" id="cfg-custom-id" placeholder="例如: siliconflow (仅限英文字母/数字/中划线)">
+            </div>
+            <div class="config-field">
+              <label>API 协议类型</label>
+              <select id="cfg-custom-protocol">
+                <option value="openai" style="background:#11151c;color:#ffffff;">OpenAI 兼容协议 (/chat/completions) · 内置格式转换</option>
+                <option value="anthropic" style="background:#11151c;color:#ffffff;">Anthropic 协议 (/v1/messages) · 镜像直连透传</option>
+              </select>
+            </div>
+            <div class="config-field">
+              <label>Base URL</label>
+              <input type="text" id="cfg-custom-base" class="cfg-base" placeholder="例如: https://api.siliconflow.cn/v1">
+            </div>
+            <div class="config-field">
+              <label>上游网络代理 URL</label>
+              <input type="text" id="cfg-custom-proxy" class="cfg-up-proxy" placeholder="留空直连；可填 http://127.0.0.1:7890 或 direct">
+            </div>
+            <div class="config-field">
+              <label>API Key</label>
+              <div class="config-secret">
+                <input type="password" id="cfg-custom-key" class="cfg-key" placeholder="尚未设置">
+                <button type="button" class="cfg-reveal" id="btn-reveal-custom-key">显示</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-field" style="margin-top:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <label style="margin-bottom:0;">可用模型列表 (每行一个，或通过右下方测试连通性自动拉取)</label>
+              <span style="font-size:11px;color:var(--text-dim);" id="cfg-custom-models-count">共 0 个模型</span>
+            </div>
+            <textarea id="cfg-custom-models" rows="4" style="width:100%;padding:10px 12px;background:rgba(0,0,0,0.3);border:1px solid var(--glass-border);border-radius:8px;color:#fff;font-family:var(--font-mono);font-size:12px;line-height:1.6;resize:vertical;" placeholder="例如:&#10;deepseek-ai/DeepSeek-V3&#10;Qwen/Qwen2.5-72B-Instruct"></textarea>
+          </div>
+
+          <div class="cfg-probe-box">
+            <div class="cfg-probe-head">
+              <span style="font-size:12px;font-weight:700;color:#ffffff;">在线连通性检测与模型拉取</span>
+              <button type="button" class="btn-action" id="btn-probe-custom">🔍 测试连通性并拉取模型</button>
+            </div>
+            <div id="probe-res-custom" class="cfg-probe-res"></div>
           </div>
         </div>
 
@@ -4575,7 +4919,7 @@ async function api(path, body) {
     const r = await fetch(path, {
       method: body ? 'POST' : 'GET',
       headers: { 'Content-Type': 'application/json',
-        ...((path.startsWith('/api/codex/login') || path.startsWith('/api/upstream') || path.startsWith('/api/proxy') || path.startsWith('/api/cpa/') || path.startsWith('/api/relay/') || path.startsWith('/api/antigravity/'))
+        ...((path.startsWith('/api/codex/login') || path.startsWith('/api/upstream') || path.startsWith('/api/proxy') || path.startsWith('/api/cpa/') || path.startsWith('/api/relay/') || path.startsWith('/api/antigravity/') || path.startsWith('/api/voice/'))
           ? { 'X-CC-Relay-UI': '1' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal
@@ -4639,6 +4983,7 @@ function renderCpaProgressCard(data) {
   if (!card) return;
   const title = $('#cpa-card-title');
   const ver = $('#cpa-card-ver');
+  const statusEl = $('#cpa-card-status');
   const desc = $('#cpa-card-desc');
   const track = $('#cpa-card-track');
   const fill = $('#cpa-card-fill');
@@ -4660,14 +5005,45 @@ function renderCpaProgressCard(data) {
   const msg = data.update_message || data.cpa_update_message || '';
   const err = data.update_error || data.cpa_update_error || data.check_error || data.cpa_update_check_error || '';
 
-  if (hasUpdate && latVer) {
-    title.textContent = '发现新版本';
-    ver.textContent = 'v' + latVer.replace(/^v/, '');
-    ver.style.display = 'inline';
-  } else {
-    title.textContent = 'CLIProxyAPI 更新';
-    ver.textContent = curVer ? ('v' + curVer.replace(/^v/, '')) : '';
-    ver.style.display = curVer ? 'inline' : 'none';
+  if (title) title.textContent = 'Codex (CLIProxyAPI)';
+
+  let statusText = '更新信息';
+  let isUpdateAvailable = false;
+
+  if (state === 'rolling_back') {
+    statusText = '正在回滚';
+  } else if (err) {
+    statusText = '更新失败';
+  } else if (checking) {
+    statusText = '正在检查';
+  } else if (state === 'queued') {
+    statusText = '准备下载';
+  } else if (state === 'downloading') {
+    statusText = '正在下载';
+  } else if (state === 'verifying') {
+    statusText = '校验解压';
+  } else if (state === 'staged') {
+    statusText = '准备安装';
+  } else if (state === 'installing') {
+    statusText = '正在安装';
+  } else if (state === 'complete') {
+    statusText = '更新完成';
+  } else if (hasUpdate) {
+    statusText = '发现新版本';
+    isUpdateAvailable = true;
+  } else if (data.last_checked || data.cpa_update_checked_at) {
+    statusText = '已是最新';
+  }
+
+  if (statusEl) {
+    statusEl.textContent = statusText;
+    statusEl.classList.toggle('has-update', isUpdateAvailable);
+  }
+
+  const displayVer = (hasUpdate && latVer) ? latVer : curVer;
+  if (ver) {
+    ver.textContent = displayVer ? ('v' + displayVer.replace(/^v/, '')) : '';
+    ver.style.display = displayVer ? 'inline' : 'none';
   }
 
   let descText = '正在检查更新…';
@@ -4840,6 +5216,7 @@ function renderRelayProgressCard(data) {
   if (!card) return;
   const title = $('#relay-card-title');
   const ver = $('#relay-card-ver');
+  const statusEl = $('#relay-card-status');
   const desc = $('#relay-card-desc');
   const track = $('#relay-card-track');
   const fill = $('#relay-card-fill');
@@ -4861,14 +5238,39 @@ function renderRelayProgressCard(data) {
   const msg = data.update_message || '';
   const err = data.update_error || data.check_error || '';
 
-  if (hasUpdate && latVer) {
-    title.textContent = '发现新版本';
-    ver.textContent = 'v' + latVer.replace(/^v/, '');
-    ver.style.display = 'inline';
-  } else {
-    title.textContent = 'CC Relay 更新';
-    ver.textContent = curVer ? ('v' + curVer.replace(/^v/, '')) : '';
-    ver.style.display = curVer ? 'inline' : 'none';
+  if (title) title.textContent = 'CC Relay';
+
+  let statusText = '更新信息';
+  let isUpdateAvailable = false;
+
+  if (err) {
+    statusText = '更新失败';
+  } else if (checking) {
+    statusText = '正在检查';
+  } else if (state === 'queued') {
+    statusText = '准备下载';
+  } else if (state === 'downloading' || state === 'fetching') {
+    statusText = '正在下载';
+  } else if (state === 'applying') {
+    statusText = '解压自检';
+  } else if (state === 'success' || state === 'complete') {
+    statusText = '更新完成';
+  } else if (hasUpdate) {
+    statusText = '发现新版本';
+    isUpdateAvailable = true;
+  } else if (data.last_checked || data.checked_at) {
+    statusText = '已是最新';
+  }
+
+  if (statusEl) {
+    statusEl.textContent = statusText;
+    statusEl.classList.toggle('has-update', isUpdateAvailable);
+  }
+
+  const displayVer = (hasUpdate && latVer) ? latVer : curVer;
+  if (ver) {
+    ver.textContent = displayVer ? ('v' + displayVer.replace(/^v/, '')) : '';
+    ver.style.display = displayVer ? 'inline' : 'none';
   }
 
   let descText = '正在检查更新…';
@@ -5046,6 +5448,7 @@ function renderAntigravityProgressCard(data) {
   if (!card) return;
   const title = $('#antigravity-card-title');
   const ver = $('#antigravity-card-ver');
+  const statusEl = $('#antigravity-card-status');
   const desc = $('#antigravity-card-desc');
   const fill = $('#antigravity-card-fill');
   const pct = $('#antigravity-card-pct');
@@ -5065,14 +5468,31 @@ function renderAntigravityProgressCard(data) {
     btnGh.href = data.release_url;
   }
 
-  if (hasUpdate && latVer) {
-    title.textContent = '发现新版本';
-    ver.textContent = 'v' + latVer.replace(/^v/, '');
-    ver.style.display = 'inline';
-  } else {
-    title.textContent = 'Antigravity Tools';
-    ver.textContent = curVer ? ('v' + curVer.replace(/^v/, '')) : '';
-    ver.style.display = curVer ? 'inline' : 'none';
+  if (title) title.textContent = 'Antigravity Tools';
+
+  let statusText = '更新信息';
+  let isUpdateAvailable = false;
+
+  if (err) {
+    statusText = '检查失败';
+  } else if (checking) {
+    statusText = '正在检查';
+  } else if (hasUpdate) {
+    statusText = '发现新版本';
+    isUpdateAvailable = true;
+  } else if (data.last_checked) {
+    statusText = '已是最新';
+  }
+
+  if (statusEl) {
+    statusEl.textContent = statusText;
+    statusEl.classList.toggle('has-update', isUpdateAvailable);
+  }
+
+  const displayVer = (hasUpdate && latVer) ? latVer : curVer;
+  if (ver) {
+    ver.textContent = displayVer ? ('v' + displayVer.replace(/^v/, '')) : '';
+    ver.style.display = displayVer ? 'inline' : 'none';
   }
 
   let descText = '正在检查更新…';
@@ -5225,10 +5645,20 @@ function buildSel(sel, models, curModel, curEff) {
   labs.innerHTML = effs.map(e => '<span>' + (EFFORT_CN[e] || e) + '</span>').join('');
 
   const ol = sel.querySelector('.opt-list'); ol.innerHTML = '';
+  const customGroups = [];
+  const customMap = (window._cachedConfig && window._cachedConfig.custom_providers) || (st && st.custom_providers) || {};
+  for (const [cpid, cp] of Object.entries(customMap)) {
+    if (!cp) continue;
+    const cmodels = (cp.models || []).filter(m => m && !m.includes('image'));
+    if (cmodels.length > 0) {
+      customGroups.push([cp.name || cpid, cmodels]);
+    }
+  }
   const allGroups = [
     ['DeepSeek', (models.ds || []).filter(noJunk)],
     ['Codex', (models.cx || []).filter(isCodex)],
-    ['Gemini', (models.gm || []).filter(m => m && m.startsWith('gemini-') && !m.includes('image'))]
+    ['Gemini', (models.gm || []).filter(m => m && m.startsWith('gemini-') && !m.includes('image'))],
+    ...customGroups
   ];
   const groups = sel.dataset.kind === 'gm' ? allGroups.slice(2) : sel.dataset.kind === 'ds' ? allGroups.slice(0, 1) : allGroups;
   let html = '';
@@ -5596,6 +6026,14 @@ async function saveConfigDraft() {
   } catch (e) {
     console.error('Auto-save config failed:', e);
     setAutoSaveStatus('error');
+    const msg = (e && e.message) ? e.message : String(e);
+    let friendly = msg;
+    if (msg.includes('must be an http(s) URL')) {
+      friendly = 'Base URL 必须是以 http:// 或 https:// 开头的有效网址（如 https://api.siliconflow.cn/v1）';
+    } else if (msg.includes('invalid custom provider ID')) {
+      friendly = '供应商唯一标识 ID 仅支持英文字母、数字和中划线';
+    }
+    toast('保存失败: ' + friendly, true);
   } finally {
     _autosaveInFlight = false;
     if (_autosaveQueued) {
@@ -5836,9 +6274,189 @@ function updateDetailStatusPill(subpage) {
     const run = isUpstreamRunning('voice', st);
     pill.className = run ? 'cfg-mod-badge on' : 'cfg-mod-badge off';
     pill.textContent = run ? '● 伴侣运行中 :8401' : '○ 伴侣已停止';
+  } else if (subpage.startsWith('custom:') || subpage === 'custom-new') {
+    if (subpage === 'custom-new') {
+      pill.className = 'cfg-mod-badge warn';
+      pill.textContent = '○ 待创建';
+    } else {
+      const cpid = subpage.slice(7);
+      const cp = (_cachedConfig && _cachedConfig.custom_providers && _cachedConfig.custom_providers[cpid]) || {};
+      pill.className = cp.has_key ? 'cfg-mod-badge on' : 'cfg-mod-badge warn';
+      pill.textContent = cp.has_key ? '● 密钥已就绪' : '○ 尚未配置密钥';
+    }
   } else {
     pill.className = 'cfg-mod-badge on';
     pill.textContent = '● 核心运行中 v2.4.8';
+  }
+}
+
+let _voiceDownloadPollTimer = null;
+
+function updateQwenDownloadBanner(snapshot) {
+  const banner = $('#voice-qwen-download-banner');
+  if (!banner) return;
+  const sel = $('#cfg-voice-engine');
+  const curEngine = sel ? sel.value : 'sensevoice_offline';
+  if (curEngine !== 'qwen_2pass') {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const vStat = (snapshot && (snapshot.voice_status || snapshot.voice)) || {};
+  const isQwenInstalled = !!vStat.qwen_installed;
+  const dlState = vStat.download_state || {};
+  const isDownloading = dlState.status === 'downloading';
+  const btn = $('#btn-download-qwen');
+  const btnDel = $('#btn-delete-qwen');
+  const title = $('#txt-qwen-download-title');
+  const desc = $('#txt-qwen-download-desc');
+  const pill = $('#qwen-installed-pill');
+  const chipAdaptation = vStat.chip_adaptation || '';
+  const cudaReady = !!vStat.cuda_ready;
+  const hasGpu = !!vStat.has_nvidia_gpu || (vStat.available_devices || []).some(d => (d.id || '').startsWith('cuda'));
+
+  if (pill) {
+    if (isDownloading) {
+      pill.style.background = 'rgba(59,130,246,0.18)';
+      pill.style.color = '#60a5fa';
+      pill.textContent = '⏳ 下载中…';
+    } else if (isQwenInstalled) {
+      pill.style.background = 'rgba(57,201,152,0.18)';
+      pill.style.color = '#39c998';
+      pill.textContent = '✓ 已就绪';
+    } else if (dlState.status === 'error') {
+      pill.style.background = 'rgba(239,68,68,0.18)';
+      pill.style.color = '#ef4444';
+      pill.textContent = '✕ 下载失败';
+    } else {
+      pill.style.background = 'rgba(255,166,87,0.18)';
+      pill.style.color = '#ffa657';
+      pill.textContent = '⚠️ 未下载 (约3.5GB)';
+    }
+  }
+
+  // 单一明确的操作按钮：未安装时为下载，已安装时为删除
+  if (isDownloading) {
+    if (btn) {
+      btn.style.display = 'inline-block';
+      btn.disabled = true;
+      btn.style.background = 'rgba(255,255,255,0.1)';
+      btn.style.color = 'var(--text-muted)';
+      btn.textContent = '⏳ 正在下载中...';
+    }
+    if (btnDel) btnDel.style.display = 'none';
+  } else if (isQwenInstalled) {
+    if (btn) btn.style.display = 'none';
+    if (btnDel) {
+      btnDel.style.display = 'inline-block';
+      btnDel.disabled = false;
+      btnDel.textContent = '🗑️ 删除模型文件 (释放 3.5GB)';
+    }
+  } else {
+    if (btn) {
+      btn.style.display = 'inline-block';
+      btn.disabled = false;
+      btn.style.background = '#ffa657';
+      btn.style.color = '#111';
+      btn.textContent = dlState.status === 'error' ? '🔄 重新自动下载' : '⬇️ 一键自动下载 Qwen 1.7B';
+    }
+    if (btnDel) btnDel.style.display = 'none';
+  }
+
+  // 状态横幅仅在正在下载、下载出错或芯片未完成适配时展开提示
+  if (banner) {
+    if (isDownloading) {
+      banner.style.display = 'block';
+      banner.style.background = 'rgba(59,130,246,0.08)';
+      banner.style.border = '1px solid rgba(59,130,246,0.3)';
+      if (title) title.innerHTML = '<span style="color:var(--blue);">⏳ 正在通过 ModelScope 高速通道下载 Qwen 1.7B 模型...</span>';
+      if (desc) desc.textContent = dlState.message || '正在后台下载模型分块与权重文件 (约 3.5GB)，请稍候...';
+    } else if (dlState.status === 'error') {
+      banner.style.display = 'block';
+      banner.style.background = 'rgba(255,100,100,0.08)';
+      banner.style.border = '1px solid rgba(255,100,100,0.3)';
+      if (title) title.innerHTML = '<span style="color:#ff7b72;">✕ 模型下载失败</span>';
+      if (desc) desc.textContent = dlState.error || '下载过程中连接异常，可点击重新尝试。';
+    } else if (chipAdaptation === 'unadapted' || (hasGpu && !cudaReady)) {
+      banner.style.display = 'block';
+      banner.style.background = 'rgba(255,166,87,0.08)';
+      banner.style.border = '1px solid rgba(255,166,87,0.3)';
+      if (title) title.innerHTML = '<span style="color:#ffa657;">⚠️ 芯片未完成前置适配:</span>';
+      if (desc) desc.textContent = '已检测到 NVIDIA 独立显卡，但语音运行环境的 PyTorch 暂未配置 CUDA 硬件加速库，将自动以 CPU 降级运行。';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+}
+
+function startVoiceDownloadPoll() {
+  if (_voiceDownloadPollTimer) return;
+  _voiceDownloadPollTimer = setInterval(async () => {
+    try {
+      const res = await api('/api/voice/download_status');
+      if (typeof st !== 'undefined' && st) {
+        if (!st.voice_status) st.voice_status = {};
+        st.voice_status.download_state = res;
+      }
+      updateQwenDownloadBanner(st);
+      if (res && res.status === 'done') {
+        clearInterval(_voiceDownloadPollTimer);
+        _voiceDownloadPollTimer = null;
+        toast('✓ Qwen ASR 1.7B 模型下载完成！');
+        if (typeof refresh === 'function') refresh();
+      } else if (res && res.status === 'error') {
+        clearInterval(_voiceDownloadPollTimer);
+        _voiceDownloadPollTimer = null;
+        toast('✕ Qwen ASR 1.7B 模型下载失败: ' + (res.error || ''), true);
+      }
+    } catch (e) {
+      clearInterval(_voiceDownloadPollTimer);
+      _voiceDownloadPollTimer = null;
+    }
+  }, 1500);
+}
+
+function syncVoiceEngineCards(val) {
+  const isQwen = val === 'qwen_2pass' || val === 'qwen_offline' || val === 'paraformer_streaming_2pass';
+  const cSv = $('#card-engine-sensevoice');
+  const cQw = $('#card-engine-qwen');
+  if (cSv && cQw) {
+    if (isQwen) {
+      cSv.classList.remove('active');
+      cQw.classList.add('active');
+    } else {
+      cSv.classList.add('active');
+      cQw.classList.remove('active');
+    }
+  }
+}
+
+function updateVoiceDeviceAdvice() {
+  const adviceEl = $('#voice-device-advice');
+  if (!adviceEl) return;
+  const engVal = ($('#cfg-voice-engine') ? $('#cfg-voice-engine').value : 'sensevoice_offline');
+  const isQwen = engVal === 'qwen_2pass' || engVal === 'qwen_offline' || engVal === 'paraformer_streaming_2pass';
+  const devSel = $('#cfg-voice-device');
+  const devVal = String(devSel && devSel.value ? devSel.value : 'auto').toLowerCase();
+
+  if (!isQwen) {
+    adviceEl.style.display = 'none';
+    return;
+  }
+
+  const vStat = (typeof st !== 'undefined' && st && (st.voice_status || st.voice)) || {};
+  const chipAdaptation = vStat.chip_adaptation || '';
+  const cudaReady = !!vStat.cuda_ready;
+  const hasGpu = !!vStat.has_nvidia_gpu || (vStat.available_devices || []).some(d => (d.id || '').startsWith('cuda'));
+
+  if (chipAdaptation === 'unadapted' || (hasGpu && !cudaReady && devVal !== 'cpu')) {
+    adviceEl.style.display = 'block';
+    adviceEl.innerHTML = '<span style="color:#f59e0b;font-size:12px;">⚠️ <b>显卡前置环境提示:</b> 当前 Python 未启用 CUDA，Qwen 1.7B 将以纯 CPU 运行。</span>';
+  } else if (devVal === 'cpu') {
+    adviceEl.style.display = 'block';
+    adviceEl.innerHTML = '<span style="color:#f59e0b;font-size:12px;">⚠️ <b>纯 CPU 提示:</b> 1.7B 大模型在 CPU 模式下延迟较高，推荐独显加速。</span>';
+  } else {
+    adviceEl.style.display = 'none';
   }
 }
 
@@ -5910,8 +6528,80 @@ function updateOverviewCards(cfg, snapshot) {
   if ($('#ov-voice-engine')) {
     const eng = vConf.engine || 'sensevoice_offline';
     let engName = 'SenseVoice 离线';
-    if (eng === 'qwen_2pass' || eng === 'paraformer_streaming_2pass' || eng === 'qwen_offline') engName = 'Qwen ASR 1.7B';
+    if (eng === 'qwen_2pass' || eng === 'paraformer_streaming_2pass' || eng === 'qwen_offline') {
+      const dev = (vConf.device || 'auto').toLowerCase();
+      const devs = (vConf.available_devices && vConf.available_devices.length) ? vConf.available_devices :
+        ((snapshot && snapshot.voice_status && snapshot.voice_status.available_devices) || []);
+      const matched = devs.find(d => (d.id || '').toLowerCase() === dev);
+      let devLabel = 'GPU优先';
+      if (matched && matched.display_name) {
+        devLabel = matched.display_name;
+      } else if (matched && matched.name) {
+        devLabel = matched.name.replace(/^GPU \d+:\s*/, '').replace(/^CPU:\s*/, '').replace(/\s*·\s*纯 CPU 模式$/, '');
+      } else if (dev === 'cpu') {
+        devLabel = 'CPU';
+      } else if (dev.startsWith('cuda')) {
+        devLabel = 'GPU加速';
+      }
+      engName = `Qwen ASR 1.7B · ${devLabel}`;
+    }
     $('#ov-voice-engine').textContent = engName;
+  }
+  updateQwenDownloadBanner(snapshot);
+
+  // Custom Providers
+  const customContainer = $('#cfg-custom-cards-container');
+  if (customContainer) {
+    const cps = cfg.custom_providers || {};
+    let customHtml = '';
+    for (const [id, cp] of Object.entries(cps)) {
+      if (!cp) continue;
+      const isConfigured = cp.has_key;
+      const badgeCls = isConfigured ? 'cfg-mod-badge on' : 'cfg-mod-badge warn';
+      const badgeTxt = isConfigured ? '● 已配置 Key' : '○ 未配置 Key';
+      const protoBadge = cp.protocol === 'anthropic' ? 'Anthropic 镜像' : 'OpenAI 兼容';
+      const baseDisp = (cp.base || '未设置端点').replace(/^https?:\/\//, '');
+      const proxyDisp = cp.proxy_url ? (cp.proxy_url === 'direct' ? 'direct (直连)' : cp.proxy_url) : 'direct (直连)';
+      const modelCnt = (cp.models || []).length;
+
+      customHtml += `
+        <div class="cfg-mod-card spotlight-card" data-mod="custom:${escHtml(id)}" role="button" tabindex="0">
+          <div>
+            <div class="cfg-mod-head">
+              <div class="cfg-mod-head-left">
+                <div class="cfg-mod-icon" style="background:rgba(59,130,246,0.12);color:var(--blue);border-color:rgba(59,130,246,0.3);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                </div>
+                <div class="cfg-mod-info">
+                  <h3>${escHtml(cp.name || id)}</h3>
+                  <div class="cfg-mod-role">${protoBadge} · 自定义通道</div>
+                </div>
+              </div>
+              <span class="${badgeCls}">${badgeTxt}</span>
+            </div>
+            <div class="cfg-mod-stats">
+              <div class="cfg-stat-row"><span class="cfg-stat-label">基础端点</span><span class="cfg-stat-val">${escHtml(baseDisp)}</span></div>
+              <div class="cfg-stat-row"><span class="cfg-stat-label">上游代理</span><span class="cfg-stat-val">${escHtml(proxyDisp)}</span></div>
+              <div class="cfg-stat-row"><span class="cfg-stat-label">可用模型</span><span class="cfg-stat-val">${modelCnt} 个模型</span></div>
+            </div>
+          </div>
+          <div class="cfg-mod-footer">
+            <span class="cfg-mod-desc">支持全量路由与混合五档调度</span>
+            <span class="cfg-mod-enter">进入设置 →</span>
+          </div>
+        </div>
+      `;
+    }
+    customContainer.innerHTML = customHtml;
+    customContainer.querySelectorAll('.cfg-mod-card').forEach(card => {
+      card.addEventListener('click', async () => {
+        const mod = card.dataset.mod;
+        if (mod) {
+          await flushConfigAutosave();
+          switchConfigSubpage(mod);
+        }
+      });
+    });
   }
 
   // Dirty indicators
@@ -5935,6 +6625,60 @@ async function switchConfigSubpage(subpage, updateHash = true) {
     l2.style.display = 'none';
     $$('.cfg-module-panel').forEach(p => p.style.display = 'none');
     updateOverviewCards(_cachedConfig, st);
+  } else if (_activeConfigSubpage.startsWith('custom:') || _activeConfigSubpage === 'custom-new') {
+    l1.style.display = 'none';
+    l2.style.display = 'block';
+    $$('.cfg-module-panel').forEach(p => p.style.display = 'none');
+    const panel = $('#cfg-panel-custom');
+    if (panel) panel.style.display = 'block';
+    const isNew = (_activeConfigSubpage === 'custom-new');
+    if (isNew) {
+      if ($('#cfg-crumb-title')) $('#cfg-crumb-title').textContent = '新建自定义供应商';
+      if ($('#cfg-custom-panel-title')) $('#cfg-custom-panel-title').textContent = '新建自定义供应商';
+      if ($('#cfg-detail-key-env')) $('#cfg-detail-key-env').style.display = 'none';
+      if ($('#btn-save-new-custom')) $('#btn-save-new-custom').style.display = 'inline-block';
+      if ($('#btn-delete-custom-provider')) $('#btn-delete-custom-provider').style.display = 'none';
+      const idInp = $('#cfg-custom-id');
+      if (idInp) { idInp.readOnly = false; idInp.value = ''; idInp.classList.remove('config-locked-input'); }
+      if ($('#cfg-custom-name')) $('#cfg-custom-name').value = '';
+      if ($('#cfg-custom-protocol')) $('#cfg-custom-protocol').value = 'openai';
+      if ($('#cfg-custom-base')) $('#cfg-custom-base').value = '';
+      if ($('#cfg-custom-proxy')) $('#cfg-custom-proxy').value = '';
+      if ($('#cfg-custom-key')) { $('#cfg-custom-key').value = ''; $('#cfg-custom-key').placeholder = '输入 API Key'; }
+      if ($('#cfg-custom-models')) $('#cfg-custom-models').value = '';
+      if ($('#cfg-custom-models-count')) $('#cfg-custom-models-count').textContent = '共 0 个模型';
+      if ($('#probe-res-custom')) { $('#probe-res-custom').style.display = 'none'; $('#probe-res-custom').textContent = ''; }
+      if ($('#cfg-custom-proto-pill')) $('#cfg-custom-proto-pill').textContent = 'OpenAI 兼容';
+    } else {
+      const cpid = _activeConfigSubpage.slice('custom:'.length);
+      const cps = (_cachedConfig && _cachedConfig.custom_providers) || {};
+      const cp = cps[cpid] || {};
+      if ($('#cfg-crumb-title')) $('#cfg-crumb-title').textContent = (cp.name || cpid) + ' (自定义供应商)';
+      if ($('#cfg-custom-panel-title')) $('#cfg-custom-panel-title').textContent = cp.name || cpid;
+      if ($('#cfg-detail-key-env')) {
+        $('#cfg-detail-key-env').textContent = 'id: ' + cpid;
+        $('#cfg-detail-key-env').style.display = 'inline-block';
+      }
+      if ($('#btn-save-new-custom')) $('#btn-save-new-custom').style.display = 'none';
+      if ($('#btn-delete-custom-provider')) $('#btn-delete-custom-provider').style.display = 'inline-block';
+      const idInp = $('#cfg-custom-id');
+      if (idInp) { idInp.readOnly = true; idInp.value = cpid; idInp.classList.add('config-locked-input'); }
+      if ($('#cfg-custom-name')) $('#cfg-custom-name').value = cp.name || cpid;
+      const proto = cp.protocol || 'openai';
+      if ($('#cfg-custom-protocol')) $('#cfg-custom-protocol').value = proto;
+      if ($('#cfg-custom-proto-pill')) $('#cfg-custom-proto-pill').textContent = proto === 'anthropic' ? 'Anthropic 镜像' : 'OpenAI 兼容';
+      if ($('#cfg-custom-base')) $('#cfg-custom-base').value = cp.base || '';
+      if ($('#cfg-custom-proxy')) $('#cfg-custom-proxy').value = cp.proxy_url || '';
+      if ($('#cfg-custom-key')) {
+        $('#cfg-custom-key').value = '';
+        $('#cfg-custom-key').placeholder = cp.has_key ? (cp.key_mask + ' · 留空保持不变') : '尚未设置';
+      }
+      const mList = cp.models || [];
+      if ($('#cfg-custom-models')) $('#cfg-custom-models').value = mList.join('\n');
+      if ($('#cfg-custom-models-count')) $('#cfg-custom-models-count').textContent = '共 ' + mList.length + ' 个模型';
+      if ($('#probe-res-custom')) { $('#probe-res-custom').style.display = 'none'; $('#probe-res-custom').textContent = ''; }
+    }
+    updateDetailStatusPill(_activeConfigSubpage);
   } else {
     l1.style.display = 'none';
     l2.style.display = 'block';
@@ -5997,6 +6741,162 @@ function initTwoLevelConfig() {
   setupSecretReveal('#cfg-ds-key', '#btn-reveal-ds-key');
   setupSecretReveal('#cfg-codex-key', '#btn-reveal-codex-key');
   setupSecretReveal('#cfg-ag-key', '#btn-reveal-ag-key');
+  setupSecretReveal('#cfg-custom-key', '#btn-reveal-custom-key');
+
+  // 自定义供应商事件绑定
+  const btnAddProv = $('#btn-add-provider');
+  if (btnAddProv) btnAddProv.addEventListener('click', () => switchConfigSubpage('custom-new'));
+  const cardAddProv = $('#card-add-custom-provider');
+  if (cardAddProv) cardAddProv.addEventListener('click', () => switchConfigSubpage('custom-new'));
+
+  const btnSaveNew = $('#btn-save-new-custom');
+  if (btnSaveNew) btnSaveNew.addEventListener('click', async () => {
+    const rawId = ($('#cfg-custom-id') ? $('#cfg-custom-id').value : '').trim().toLowerCase();
+    if (!rawId) { toast('请输入供应商唯一标识 ID (如 siliconflow)', true); return; }
+    if (!/^[a-zA-Z0-9_\-\.]{1,64}$/.test(rawId)) { toast('ID 格式不合法，仅限英文字母/数字/中划线/下划线', true); return; }
+    let base = ($('#cfg-custom-base') ? $('#cfg-custom-base').value : '').trim();
+    if (!base) { toast('请输入供应商 Base URL', true); return; }
+    if (!base.startsWith('http://') && !base.startsWith('https://')) {
+      base = (base.startsWith('127.0.0.1') || base.startsWith('localhost') ? 'http://' : 'https://') + base;
+      if ($('#cfg-custom-base')) $('#cfg-custom-base').value = base;
+    }
+
+    const name = ($('#cfg-custom-name') ? $('#cfg-custom-name').value : '').trim() || rawId;
+    const proto = ($('#cfg-custom-protocol') ? $('#cfg-custom-protocol').value : 'openai').trim();
+    const proxy = ($('#cfg-custom-proxy') ? $('#cfg-custom-proxy').value : '').trim();
+    const key = ($('#cfg-custom-key') ? $('#cfg-custom-key').value : '');
+    const modelsRaw = ($('#cfg-custom-models') ? $('#cfg-custom-models').value : '');
+    const models = modelsRaw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+
+    btnSaveNew.disabled = true;
+    btnSaveNew.textContent = '创建中…';
+    try {
+      const patch = {
+        custom_providers: {
+          [rawId]: {
+            id: rawId,
+            name: name,
+            protocol: proto,
+            base: base,
+            proxy_url: proxy,
+            key: key,
+            models: models
+          }
+        }
+      };
+      const r = await api('/api/config', patch);
+      if (r.error) throw new Error(r.error);
+      _cachedConfig = r.config || _cachedConfig;
+      if (!_cachedConfig.custom_providers) _cachedConfig.custom_providers = {};
+      _cachedConfig.custom_providers[rawId] = {
+        id: rawId,
+        name: name,
+        protocol: proto,
+        base: base,
+        proxy_url: proxy,
+        key_mask: key ? '••••••••' : '',
+        has_key: Boolean(key),
+        models: models
+      };
+      _configDirty = false;
+      setAutoSaveStatus('saved');
+      toast('已成功添加供应商 "' + name + '"！');
+      switchConfigSubpage('custom:' + rawId);
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      toast('创建供应商失败: ' + msg, true);
+      setAutoSaveStatus('error');
+    } finally {
+      btnSaveNew.disabled = false;
+      btnSaveNew.textContent = '✓ 确认创建供应商';
+    }
+  });
+
+  const btnDelProv = $('#btn-delete-custom-provider');
+  if (btnDelProv) btnDelProv.addEventListener('click', async () => {
+    if (!_activeConfigSubpage || !_activeConfigSubpage.startsWith('custom:')) return;
+    const cpid = _activeConfigSubpage.slice('custom:'.length);
+    const cpName = ($('#cfg-custom-name') ? $('#cfg-custom-name').value : '') || cpid;
+    if (!confirm(`确定要删除供应商 "${cpName}" (${cpid}) 吗？`)) return;
+
+    const patch = { custom_providers: {} };
+    patch.custom_providers[cpid] = { deleted: true };
+    try {
+      await api('/api/config', patch);
+      if (_cachedConfig && _cachedConfig.custom_providers) {
+        delete _cachedConfig.custom_providers[cpid];
+      }
+      toast('已删除供应商 "' + cpName + '"');
+      switchConfigSubpage('overview');
+    } catch (e) {
+      toast('删除失败: ' + e, true);
+    }
+  });
+
+  const btnProbeCustom = $('#btn-probe-custom');
+  if (btnProbeCustom) btnProbeCustom.addEventListener('click', async () => {
+    if (!_activeConfigSubpage || !_activeConfigSubpage.startsWith('custom:')) {
+      toast('请先创建并保存供应商再进行连通性测试', true);
+      return;
+    }
+    await flushConfigAutosave();
+    const cpid = _activeConfigSubpage.slice('custom:'.length);
+    const btn = btnProbeCustom;
+    const resEl = $('#probe-res-custom');
+    if (!resEl) return;
+    btn.disabled = true; btn.textContent = '检测中…';
+    resEl.style.display = 'block';
+    resEl.style.color = 'var(--text-muted)';
+    resEl.textContent = '正在探测端点连通性…';
+    try {
+      const res = await api('/api/probe?name=' + encodeURIComponent(cpid));
+      if (res.available) {
+        resEl.style.color = '#39c998';
+        const modelCnt = (res.models && res.models.length) || 0;
+        resEl.innerHTML = `● 连通正常 (HTTP 200) · 发现 ${modelCnt} 个可用模型` +
+          (modelCnt > 0 ? ` <button type="button" class="btn-action" id="btn-import-models" style="margin-left:8px;padding:2px 8px;font-size:11px;">一键填入模型列表</button>` : '');
+        const btnImport = $('#btn-import-models');
+        if (btnImport) {
+          btnImport.addEventListener('click', () => {
+            const mArea = $('#cfg-custom-models');
+            if (mArea) {
+              mArea.value = res.models.join('\n');
+              if ($('#cfg-custom-models-count')) $('#cfg-custom-models-count').textContent = '共 ' + res.models.length + ' 个模型';
+              scheduleConfigAutosave(true);
+              toast('已成功填入 ' + res.models.length + ' 个模型并保存！');
+            }
+          });
+        }
+      } else {
+        resEl.style.color = '#ff7272';
+        resEl.textContent = '× 探测失败: ' + (res.error || '无法连接端点');
+      }
+    } catch (e) {
+      resEl.style.color = '#ff7272';
+      resEl.textContent = '× 探测异常: ' + e;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔍 测试连通性并拉取模型';
+    }
+  });
+
+  const protoSel = $('#cfg-custom-protocol');
+  if (protoSel) {
+    protoSel.addEventListener('change', () => {
+      const pill = $('#cfg-custom-proto-pill');
+      if (pill) {
+        pill.textContent = protoSel.value === 'anthropic' ? 'Anthropic 镜像' : 'OpenAI 兼容';
+      }
+    });
+  }
+
+  const customModelsInp = $('#cfg-custom-models');
+  if (customModelsInp) {
+    customModelsInp.addEventListener('input', () => {
+      const count = customModelsInp.value.split(/[\n,]+/).map(s => s.trim()).filter(Boolean).length;
+      if ($('#cfg-custom-models-count')) $('#cfg-custom-models-count').textContent = '共 ' + count + ' 个模型';
+    });
+  }
 
   // 4. 语音热键录制器
   setupVoiceHotkeyRecorder();
@@ -6026,15 +6926,111 @@ function initTwoLevelConfig() {
     });
   }
 
-  // 7. 在线麦克风对讲测试快捷按钮
-  const btnVoiceMic = $('#btn-test-voice-mic');
-  if (btnVoiceMic) {
-    btnVoiceMic.addEventListener('click', () => {
-      if (typeof openVoiceModal === 'function') {
-        openVoiceModal();
-      } else {
-        toast('语音测试组件加载中…');
+  // 7. ASR 引擎模式选择卡片交互与切换监听
+  const cSenseVoice = $('#card-engine-sensevoice');
+  const cQwen = $('#card-engine-qwen');
+  if (cSenseVoice) {
+    cSenseVoice.addEventListener('click', () => {
+      const sel = $('#cfg-voice-engine');
+      if (sel && sel.value !== 'sensevoice_offline') {
+        sel.value = 'sensevoice_offline';
+        syncVoiceEngineCards('sensevoice_offline');
+        updateVoiceDeviceAdvice();
+        if (typeof st !== 'undefined') updateQwenDownloadBanner(st);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
       }
+    });
+    cSenseVoice.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        cSenseVoice.click();
+      }
+    });
+  }
+  if (cQwen) {
+    cQwen.addEventListener('click', () => {
+      const sel = $('#cfg-voice-engine');
+      if (sel && sel.value !== 'qwen_2pass') {
+        sel.value = 'qwen_2pass';
+        syncVoiceEngineCards('qwen_2pass');
+        updateVoiceDeviceAdvice();
+        if (typeof st !== 'undefined') updateQwenDownloadBanner(st);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    cQwen.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        cQwen.click();
+      }
+    });
+  }
+
+  // 7.1 Qwen ASR 1.7B 一键自动下载按钮与引擎切换监听
+  const btnDlQwen = $('#btn-download-qwen');
+  if (btnDlQwen) {
+    btnDlQwen.addEventListener('click', async () => {
+      btnDlQwen.disabled = true;
+      btnDlQwen.textContent = '⏳ 正在请求下载...';
+      try {
+        const res = await api('/api/voice/download_model', { model: 'qwen' });
+        toast('已在后台开始高速下载 Qwen 1.7B 模型 (ModelScope)');
+        if (res && res.state && typeof st !== 'undefined' && st) {
+          if (!st.voice_status) st.voice_status = {};
+          st.voice_status.download_state = res.state;
+          updateQwenDownloadBanner(st);
+        }
+        startVoiceDownloadPoll();
+      } catch (err) {
+        toast('发起下载失败: ' + err, true);
+        btnDlQwen.disabled = false;
+        btnDlQwen.textContent = '⬇️ 一键自动下载 Qwen 1.7B';
+      }
+    });
+  }
+
+  const btnDelQwen = $('#btn-delete-qwen');
+  if (btnDelQwen) {
+    btnDelQwen.addEventListener('click', async () => {
+      if (!confirm('确定要删除本地 Qwen ASR 1.7B 离线模型吗？\n将释放约 3.5GB 磁盘空间。后续使用时可随时重新下载。')) {
+        return;
+      }
+      btnDelQwen.disabled = true;
+      btnDelQwen.textContent = '⏳ 正在删除...';
+      try {
+        const res = await api('/api/voice/delete_model', { model: 'qwen' });
+        toast(res.message || '已成功删除 Qwen 1.7B 离线模型，释放磁盘空间');
+        if (typeof st !== 'undefined' && st && st.voice_status) {
+          st.voice_status.qwen_installed = false;
+          st.voice_status.download_state = { status: 'idle', message: '已删除' };
+        }
+        if (typeof refresh === 'function') refresh();
+        else {
+          updateQwenDownloadBanner(st);
+          updateVoiceDeviceAdvice();
+        }
+      } catch (err) {
+        toast('删除失败: ' + (err.message || err), true);
+      } finally {
+        btnDelQwen.disabled = false;
+        btnDelQwen.textContent = '🗑️ 删除模型文件';
+      }
+    });
+  }
+
+  const voiceEngineSel = $('#cfg-voice-engine');
+  if (voiceEngineSel) {
+    voiceEngineSel.addEventListener('change', () => {
+      syncVoiceEngineCards(voiceEngineSel.value);
+      updateVoiceDeviceAdvice();
+      if (typeof st !== 'undefined') updateQwenDownloadBanner(st);
+    });
+  }
+
+  const voiceDeviceSel = $('#cfg-voice-device');
+  if (voiceDeviceSel) {
+    voiceDeviceSel.addEventListener('change', () => {
+      updateVoiceDeviceAdvice();
     });
   }
 
@@ -6077,7 +7073,7 @@ function initTwoLevelConfig() {
   }
 
   // 10. 表单变动自动保存
-  $$('#cfg-level-2 input[type="text"], #cfg-level-2 input[type="password"]').forEach(el => {
+  $$('#cfg-level-2 input[type="text"], #cfg-level-2 input[type="password"], #cfg-level-2 textarea').forEach(el => {
     el.addEventListener('input', () => scheduleConfigAutosave(false));
     el.addEventListener('blur', () => { if (_configDirty) scheduleConfigAutosave(true); });
   });
@@ -6214,7 +7210,28 @@ function renderConfig(cfg) {
     let engVal = vConf.engine || 'sensevoice_offline';
     if (engVal === 'paraformer_streaming_2pass' || engVal === 'qwen_offline' || engVal === 'sherpa_2pass') engVal = 'qwen_2pass';
     $('#cfg-voice-engine').value = engVal;
+    if (typeof syncVoiceEngineCards === 'function') syncVoiceEngineCards(engVal);
   }
+  const devSel = $('#cfg-voice-device');
+  if (devSel) {
+    const devs = (vConf.available_devices && vConf.available_devices.length) ? [...vConf.available_devices] :
+      ((st && st.voice_status && st.voice_status.available_devices && st.voice_status.available_devices.length) ? [...st.voice_status.available_devices] : [
+        { id: 'auto', name: '自动调度 (Auto · 优先 GPU 加速)' },
+        { id: 'cpu', name: '纯 CPU 模式' }
+      ]);
+    const curDev = (vConf.device || 'auto').toLowerCase();
+    if (curDev && !devs.some(d => (d.id || '').toLowerCase() === curDev)) {
+      const fallbackLabel = curDev.startsWith('cuda') ? `GPU (${curDev.toUpperCase()})` : curDev.toUpperCase();
+      devs.push({ id: curDev, name: fallbackLabel });
+    }
+    let devHtml = '';
+    for (const d of devs) {
+      devHtml += `<option value="${escHtml(d.id)}"${curDev === d.id.toLowerCase() ? ' selected' : ''}>${escHtml(d.name)}</option>`;
+    }
+    devSel.innerHTML = devHtml;
+  }
+  if (typeof updateQwenDownloadBanner === 'function') updateQwenDownloadBanner(st);
+  if (typeof updateVoiceDeviceAdvice === 'function') updateVoiceDeviceAdvice();
 
   // Update Overview Cards
   updateOverviewCards(cfg, st);
@@ -6232,6 +7249,36 @@ async function loadConfig() {
   } catch (e) { toast('读取配置失败: ' + e, true); }
 }
 function collectConfig() {
+  const customProviders = {};
+  if (_cachedConfig && _cachedConfig.custom_providers) {
+    for (const [id, cp] of Object.entries(_cachedConfig.custom_providers)) {
+      if (cp) customProviders[id] = { ...cp };
+    }
+  }
+  if (_activeConfigSubpage && _activeConfigSubpage.startsWith('custom:')) {
+    const curId = _activeConfigSubpage.slice('custom:'.length);
+    const nameVal = ($('#cfg-custom-name') ? $('#cfg-custom-name').value : '').trim();
+    const protoVal = ($('#cfg-custom-protocol') ? $('#cfg-custom-protocol').value : 'openai').trim();
+    const baseVal = ($('#cfg-custom-base') ? $('#cfg-custom-base').value : '').trim();
+    const proxyVal = ($('#cfg-custom-proxy') ? $('#cfg-custom-proxy').value : '').trim();
+    const keyVal = ($('#cfg-custom-key') ? $('#cfg-custom-key').value : '');
+    const modelsRaw = ($('#cfg-custom-models') ? $('#cfg-custom-models').value : '');
+    const modelsList = modelsRaw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+
+    customProviders[curId] = {
+      ...(customProviders[curId] || {}),
+      id: curId,
+      name: nameVal || curId,
+      protocol: protoVal,
+      base: baseVal,
+      proxy_url: proxyVal,
+      models: modelsList
+    };
+    if (keyVal && keyVal !== '••••••••') {
+      customProviders[curId].key = keyVal;
+    }
+  }
+
   const payload = {
     upstreams: {
       deepseek: {
@@ -6248,6 +7295,7 @@ function collectConfig() {
         key: $('#cfg-ag-key') ? $('#cfg-ag-key').value : ''
       }
     },
+    custom_providers: customProviders,
     tools: {
       codex: {
         outbound_proxy: ($('#cfg-codex-outbound-proxy') ? $('#cfg-codex-outbound-proxy').value : '').trim()
@@ -6259,7 +7307,8 @@ function collectConfig() {
         auto_start: !!($('#cfg-voice-autostart') && $('#cfg-voice-autostart').checked),
         restore_clipboard: !$('#cfg-voice-restore-clipboard') || $('#cfg-voice-restore-clipboard').checked,
         hotkey: ($('#cfg-voice-hotkey') ? $('#cfg-voice-hotkey').value : 'mouse_x1').trim(),
-        engine: ($('#cfg-voice-engine') ? $('#cfg-voice-engine').value : 'sensevoice_offline').trim()
+        engine: ($('#cfg-voice-engine') ? $('#cfg-voice-engine').value : 'sensevoice_offline').trim(),
+        device: ($('#cfg-voice-device') ? $('#cfg-voice-device').value : 'auto').trim()
       }
     }
   };
@@ -6535,7 +7584,7 @@ function renderStatus() {
   renderUpstreamToggle('codex', run, true);
   renderUpstreamToggle('antigravity', grun, geminiOwned);
   renderUpstreamToggle('voice', vrun, voiceOwned);
-  if (typeof updateVoiceModalStatus === 'function') updateVoiceModalStatus();
+  if (typeof updateVoiceDeviceAdvice === 'function') updateVoiceDeviceAdvice();
 
   const rb = $('#bd-route'); rb.className = 'badge route-' + route;
   const rt = {
@@ -6980,252 +8029,6 @@ if (geminiRegion) geminiRegion.onclick = () => probeUpstream('antigravity');
 const codexRegion = $('#codex-status-region');
 if (codexRegion) codexRegion.onclick = () => probeUpstream('codex');
 
-// ── 语音实时听写测试面板与 AudioWorklet ──
-let _voiceWs = null;
-let _voiceAudioCtx = null;
-let _voiceMediaStream = null;
-let _voiceWorkletNode = null;
-let _isVoiceRecording = false;
-
-function openVoiceModal() {
-  const overlay = $('#voice-overlay');
-  if (!overlay) return;
-  overlay.style.display = 'flex';
-  const notice = $('#vm-secure-notice');
-  const isSecure = window.isSecureContext && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  if (notice) notice.style.display = isSecure ? 'none' : 'block';
-  updateVoiceModalStatus();
-}
-
-function closeVoiceModal() {
-  stopWebVoiceRecording();
-  const overlay = $('#voice-overlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
-function updateVoiceModalStatus() {
-  const stText = $('#vm-server-status');
-  const dot = $('#vm-dot');
-  const running = isUpstreamRunning('voice');
-  const vstat = (st && st.voice_status) || {};
-  const btn = $('#btn-vm-record');
-  if (stText) {
-    if (!running) {
-      stText.textContent = '服务未启动 (请先启动)';
-    } else if (vstat.status === 'loading_model') {
-      stText.textContent = 'ASR 模型加载中… (:8401 预载权重)';
-    } else if (vstat.ready) {
-      stText.textContent = '服务运行中 (:8401 就绪)';
-    } else {
-      stText.textContent = '服务初始化中…';
-    }
-  }
-  if (dot) {
-    if (!running) dot.className = 'dot';
-    else if (vstat.status === 'loading_model') dot.className = 'dot warn';
-    else if (vstat.ready) dot.className = 'dot on';
-    else dot.className = 'dot warn';
-  }
-  if (btn) {
-    if (vstat.status === 'loading_model') {
-      btn.disabled = true;
-      btn.style.opacity = '0.5';
-      btn.style.cursor = 'not-allowed';
-    } else {
-      btn.disabled = false;
-      btn.style.opacity = '1';
-      btn.style.cursor = 'pointer';
-    }
-  }
-}
-
-async function startWebVoiceRecording() {
-  if (_isVoiceRecording) return;
-  const isSecure = window.isSecureContext && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  if (!isSecure) {
-    toast('麦克风受浏览器安全上下文限制，请使用 http://127.0.0.1 访问', true);
-    return;
-  }
-  if (!isUpstreamRunning('voice')) {
-    toast('语音伴侣服务未运行，请先在顶部启动语音服务', true);
-    return;
-  }
-  const vstat = (st && st.voice_status) || {};
-  if (vstat.status === 'loading_model') {
-    toast('ASR 语音模型正在后台加载中，请稍候…', true);
-    return;
-  }
-
-  const btn = $('#btn-vm-record');
-  const btnLabel = $('#btn-vm-record-label');
-  const pText = $('#vm-partial-text');
-  if (pText) pText.textContent = '正在连接语音流服务…';
-
-  try {
-    const wsHost = location.hostname || '127.0.0.1';
-    const wsUrl = 'ws://' + wsHost + ':8401/ws/voice';
-    _voiceWs = new WebSocket(wsUrl);
-    _voiceWs.binaryType = 'arraybuffer';
-
-    await new Promise((resolve, reject) => {
-      const tm = setTimeout(() => reject(new Error('WebSocket 连接超时')), 4000);
-      _voiceWs.onopen = () => { clearTimeout(tm); resolve(); };
-      _voiceWs.onerror = () => { clearTimeout(tm); reject(new Error('无法连接到 ' + wsUrl)); };
-    });
-
-    const sid = 'web_' + Date.now();
-    _voiceWs.send(JSON.stringify({ action: 'start', session_id: sid }));
-
-    _voiceWs.onmessage = e => {
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'error') {
-          toast(msg.message || '语音服务暂未就绪', true);
-          stopWebVoiceRecording();
-          return;
-        }
-        if (msg.type === 'partial') {
-          if (msg.confirmed_text) $('#vm-confirmed-text').textContent = msg.confirmed_text;
-          if (msg.partial_text) $('#vm-partial-text').textContent = msg.partial_text;
-        } else if (msg.type === 'final') {
-          $('#vm-confirmed-text').textContent = msg.text || '';
-          $('#vm-partial-text').textContent = '';
-          try { _voiceWs.close(); } catch (e) {}
-          _voiceWs = null;
-        }
-      } catch (err) {}
-    };
-
-    _voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
-    _voiceAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    const workletCode = `
-      class PcmResampler extends AudioWorkletProcessor {
-        constructor() {
-          super();
-          this.ratio = sampleRate / 16000;
-          this.buffer = [];
-        }
-        process(inputs) {
-          const input = inputs[0];
-          if (!input || !input[0]) return true;
-          const data = input[0];
-          for (let i = 0; i < data.length; i += this.ratio) {
-            const idx = Math.floor(i);
-            const s = Math.max(-1, Math.min(1, data[idx]));
-            this.buffer.push(Math.round(s < 0 ? s * 32768 : s * 32767));
-          }
-          if (this.buffer.length >= 320) {
-            const out = new Int16Array(this.buffer);
-            this.port.postMessage(out.buffer, [out.buffer]);
-            this.buffer = [];
-          }
-          return true;
-        }
-      }
-      registerProcessor('pcm-resampler', PcmResampler);
-    `;
-    const blob = new Blob([workletCode], { type: 'application/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
-    await _voiceAudioCtx.audioWorklet.addModule(blobUrl);
-    URL.revokeObjectURL(blobUrl);
-
-    const source = _voiceAudioCtx.createMediaStreamSource(_voiceMediaStream);
-    _voiceWorkletNode = new AudioWorkletNode(_voiceAudioCtx, 'pcm-resampler');
-
-    _voiceWorkletNode.port.onmessage = ev => {
-      if (_voiceWs && _voiceWs.readyState === WebSocket.OPEN) {
-        _voiceWs.send(ev.data);
-      }
-    };
-
-    source.connect(_voiceWorkletNode);
-
-    _isVoiceRecording = true;
-    if (btn) btn.className = 'upstream-btn stop';
-    if (btnLabel) btnLabel.textContent = '停止说话';
-    if (pText) pText.textContent = '正在倾听… 请说话';
-  } catch (err) {
-    toast('启动麦克风失败: ' + (err.message || err), true);
-    stopWebVoiceRecording();
-  }
-}
-
-function stopWebVoiceRecording() {
-  if (!_isVoiceRecording && !_voiceWs) return;
-  _isVoiceRecording = false;
-  const btn = $('#btn-vm-record');
-  const btnLabel = $('#btn-vm-record-label');
-  if (btn) btn.className = 'upstream-btn start';
-  if (btnLabel) btnLabel.textContent = '开始说话';
-
-  if (_voiceWs && _voiceWs.readyState === WebSocket.OPEN) {
-    _voiceWs.send(JSON.stringify({ action: 'stop' }));
-    // 5秒保底超时 (正常情况下由 final 消息触发关闭)
-    setTimeout(() => {
-      if (_voiceWs) {
-        try { _voiceWs.close(); } catch (e) {}
-        _voiceWs = null;
-      }
-    }, 5000);
-  } else {
-    _voiceWs = null;
-  }
-
-  if (_voiceWorkletNode) {
-    try { _voiceWorkletNode.disconnect(); } catch (e) {}
-    _voiceWorkletNode = null;
-  }
-  if (_voiceAudioCtx) {
-    try { _voiceAudioCtx.close(); } catch (e) {}
-    _voiceAudioCtx = null;
-  }
-  if (_voiceMediaStream) {
-    try { _voiceMediaStream.getTracks().forEach(t => t.stop()); } catch (e) {}
-    _voiceMediaStream = null;
-  }
-}
-
-const btnVm = $('#btn-voice-modal');
-if (btnVm) btnVm.onclick = openVoiceModal;
-const btnCloseVm = $('#btn-voice-close');
-if (btnCloseVm) btnCloseVm.onclick = closeVoiceModal;
-const btnToggleCapsule = $('#btn-vm-toggle-capsule');
-if (btnToggleCapsule) {
-  btnToggleCapsule.onclick = () => {
-    try {
-      const wsHost = location.hostname || '127.0.0.1';
-      const ws = new WebSocket('ws://' + wsHost + ':8401/ws/voice');
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ action: 'toggle_capsule' }));
-        setTimeout(() => { try { ws.close(); } catch(e){} }, 300);
-        toast('已向语音伴侣发送唤出悬浮胶囊指令');
-      };
-      ws.onerror = () => {
-        toast('语音伴侣服务未响应，请先在顶栏启动语音服务', true);
-      };
-    } catch(e) {
-      toast('调用失败: ' + e.message, true);
-    }
-  };
-}
-const btnRecVm = $('#btn-vm-record');
-if (btnRecVm) btnRecVm.onclick = () => _isVoiceRecording ? stopWebVoiceRecording() : startWebVoiceRecording();
-const btnCopyVm = $('#btn-vm-copy');
-if (btnCopyVm) btnCopyVm.onclick = () => {
-  const cf = $('#vm-confirmed-text');
-  const pt = $('#vm-partial-text');
-  const txt = (cf ? cf.textContent : '') + ' ' + (pt ? pt.textContent : '');
-  if (txt.trim()) {
-    navigator.clipboard.writeText(txt.trim()).then(() => toast('已复制到剪贴板')).catch(() => toast('复制失败', true));
-  }
-};
-const btnClearVm = $('#btn-vm-clear');
-if (btnClearVm) btnClearVm.onclick = () => {
-  const cf = $('#vm-confirmed-text'); if (cf) cf.textContent = '';
-  const pt = $('#vm-partial-text'); if (pt) pt.textContent = '点击下方按钮开始录音听写…';
-};
-
 // ── 流量与指标监控 ──
 async function loadTraffic(snapshot) {
   if (!snapshot) return refresh();
@@ -7393,6 +8196,14 @@ async function loadCalls(force, newLimit) {
 }
 
 // 2. 表格渲染与多维筛选
+function formatRouteReason(reason) {
+  const raw = typeof reason === 'string' ? reason : '';
+  const normalized = raw === 'hybrid:opus' ? 'hybrid:explore'
+    : raw === 'hybrid:agent' ? 'hybrid:plan'
+    : raw;
+  return normalized.replace('hybrid:', 'h:').replace('route:', 'r:');
+}
+
 function renderCallsTable(calls) {
   const body = $('#cl-body');
   if (!body) return;
@@ -7423,6 +8234,7 @@ function renderCallsTable(calls) {
                     (c.sent_model || '').toLowerCase().includes(kw) ||
                     (c.route || '').toLowerCase().includes(kw) ||
                     (c.route_reason || '').toLowerCase().includes(kw) ||
+                    formatRouteReason(c.route_reason).toLowerCase().includes(kw) ||
                     (c.agent_id || '').toLowerCase().includes(kw) ||
                     (c.session || '').toLowerCase().includes(kw) ||
                     (c.path || '').toLowerCase().includes(kw) ||
@@ -7462,7 +8274,7 @@ function renderCallsTable(calls) {
     '</tr></thead><tbody>';
 
   for (const c of filtered) {
-    const rel = (c.route_reason || '').replace('hybrid:', 'h:').replace('route:', 'r:');
+    const rel = formatRouteReason(c.route_reason);
     const cst = c.status || 0;
     const isErr = cst >= 400 || c.resp_error;
     const cs = cacheSummary(c);

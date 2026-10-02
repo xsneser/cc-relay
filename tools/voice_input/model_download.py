@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import os
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -169,6 +170,12 @@ def ensure_qwen_model(
     if config is None:
         config = VoiceConfig()
 
+    # 绕过系统代理对国内镜像站 (ModelScope / hf-mirror) 的 SSL 握手异常
+    no_proxy_entries = "modelscope.cn,www.modelscope.cn,hf-mirror.com,127.0.0.1,localhost"
+    cur_no_proxy = os.environ.get("NO_PROXY", "")
+    os.environ["NO_PROXY"] = f"{cur_no_proxy},{no_proxy_entries}" if cur_no_proxy else no_proxy_entries
+    os.environ["no_proxy"] = os.environ["NO_PROXY"]
+
     target_dir = config.qwen_model_dir
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -179,14 +186,15 @@ def ensure_qwen_model(
     print(f"[*] 准备下载 Qwen ASR 1.7B 模型 ({config.qwen_model_id}) 至: {target_dir}")
     print(f"[*] 推荐源: {source}")
 
-    # 1. 尝试使用 ModelScope (国内极速)
+    # 1. 尝试使用 ModelScope (国内极速通道)
     if source == "modelscope":
         try:
             from modelscope import snapshot_download
             print("[*] 正在通过 ModelScope 高速通道下载...")
             snapshot_download(config.qwen_model_id, local_dir=str(target_dir))
-            print(f"[+] Qwen ASR 1.7B 下载完成: {target_dir}")
-            return True
+            if config.is_qwen_installed():
+                print(f"[+] Qwen ASR 1.7B 下载完成: {target_dir}")
+                return True
         except ImportError:
             print("[!] 未安装 modelscope 库，尝试回退到 huggingface_hub / hf-mirror...")
         except Exception as e:
@@ -202,14 +210,50 @@ def ensure_qwen_model(
             local_dir=str(target_dir),
             endpoint=endpoint,
         )
-        print(f"[+] Qwen ASR 1.7B 下载完成: {target_dir}")
-        return True
+        if config.is_qwen_installed():
+            print(f"[+] Qwen ASR 1.7B 下载完成: {target_dir}")
+            return True
+        else:
+            print("[-] 下载未完成或文件不完整")
+            return False
     except ImportError:
         print("[-] 未安装 huggingface_hub 或 modelscope，请先运行: pip install modelscope 或 pip install huggingface_hub")
         return False
     except Exception as e:
         print(f"[-] Qwen ASR 1.7B 下载失败: {e}")
         return False
+
+
+def delete_qwen_model(config: Optional[VoiceConfig] = None) -> Tuple[bool, str]:
+    """删除本地 Qwen ASR 1.7B 离线模型文件并释放磁盘空间"""
+    if config is None:
+        config = VoiceConfig()
+
+    deleted_paths = []
+    failed_paths = []
+
+    candidates = [
+        config.qwen_model_dir,
+        config.models_dir / config.qwen_model_id,
+        Path(os.path.expanduser("~/.cache/modelscope/hub/models")) / config.qwen_model_id,
+        Path(os.path.expanduser("~/.cache/modelscope/hub")) / config.qwen_model_id,
+        Path(os.path.expanduser("~/.cache/huggingface/hub")) / f"models--{config.qwen_model_id.replace('/', '--')}",
+    ]
+
+    for p in candidates:
+        if p.exists() and p.is_dir():
+            try:
+                shutil.rmtree(p, ignore_errors=False)
+                deleted_paths.append(str(p))
+            except Exception as e:
+                failed_paths.append(f"{p} ({e})")
+
+    if failed_paths:
+        return False, f"部分路径删除失败: {', '.join(failed_paths)}"
+
+    if deleted_paths:
+        return True, f"已成功删除 Qwen 1.7B 模型，释放磁盘空间 (已删除: {len(deleted_paths)} 个目录)"
+    return True, "未检测到本地 Qwen 1.7B 模型文件 (无需删除)"
 
 
 def main():

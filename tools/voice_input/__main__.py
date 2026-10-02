@@ -40,6 +40,15 @@ def cmd_doctor():
     ]
     if sys.platform == "win32":
         deps.append(("win32gui", "pywin32 (Win32 焦点检测与安全注入)", True))
+        try:
+            from .tk_runtime import validate_tk_runtime, find_tcl_tk_dirs
+            tcl_dir, _ = find_tcl_tk_dirs()
+            if validate_tk_runtime():
+                deps.append(("tkinter", f"tkinter (桌面免激活悬浮胶囊界面，Tcl 资源: {tcl_dir.parent.name if tcl_dir else '系统'})", True))
+            else:
+                deps.append(("tkinter", "tkinter (桌面免激活悬浮胶囊界面，缺少 Tcl 脚本资源)", True))
+        except Exception:
+            deps.append(("tkinter", "tkinter (桌面免激活悬浮胶囊界面)", True))
 
     if cfg.engine in ("qwen_2pass", "qwen_asr", "qwen_offline", "paraformer_streaming_2pass"):
         deps.append(("torch", "PyTorch (Qwen ASR 1.7B 推理后端)", True))
@@ -129,7 +138,7 @@ def cmd_normalize(text: str):
     print(f"规范输出: {res}")
 
 
-def cmd_service(hotkey: str = None, engine: str = None, port: int = None, headless: bool = False):
+def cmd_service(hotkey: str = None, engine: str = None, device: str = None, port: int = None, headless: bool = False):
     """启动语音服务（包含后台 WebSocket RPC 服务、桌面悬浮胶囊与全局 PTT 对讲热键）"""
     if sys.platform == "win32":
         try:
@@ -139,11 +148,21 @@ def cmd_service(hotkey: str = None, engine: str = None, port: int = None, headle
         except Exception:
             pass
 
+        if not headless:
+            try:
+                from .tk_runtime import setup_tk_environment
+                setup_tk_environment()
+            except Exception:
+                pass
+
     cfg = VoiceConfig.from_relay_config()
     if hotkey:
         cfg.hotkey = hotkey
     if engine:
         cfg.engine = engine
+    if device:
+        cfg.device = device
+        cfg.qwen_device = device
     if port:
         cfg.port = port
 
@@ -163,6 +182,7 @@ def main():
     p_service = subparsers.add_parser("service", help="启动全功能语音伴侣服务（含 RPC 与全局对讲）")
     p_service.add_argument("--hotkey", help="触发热键 (mouse_x1, mouse_x2, f8, caps_lock)")
     p_service.add_argument("--engine", help="ASR 引擎模式 (qwen_2pass, qwen_offline, sherpa_2pass, sensevoice_offline)")
+    p_service.add_argument("--device", help="推理计算设备 (auto, cpu, cuda:0, cuda:1)")
     p_service.add_argument("--port", type=int, help="RPC 服务端口 (默认 8401)")
     p_service.add_argument("--headless", action="store_true", help="无头后台运行 (不弹出桌面悬浮胶囊)")
 
@@ -216,9 +236,10 @@ def main():
     elif args.command in ("service", "listen") or args.command is None:
         hotkey = getattr(args, "hotkey", None)
         engine = getattr(args, "engine", None)
+        device = getattr(args, "device", None)
         port = getattr(args, "port", None)
         headless = getattr(args, "headless", False)
-        cmd_service(hotkey=hotkey, engine=engine, port=port, headless=headless)
+        cmd_service(hotkey=hotkey, engine=engine, device=device, port=port, headless=headless)
 
 
 if __name__ == "__main__":

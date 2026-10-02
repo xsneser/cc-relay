@@ -35,7 +35,7 @@ PYTHON_EMBED_URLS = [
 
 
 def test_runtime_interpreter(py_exe: Path) -> bool:
-    """验证 runtime 中的 Python 解释器是否可用并成功载入语音核心依赖"""
+    """验证 runtime 中的 Python 解释器是否可用并成功载入语音核心依赖及桌面 GUI 支持"""
     if not py_exe.is_file():
         return False
     check_code = (
@@ -45,6 +45,12 @@ def test_runtime_interpreter(py_exe: Path) -> bool:
         "import pynput\n"
         "import websockets\n"
         "import sherpa_onnx\n"
+        "from tools.voice_input.tk_runtime import setup_tk_environment\n"
+        "setup_tk_environment()\n"
+        "import tkinter\n"
+        "root = tkinter.Tk()\n"
+        "root.withdraw()\n"
+        "root.destroy()\n"
         "print('RUNTIME_OK')\n"
     )
     try:
@@ -59,6 +65,22 @@ def test_runtime_interpreter(py_exe: Path) -> bool:
     except Exception as e:
         print(f"[-] 测试解释器异常: {e}")
         return False
+
+
+def repair_runtime_tcl() -> bool:
+    """若 runtime 目录缺少完整 Tcl/Tk 脚本资源，自动从宿主 Python 环境同步补齐"""
+    dst_tcl = RUNTIME_DIR / "tcl"
+    if (dst_tcl / "tcl8.6" / "init.tcl").is_file() and (dst_tcl / "tk8.6" / "tk.tcl").is_file():
+        return True
+
+    from .tk_runtime import find_tcl_tk_dirs
+    tcl_dir, tk_dir = find_tcl_tk_dirs()
+    if tcl_dir and tcl_dir.parent.is_dir():
+        src_tcl_root = tcl_dir.parent
+        print(f"[*] 检测到缺少 Tcl/Tk 脚本库，正在自动补全: {src_tcl_root} -> {dst_tcl} ...")
+        shutil.copytree(src_tcl_root, dst_tcl, dirs_exist_ok=True)
+        return (dst_tcl / "tcl8.6" / "init.tcl").is_file()
+    return False
 
 
 def ensure_embed_python() -> bool:
@@ -84,6 +106,13 @@ def ensure_embed_python() -> bool:
                 shutil.copy2(f, dst_dlls / f.name)
             for f in src_dlls.glob("*.dll"):
                 shutil.copy2(f, dst_dlls / f.name)
+
+        # 同步 Tcl/Tk 脚本资源目录 (用于桌面悬浮胶囊界面)
+        src_tcl = src_root / "tcl"
+        dst_tcl = RUNTIME_DIR / "tcl"
+        if src_tcl.is_dir() and not (dst_tcl / "tcl8.6" / "init.tcl").is_file():
+            print(f"[*] 正在复制 Tcl/Tk 脚本资源库 ({src_tcl}) -> {dst_tcl} ...")
+            shutil.copytree(src_tcl, dst_tcl, dirs_exist_ok=True)
 
         # 构建标准库 python310.zip
         target_zip = RUNTIME_DIR / "python310.zip"
@@ -208,6 +237,10 @@ def main():
     print("=" * 65)
 
     py_exe = RUNTIME_DIR / "python.exe"
+
+    # 若检测到 tcl 缺失，优先快速修补
+    if py_exe.is_file():
+        repair_runtime_tcl()
 
     # 若已经可用则直接跳过
     if test_runtime_interpreter(py_exe):

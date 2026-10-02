@@ -47,7 +47,7 @@ class VoiceConfig:
 
     # ASR 推理与线程
     num_threads: int = 2
-    device: str = "cpu"                # "cpu" | "cuda:0"
+    device: str = "auto"               # "auto" | "cpu" | "cuda:0" | "cuda:1"
     language: str = "auto"
     use_itn: bool = True
 
@@ -136,6 +136,9 @@ class VoiceConfig:
         valid_engines = ("qwen_2pass", "qwen_offline", "sherpa_2pass", "sensevoice_offline", "paraformer_streaming_2pass")
         if self.engine not in valid_engines:
             raise ValueError(f"不支持的引擎: {self.engine}")
+        valid_dev = str(self.device or "auto").strip().lower()
+        if not (valid_dev in ("auto", "cpu") or valid_dev.startswith("cuda")):
+            raise ValueError(f"不支持的设备配置: {self.device}")
         if not (1024 <= self.port <= 65535):
             raise ValueError(f"端口超出范围: {self.port}")
         if self.num_threads <= 0:
@@ -164,10 +167,15 @@ class VoiceConfig:
                 cfg.hotkey = v_conf["hotkey"].strip().lower()
             if "engine" in v_conf and isinstance(v_conf["engine"], str):
                 cfg.engine = v_conf["engine"].strip()
+            if "device" in v_conf and isinstance(v_conf["device"], str):
+                cfg.device = v_conf["device"].strip().lower()
+                cfg.qwen_device = cfg.device
             if "qwen_model_id" in v_conf and isinstance(v_conf["qwen_model_id"], str):
                 cfg.qwen_model_id = v_conf["qwen_model_id"].strip()
             if "qwen_device" in v_conf and isinstance(v_conf["qwen_device"], str):
                 cfg.qwen_device = v_conf["qwen_device"].strip()
+                if "device" not in v_conf:
+                    cfg.device = cfg.qwen_device
             if "qwen_torch_dtype" in v_conf and isinstance(v_conf["qwen_torch_dtype"], str):
                 cfg.qwen_torch_dtype = v_conf["qwen_torch_dtype"].strip()
             if "port" in v_conf and isinstance(v_conf["port"], int):

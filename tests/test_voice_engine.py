@@ -1,6 +1,7 @@
 """基于 Qwen ASR 1.7B 与 sherpa-onnx 的 2-Pass 流式引擎与音频增强单元测试"""
 
 import unittest
+from pathlib import Path
 from unittest import mock
 import numpy as np
 
@@ -59,6 +60,12 @@ class TestQwenOfflineEngine(unittest.TestCase):
             text = self.engine.finalize_session("sess_003")
             self.assertEqual(text, "测试识别文本")
 
+    def test_load_raises_when_model_missing(self):
+        with mock.patch("tools.voice_input.asr_engine._find_local_qwen_dir", return_value=None):
+            with self.assertRaises(FileNotFoundError) as ctx:
+                self.engine.load()
+            self.assertIn("未在本地检测到", str(ctx.exception))
+
 
 class TestQwen2PassEngine(unittest.TestCase):
     def setUp(self):
@@ -95,6 +102,23 @@ class TestQwen2PassEngine(unittest.TestCase):
         with mock.patch.object(self.engine, "_transcribe_samples", return_value="Qwen终审结果"):
             text = self.engine.finalize_session("sess_004")
             self.assertEqual(text, "Qwen终审结果")
+
+    def test_qwen_fast_path_finalize_skips_duplicate_inference(self):
+        ctx = self.engine.create_session("sess_fast")
+        # 模拟 10 秒音频 (160,000 samples = 320,000 bytes)
+        total_bytes = 320000
+        chunk = np.zeros(total_bytes // 2, dtype=np.int16).tobytes()
+        ctx.accumulated_pcm.extend(chunk)
+
+        # 模拟流式阶段已推演至 9.5 秒处 (相差 0.5 秒，即 16000 字节，在 1.0 秒容差内)
+        ctx.last_inferred_pcm_len = total_bytes - 16000
+        ctx.current_partial = "这是流式实时出字的文本"
+
+        # 校验 fast-path 直接返回 partial，跳过耗时的二次重复全音频推演
+        with mock.patch.object(self.engine, "_transcribe_samples") as mock_transcribe:
+            result = self.engine.finalize_session("sess_fast")
+            self.assertEqual(result, "这是流式实时出字的文本")
+            mock_transcribe.assert_not_called()
 
 
 class TestSherpa2PassEngine(unittest.TestCase):
@@ -170,6 +194,51 @@ class TestAudioRecorderEnhancements(unittest.TestCase):
             self.assertFalse(recorder._silence_timeout_triggered)
             self.assertFalse(recorder._max_duration_triggered)
             recorder.stop()
+
+
+class TestQwenModelDeletion(unittest.TestCase):
+    def test_delete_qwen_model_removes_directories(self):
+        import tempfile
+        from tools.voice_input.model_download import delete_qwen_model
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            cfg = VoiceConfig(models_dir=tmp_path / "models")
+            qwen_dir = cfg.qwen_model_dir
+            qwen_dir.mkdir(parents=True, exist_ok=True)
+            (qwen_dir / "config.json").write_text("{}", encoding="utf-8")
+            (qwen_dir / "model.safetensors").write_bytes(b"dummy")
+
+            self.assertTrue(cfg.is_qwen_installed())
+            ok, msg = delete_qwen_model(cfg)
+            self.assertTrue(ok)
+            self.assertFalse(qwen_dir.exists())
+            self.assertFalse(cfg.is_qwen_installed())
+
+
+class TestVoiceDeviceFormatting(unittest.TestCase):
+    def test_cpu_display_name_returns_string(self):
+        from cc_relay import _voice_cpu_display_name, _format_vram_gb
+        cpu_name = _voice_cpu_display_name()
+        self.assertIsInstance(cpu_name, str)
+        self.assertTrue(len(cpu_name) > 0)
+        self.assertIn("线程", cpu_name)
+
+    def test_format_vram_gb(self):
+        from cc_relay import _format_vram_gb
+        self.assertEqual(_format_vram_gb(6144), "6GB")
+        self.assertEqual(_format_vram_gb(8192), "8GB")
+        self.assertEqual(_format_vram_gb(2560), "2.5GB")
+        self.assertEqual(_format_vram_gb(512), "512MB")
+
+    def test_available_devices_includes_cpu_and_auto(self):
+        from cc_relay import get_voice_available_devices
+        devs = get_voice_available_devices()
+        dev_ids = [d["id"] for d in devs]
+        self.assertIn("auto", dev_ids)
+        self.assertIn("cpu", dev_ids)
+        cpu_opt = next(d for d in devs if d["id"] == "cpu")
+        self.assertIn("CPU:", cpu_opt["name"])
+        self.assertIn("线程", cpu_opt["name"])
 
 
 if __name__ == "__main__":

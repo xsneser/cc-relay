@@ -323,6 +323,12 @@ def _normalize_config_url(value, field, allow_empty=False, allow_direct=False):
         return "direct"
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError(f"{field} contains control characters")
+    # 智能协议头补全：若未带 http(s):// 则自动补全
+    if "://" not in value:
+        if value.startswith(("127.0.0.1", "localhost", "::1")):
+            value = "http://" + value
+        else:
+            value = "https://" + value
     try:
         parsed = urlsplit(value)
     except ValueError:
@@ -374,6 +380,8 @@ def _config_public_view(conf):
         "auto_start": bool(v_conf.get("auto_start", False)),
         "hotkey": str(v_conf.get("hotkey") or "mouse_x1"),
         "engine": str(v_conf.get("engine") or "sensevoice_offline"),
+        "device": str(v_conf.get("device") or "auto"),
+        "available_devices": get_voice_available_devices(),
         "port": int(v_conf.get("port") or 8401),
         "restore_clipboard": bool(v_conf.get("restore_clipboard", True)),
     }
@@ -465,6 +473,11 @@ def _apply_config_update(conf, data):
                 if engine not in ("qwen_2pass", "qwen_offline", "sherpa_2pass", "sensevoice_offline", "paraformer_streaming_2pass"):
                     raise ValueError(f"unsupported engine: {engine}")
                 v_conf["engine"] = engine
+            if "device" in v_patch:
+                dev = str(v_patch["device"]).strip().lower()
+                if not (dev in ("auto", "cpu") or dev.startswith("cuda")):
+                    raise ValueError(f"unsupported device: {dev}")
+                v_conf["device"] = dev
             if "port" in v_patch:
                 port = int(v_patch["port"])
                 if not (1024 <= port <= 65535):
@@ -500,7 +513,8 @@ def _apply_config_update(conf, data):
             elif "protocol" not in entry:
                 entry["protocol"] = "openai"
             if "base" in cp_patch:
-                entry["base"] = _normalize_config_url(cp_patch["base"], f"custom_providers.{cp_id}.base")
+                entry["base"] = _normalize_config_url(
+                    cp_patch["base"], f"custom_providers.{cp_id}.base", allow_empty=True)
             if "proxy_url" in cp_patch:
                 entry["proxy_url"] = _normalize_config_url(
                     cp_patch["proxy_url"], f"custom_providers.{cp_id}.proxy_url",
@@ -1131,11 +1145,197 @@ def _get_listening_pid_win32(port):
     return None
 
 
+_VOICE_DOWNLOAD_LOCK = threading.Lock()
+_VOICE_DOWNLOAD_STATE = {
+    "status": "idle",       # "idle" | "downloading" | "done" | "error"
+    "model": None,
+    "progress": 0,
+    "message": "",
+    "error": None,
+}
+
+
+def voice_download_status():
+    with _VOICE_DOWNLOAD_LOCK:
+        return dict(_VOICE_DOWNLOAD_STATE)
+
+
+def start_voice_model_download(conf=None, model="qwen"):
+    global _VOICE_DOWNLOAD_STATE
+    model = (model or "qwen").strip().lower()
+    with _VOICE_DOWNLOAD_LOCK:
+        if _VOICE_DOWNLOAD_STATE["status"] == "downloading":
+            return {"status": "already_downloading", "state": dict(_VOICE_DOWNLOAD_STATE)}
+        _VOICE_DOWNLOAD_STATE["status"] = "downloading"
+        _VOICE_DOWNLOAD_STATE["model"] = model
+        _VOICE_DOWNLOAD_STATE["progress"] = 0
+        _VOICE_DOWNLOAD_STATE["message"] = f"正在连接 ModelScope 高速通道下载 {model} 模型 (约 3.5GB)..."
+        _VOICE_DOWNLOAD_STATE["error"] = None
+
+    def _worker():
+        try:
+            from pathlib import Path
+            from tools.voice_input.runtime import find_voice_python
+            py_exe = find_voice_python(Path(BASE), engine="qwen_2pass")
+        except Exception:
+            py_exe = sys.executable
+
+        cmd = [py_exe, "-u", "-m", "tools.voice_input", "download", "--model", model, "--source", "modelscope"]
+        worker_env = dict(os.environ)
+        no_proxy_entries = "modelscope.cn,www.modelscope.cn,hf-mirror.com,127.0.0.1,localhost"
+        cur_np = worker_env.get("NO_PROXY", "")
+        worker_env["NO_PROXY"] = f"{cur_np},{no_proxy_entries}" if cur_np else no_proxy_entries
+        worker_env["no_proxy"] = worker_env["NO_PROXY"]
+
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=BASE,
+                env=worker_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            out_lines = []
+            while True:
+                line = proc.stdout.readline() if proc.stdout else ""
+                if not line and proc.poll() is not None:
+                    break
+                if line:
+                    stripped = line.strip()
+                    if stripped:
+                        out_lines.append(stripped)
+                        with _VOICE_DOWNLOAD_LOCK:
+                            _VOICE_DOWNLOAD_STATE["message"] = stripped[-100:]
+
+            ret = proc.wait()
+            with _VOICE_DOWNLOAD_LOCK:
+                if ret == 0:
+                    _VOICE_DOWNLOAD_STATE["status"] = "done"
+                    _VOICE_DOWNLOAD_STATE["message"] = f"{model} 模型下载完成！已就绪。"
+                else:
+                    _VOICE_DOWNLOAD_STATE["status"] = "error"
+                    err_msg = "\n".join(out_lines[-4:]) if out_lines else f"下载异常退出 (代码: {ret})"
+                    _VOICE_DOWNLOAD_STATE["error"] = err_msg
+                    _VOICE_DOWNLOAD_STATE["message"] = "模型下载失败，请重试。"
+        except Exception as ex:
+            with _VOICE_DOWNLOAD_LOCK:
+                _VOICE_DOWNLOAD_STATE["status"] = "error"
+                _VOICE_DOWNLOAD_STATE["error"] = str(ex)
+                _VOICE_DOWNLOAD_STATE["message"] = f"下载触发异常: {ex}"
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    return {"status": "started", "state": voice_download_status()}
+
+
+_VOICE_DEVICES_CACHE = {"devices": None, "time": 0.0}
+
+
+def _voice_cpu_display_name() -> str:
+    """获取人类可读的 CPU 品牌型号与线程数 (Windows 注册表快速查询，零黑框子进程)"""
+    cores = os.cpu_count() or 4
+    if sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as key:
+                raw_name, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+                cpu_name = " ".join(str(raw_name).strip().split())
+                if cpu_name:
+                    return f"{cpu_name} ({cores} 线程)"
+        except Exception:
+            pass
+    import platform
+    proc = platform.processor() or "多核处理器"
+    return f"{proc} ({cores} 线程)"
+
+
+def _format_vram_gb(mb_val) -> str:
+    """将显存 MB 转换为人类可读的 GB 显示"""
+    try:
+        mb = float(mb_val)
+        if mb >= 1024:
+            gb = mb / 1024
+            return f"{int(gb)}GB" if mb % 1024 == 0 or abs(gb - round(gb)) < 0.05 else f"{gb:.1f}GB"
+        return f"{int(mb)}MB"
+    except Exception:
+        return f"{mb_val}MB"
+
+
+def get_voice_available_devices():
+    """探测当前系统可用于语音识别的硬件设备列表 (CUDA GPU 与 CPU，带缓存避免反复唤起子进程)"""
+    global _VOICE_DEVICES_CACHE
+    now = time.monotonic()
+    if _VOICE_DEVICES_CACHE["devices"] is not None and (now - _VOICE_DEVICES_CACHE["time"] < 300.0):
+        return list(_VOICE_DEVICES_CACHE["devices"])
+
+    cpu_label = _voice_cpu_display_name()
+    devices = [
+        {"id": "auto", "name": "自动调度 (Auto · 优先 GPU 加速)", "display_name": "自动调度 (GPU 优先)"},
+        {"id": "cpu", "name": f"CPU: {cpu_label} · 纯 CPU 模式", "display_name": f"CPU: {cpu_label}"},
+    ]
+    # 1. 优先尝试通过 torch.cuda 探测可用 GPU (纯内存调用，零弹窗)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                name = torch.cuda.get_device_name(i)
+                total_mb = round(torch.cuda.get_device_properties(i).total_memory / (1024 * 1024))
+                vram_str = _format_vram_gb(total_mb)
+                devices.append({
+                    "id": f"cuda:{i}",
+                    "name": f"GPU {i}: {name} ({vram_str})",
+                    "display_name": f"{name} ({vram_str})",
+                    "ready": True
+                })
+            _VOICE_DEVICES_CACHE = {"devices": devices, "time": now}
+            return devices
+    except Exception:
+        pass
+
+    # 2. 兜底通过 nvidia-smi 探测物理显卡 (必须加 CREATE_NO_WINDOW，绝不弹黑框)
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=2,
+            creationflags=flags
+        )
+        if res.returncode == 0:
+            for line in res.stdout.strip().splitlines():
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) >= 3:
+                    idx, name, mem = parts[0], parts[1], parts[2]
+                    vram_str = _format_vram_gb(mem)
+                    devices.append({
+                        "id": f"cuda:{idx}",
+                        "name": f"GPU {idx}: {name} ({vram_str})",
+                        "display_name": f"{name} ({vram_str})",
+                        "ready": False
+                    })
+    except Exception:
+        pass
+
+    _VOICE_DEVICES_CACHE = {"devices": devices, "time": now}
+    return devices
+
+
 def voice_status_dict(conf=None):
     """返回详细的语音状态机信息"""
     conf = conf or load_conf()
     v_conf = conf.get("tools", {}).get("voice", {})
     port = v_conf.get("port", 8401)
+    devices = get_voice_available_devices()
+    cuda_devices = [d for d in devices if str(d.get("id", "")).startswith("cuda")]
+    has_nvidia_gpu = len(cuda_devices) > 0
+    cuda_ready = any(d.get("ready") is True for d in cuda_devices)
+    if has_nvidia_gpu:
+        chip_adaptation = "ready" if cuda_ready else "unadapted"
+    else:
+        chip_adaptation = "cpu_only"
+
     status_info = {
         "status": "stopped",
         "ready": False,
@@ -1143,8 +1343,23 @@ def voice_status_dict(conf=None):
         "owned": False,
         "hotkey": v_conf.get("hotkey", "mouse_x1"),
         "engine": v_conf.get("engine", "sensevoice_offline"),
+        "device": v_conf.get("device", "auto"),
+        "available_devices": devices,
+        "has_nvidia_gpu": has_nvidia_gpu,
+        "cuda_ready": cuda_ready,
+        "chip_adaptation": chip_adaptation,
         "last_error": _VOICE_LAST_ERROR,
     }
+
+    try:
+        from tools.voice_input.config import VoiceConfig
+        v_cfg = VoiceConfig.from_relay_config()
+        status_info["qwen_installed"] = v_cfg.is_qwen_installed()
+        status_info["sensevoice_installed"] = v_cfg.is_sensevoice_installed()
+    except Exception:
+        status_info["qwen_installed"] = False
+        status_info["sensevoice_installed"] = False
+    status_info["download_state"] = voice_download_status()
 
     # 1. 优先通过探针查询已在运行的服务
     probe_data = _probe_voice_service(conf, timeout=1.5)
@@ -1197,12 +1412,13 @@ def voice_start(conf=None):
     v_conf = conf.get("tools", {}).get("voice", {})
     hotkey = v_conf.get("hotkey", "mouse_x1")
     engine = v_conf.get("engine", "sensevoice_offline")
+    device = v_conf.get("device", "auto")
     port = str(v_conf.get("port", 8401))
 
     try:
         from tools.voice_input.runtime import find_voice_python
         from pathlib import Path
-        py_exe = find_voice_python(Path(BASE), engine=engine)
+        py_exe = find_voice_python(Path(BASE), engine=engine, require_desktop=True)
     except Exception:
         py_exe = sys.executable
 
@@ -1213,7 +1429,16 @@ def voice_start(conf=None):
     except Exception:
         pass
 
-    cmd = [py_exe, "-u", "-m", "tools.voice_input", "service", "--hotkey", hotkey, "--engine", engine, "--port", port]
+    # 自愈 Tcl/Tk 环境变量并传递至子进程
+    child_env = dict(os.environ)
+    try:
+        from tools.voice_input.tk_runtime import setup_tk_environment
+        env_vars = setup_tk_environment(py_exe)
+        child_env.update(env_vars)
+    except Exception:
+        pass
+
+    cmd = [py_exe, "-u", "-m", "tools.voice_input", "service", "--hotkey", hotkey, "--engine", engine, "--device", device, "--port", port]
     v_out = os.path.join(BASE, "voice.out.log")
     v_err = os.path.join(BASE, "voice.err.log")
     err_offset = os.path.getsize(v_err) if os.path.isfile(v_err) else 0
@@ -1228,6 +1453,7 @@ def voice_start(conf=None):
         proc = subprocess.Popen(
             cmd,
             cwd=BASE,
+            env=child_env,
             stdout=out_f,
             stderr=err_f,
             creationflags=creationflags,
@@ -1776,10 +2002,11 @@ def _strip_flags(router):
 
 
 def _tier_from_reason(reason):
-    """reason -> 档位名; 非档位(hybrid:gpt-direct / route:*)返回 None"""
+    """reason -> 内部档位键; 兼容新旧名称, 非档位(hybrid:gpt-direct / route:*)返回 None"""
     if not isinstance(reason, str) or not reason.startswith("hybrid:"):
         return None
     t = reason[len("hybrid:"):]
+    t = {"explore": "opus", "plan": "agent"}.get(t, t)
     return t if t in TIER_KEYS else None
 
 
@@ -1948,8 +2175,8 @@ class PromptManager:
                     try:
                         r = json.loads(line)
                         reason = r.get("route_reason") or ""
-                        tier = reason.replace("hybrid:", "") if reason.startswith("hybrid:") else None
-                        if tier not in TIER_KEYS:
+                        tier = _tier_from_reason(reason)
+                        if tier is None:
                             continue
                         b = r.get("body") or {}
                         sys = b.get("system")
@@ -2099,7 +2326,7 @@ def pick_route(conf, headers, body_json):
     # 显式指定某档位的占位符，直接映射到对应档位
     if m_lower in ("opus_model", "relay-opus"):
         m = (tier.get("opus") or hv).strip()
-        return _up(m), m, "hybrid:opus"
+        return _up(m), m, "hybrid:explore"
     if m_lower in ("sonnet_model", "relay-sonnet"):
         m = (tier.get("sonnet") or dd).strip()
         return _up(m), m, "hybrid:sonnet"
@@ -2122,10 +2349,10 @@ def pick_route(conf, headers, body_json):
     role = _classify_request_role(headers, body_json, requested_model=raw_base)
     if role == "agent":
         m = (tier.get("agent") or dd).strip()
-        return _up(m), m, "hybrid:agent"
+        return _up(m), m, "hybrid:plan"
     elif role == "opus":
         m = (tier.get("opus") or hv).strip()
-        return _up(m), m, "hybrid:opus"
+        return _up(m), m, "hybrid:explore"
     elif role == "sonnet":
         m = (tier.get("sonnet") or dd).strip()
         return _up(m), m, "hybrid:sonnet"
@@ -3132,6 +3359,8 @@ class Relay(BaseHTTPRequestHandler):
                                 self.wfile.flush()
                             except Exception:
                                 break
+                        if line.strip() == b"data: [DONE]":
+                            break
                     for chunk_bytes in stream_adapter.finish():
                         rbody_chunks.append(chunk_bytes)
                         try:
@@ -3139,6 +3368,7 @@ class Relay(BaseHTTPRequestHandler):
                             self.wfile.flush()
                         except Exception:
                             pass
+                    self.close_connection = True
                     rbody = b"".join(rbody_chunks)
                 else:
                     raw_resp = resp.read()
@@ -3427,6 +3657,8 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json(antigravity_updater.get_antigravity_updater(load_conf()).status())
             except Exception as e:
                 self._json({"error": str(e)}, 500)
+        elif self.path.split("?")[0] == "/api/voice/download_status":
+            self._json(voice_download_status())
         elif self.path.startswith("/api/config"):
             try:
                 self._json(_config_public_view(load_conf()))
@@ -3635,6 +3867,27 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json({"result": voice_start(conf), "status": voice_status_dict(conf)})
             elif name == "voice" and act == "stop":
                 self._json({"result": voice_stop(conf), "status": voice_status_dict(conf)})
+            elif name == "voice" and act == "download_model":
+                self._json(start_voice_model_download(conf, model=str(data.get("model") or "qwen").strip().lower()))
+            elif name == "voice" and act == "delete_model":
+                if voice_up(conf):
+                    v_conf = conf.get("tools", {}).get("voice", {})
+                    active_eng = (v_conf.get("engine") or "sensevoice_offline").lower()
+                    if "qwen" in active_eng:
+                        self._json({"ok": False, "error": "语音伴侣正在运行 Qwen 模型，请先停止服务再执行删除"}, 409)
+                        return
+                try:
+                    from tools.voice_input.model_download import delete_qwen_model
+                    ok, msg = delete_qwen_model()
+                    with _VOICE_DOWNLOAD_LOCK:
+                        _VOICE_DOWNLOAD_STATE["status"] = "idle"
+                        _VOICE_DOWNLOAD_STATE["progress"] = 0
+                        _VOICE_DOWNLOAD_STATE["message"] = "模型已被删除"
+                        _VOICE_DOWNLOAD_STATE["error"] = None
+                    self._json({"ok": ok, "status": "deleted", "message": msg})
+                except Exception as ex:
+                    self._json({"ok": False, "error": str(ex)}, 500)
+                return
             else:
                 self._json({"error": "unsupported upstream action"}, 400)
             return
@@ -3843,6 +4096,35 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "tier": tier})
             else:
                 self._json({"error": "invalid tier"}, 400)
+        elif p == "/api/voice/download_model":
+            if not self._local_ui_allowed(write=True, error_message="Voice download requires local relay UI"):
+                return
+            conf = load_conf()
+            model_target = str(data.get("model") or "qwen").strip().lower()
+            self._json(start_voice_model_download(conf, model=model_target))
+            return
+        elif p == "/api/voice/delete_model":
+            if not self._local_ui_allowed(write=True, error_message="Voice model deletion requires local relay UI"):
+                return
+            conf = load_conf()
+            if voice_up(conf):
+                v_conf = conf.get("tools", {}).get("voice", {})
+                active_eng = (v_conf.get("engine") or "sensevoice_offline").lower()
+                if "qwen" in active_eng:
+                    self._json({"ok": False, "error": "语音伴侣正在运行 Qwen 模型，请先在控制台停止语音伴侣服务再执行删除"}, 409)
+                    return
+            try:
+                from tools.voice_input.model_download import delete_qwen_model
+                ok, msg = delete_qwen_model()
+                with _VOICE_DOWNLOAD_LOCK:
+                    _VOICE_DOWNLOAD_STATE["status"] = "idle"
+                    _VOICE_DOWNLOAD_STATE["progress"] = 0
+                    _VOICE_DOWNLOAD_STATE["message"] = "模型已被删除"
+                    _VOICE_DOWNLOAD_STATE["error"] = None
+                self._json({"ok": ok, "status": "deleted", "message": msg})
+            except Exception as ex:
+                self._json({"ok": False, "error": str(ex)}, 500)
+            return
         elif p == "/api/shutdown":
             self._json({"ok": True, "message": "cc-relay shutting down..."})
             def _kill():

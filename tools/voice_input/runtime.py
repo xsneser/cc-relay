@@ -32,6 +32,17 @@ def _probe_interpreter(py_path: str) -> bool:
         return False
 
 
+def _probe_desktop_capability(py_path: str) -> bool:
+    """验证目标解释器是否具备桌面悬浮窗图形界面 (Tkinter) 初始化能力"""
+    if not py_path or sys.platform != "win32":
+        return True
+    try:
+        from .tk_runtime import validate_tk_runtime
+        return validate_tk_runtime(py_path)
+    except Exception:
+        return False
+
+
 def _score_interpreter(py_path: str) -> int:
     """评估候选解释器的语音核心依赖就绪度（得分越高越完备，优先选择可用依赖最多的环境）"""
     if not py_path:
@@ -62,7 +73,7 @@ def _check_module_in_interpreter(py_path: str, module_name: str) -> bool:
         return False
 
 
-def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = None) -> str:
+def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = None, require_desktop: bool = False) -> str:
     """按依赖完备度与目标引擎诉求智能寻找最匹配能够运行该 ASR 引擎的 Python 解释器路径"""
     if repo_root is None:
         repo_root = get_repo_root()
@@ -122,13 +133,22 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
             seen.add(c)
             unique_candidates.append(c)
 
-    # 若指定了目标引擎必需的核心模块，优先选出满足该模块且基础探针正常的解释器
+    # 优先匹配：满足目标引擎核心模块 + 桌面 GUI 能力（若需要）
     if target_mod:
+        if require_desktop:
+            for cand in unique_candidates:
+                if _probe_interpreter(cand) and _check_module_in_interpreter(cand, target_mod) and _probe_desktop_capability(cand):
+                    return cand
         for cand in unique_candidates:
             if _probe_interpreter(cand) and _check_module_in_interpreter(cand, target_mod):
                 return cand
 
     # 其次按优先级探针测试候选者
+    if require_desktop:
+        for cand in unique_candidates:
+            if _probe_interpreter(cand) and _probe_desktop_capability(cand):
+                return cand
+
     for cand in unique_candidates:
         if _probe_interpreter(cand):
             return cand
@@ -140,7 +160,7 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
 
 
 def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, bool]:
-    """探测指定解释器中各项核心语音依赖的就绪状态 (毫秒级 find_spec 探测)"""
+    """探测指定解释器中各项核心语音依赖的就绪状态 (毫秒级 find_spec 探测与 Tkinter 运行验证)"""
     py_exe = python_exe or find_voice_python()
     modules = [
         "sherpa_onnx",
@@ -162,6 +182,11 @@ def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, b
         "mods = ['sherpa_onnx', 'transformers', 'torch', 'torchaudio', 'modelscope', 'webrtcvad', 'websockets', "
         "'sounddevice', 'numpy', 'pynput', 'win32gui', 'tkinter']\n"
         "res = {m: importlib.util.find_spec(m) is not None for m in mods}\n"
+        "try:\n"
+        "    from tools.voice_input.tk_runtime import validate_tk_runtime\n"
+        "    res['tkinter'] = validate_tk_runtime()\n"
+        "except Exception:\n"
+        "    pass\n"
         "print('__JSON_START__' + json.dumps(res))\n"
     )
 

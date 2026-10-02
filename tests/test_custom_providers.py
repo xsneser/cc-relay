@@ -366,6 +366,253 @@ class TestCustomProvidersRelayIntegration(unittest.TestCase):
         saved2 = saved_configs[-1]
         self.assertNotIn("old_p", saved2.get("custom_providers") or {})
 
+    def test_probe_custom_provider_openai(self):
+        conf = {
+            "custom_providers": {
+                "my_sf": {
+                    "base": "https://api.siliconflow.cn/v1",
+                    "protocol": "openai",
+                    "key": "sk-sf-test"
+                }
+            }
+        }
+        mock_resp = mock.MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "data": [{"id": "deepseek-ai/DeepSeek-V3"}, {"id": "Qwen/Qwen2.5-Coder-32B"}]
+        }).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = None
+
+        with mock.patch("urllib.request.OpenerDirector.open", return_value=mock_resp):
+            res = cc_relay.probe_upstream(conf, "my_sf")
+        self.assertTrue(res["available"])
+        self.assertEqual(res["protocol"], "openai")
+        self.assertIn("deepseek-ai/DeepSeek-V3", res["models"])
+        self.assertIn("Qwen/Qwen2.5-Coder-32B", res["models"])
+
+
+class TestCustomProvidersUIAndE2E(unittest.TestCase):
+
+    def test_ui_contains_custom_provider_elements(self):
+        ui_path = os.path.join(BASE_DIR, "ui.html")
+        with open(ui_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # 检查 Level 1 元素
+        self.assertIn('id="cfg-custom-cards-container"', html)
+        self.assertIn('id="card-add-custom-provider"', html)
+
+        # 检查 Level 2 详情面板元素
+        self.assertIn('id="cfg-panel-custom"', html)
+        self.assertIn('id="cfg-custom-panel-title"', html)
+        self.assertIn('id="cfg-custom-name"', html)
+        self.assertIn('id="cfg-custom-id"', html)
+        self.assertIn('id="cfg-custom-protocol"', html)
+        self.assertIn('id="cfg-custom-base"', html)
+        self.assertIn('id="cfg-custom-proxy"', html)
+        self.assertIn('id="cfg-custom-key"', html)
+        self.assertIn('id="btn-reveal-custom-key"', html)
+        self.assertIn('id="cfg-custom-models"', html)
+        self.assertIn('id="btn-probe-custom"', html)
+        self.assertIn('id="probe-res-custom"', html)
+        self.assertIn('id="btn-save-new-custom"', html)
+        self.assertIn('id="btn-delete-custom-provider"', html)
+
+        # 检查 buildSel 中自定义分组逻辑
+        self.assertIn('customGroups', html)
+        self.assertIn('custom_providers', html)
+
+    def test_e2e_openai_streaming_request(self):
+        import http.server
+        import urllib.request
+        import threading
+
+        captured_requests = []
+
+        # 1. 启动模拟的 OpenAI 兼容上游服务
+        class MockOpenAIServer(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                req_body = json.loads(self.rfile.read(length).decode("utf-8"))
+                captured_requests.append({
+                    "path": self.path,
+                    "auth": self.headers.get("Authorization"),
+                    "body": req_body
+                })
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                chunks = [
+                    'data: {"id": "c1", "choices": [{"delta": {"content": "Hello"}, "finish_reason": null}]}\n\n',
+                    'data: {"id": "c2", "choices": [{"delta": {"content": " from SiliconFlow!"}, "finish_reason": null}]}\n\n',
+                    'data: {"id": "c3", "choices": [{"delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}\n\n',
+                    'data: [DONE]\n\n'
+                ]
+                for c in chunks:
+                    self.wfile.write(c.encode("utf-8"))
+                    self.wfile.flush()
+                self.close_connection = True
+
+        upstream_srv = http.server.HTTPServer(("127.0.0.1", 0), MockOpenAIServer)
+        up_port = upstream_srv.server_port
+        up_thread = threading.Thread(target=upstream_srv.serve_forever, daemon=True)
+        up_thread.start()
+
+        # 2. 启动 cc_relay 实例
+        test_conf = {
+            "fake_api_key": "sk-relay-local-0000",
+            "custom_providers": {
+                "mock_sf": {
+                    "name": "Mock SF",
+                    "base": f"http://127.0.0.1:{up_port}/v1",
+                    "protocol": "openai",
+                    "key": "sk-sf-test-key",
+                    "models": ["deepseek-ai/DeepSeek-V3"]
+                }
+            },
+            "router": {
+                "route": "mock_sf"
+            }
+        }
+
+        relay_srv = cc_relay.ExclusiveThreadingHTTPServer(("127.0.0.1", 0), cc_relay.Relay)
+        relay_port = relay_srv.server_port
+        relay_srv.reload_conf = lambda: test_conf
+        relay_thread = threading.Thread(target=relay_srv.serve_forever, daemon=True)
+        relay_thread.start()
+
+        try:
+            # 3. 发送 Anthropic /v1/messages 请求到 cc_relay
+            req_data = {
+                "model": "deepseek-ai/DeepSeek-V3",
+                "messages": [{"role": "user", "content": "Hi there"}],
+                "stream": True,
+                "max_tokens": 100
+            }
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{relay_port}/v1/messages",
+                data=json.dumps(req_data).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": "sk-relay-local-0000"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp_status = resp.status
+                resp_body = resp.read().decode("utf-8")
+
+            # 4. 验证
+            self.assertEqual(resp_status, 200)
+            # 验证下游收到了 Anthropic 规范的 SSE 事件
+            self.assertIn("event: message_start", resp_body)
+            self.assertIn("event: content_block_delta", resp_body)
+            self.assertIn('"text": "Hello"', resp_body)
+            self.assertIn('"text": " from SiliconFlow!"', resp_body)
+            self.assertIn("event: message_stop", resp_body)
+
+            # 验证上游收到了 OpenAI 规范的请求
+            self.assertEqual(len(captured_requests), 1)
+            up_req = captured_requests[0]
+            self.assertEqual(up_req["path"], "/v1/chat/completions")
+            self.assertEqual(up_req["auth"], "Bearer sk-sf-test-key")
+            self.assertEqual(up_req["body"]["model"], "deepseek-ai/DeepSeek-V3")
+            self.assertEqual(up_req["body"]["messages"][0]["content"], "Hi there")
+            self.assertTrue(up_req["body"]["stream"])
+        finally:
+            relay_srv.shutdown()
+            relay_srv.server_close()
+            upstream_srv.shutdown()
+            upstream_srv.server_close()
+
+    def test_e2e_openai_nonstreaming_request(self):
+        import http.server
+        import urllib.request
+        import threading
+
+        class MockOpenAIServer(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_POST(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                resp_payload = {
+                    "id": "chatcmpl-nonstream-123",
+                    "object": "chat.completion",
+                    "model": "deepseek-ai/DeepSeek-V3",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "Non-streaming answer"
+                            },
+                            "finish_reason": "stop"
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
+                }
+                body_bytes = json.dumps(resp_payload).encode("utf-8")
+                self.send_header("Content-Length", str(len(body_bytes)))
+                self.end_headers()
+                self.wfile.write(body_bytes)
+
+        upstream_srv = http.server.HTTPServer(("127.0.0.1", 0), MockOpenAIServer)
+        up_port = upstream_srv.server_port
+        up_thread = threading.Thread(target=upstream_srv.serve_forever, daemon=True)
+        up_thread.start()
+
+        test_conf = {
+            "fake_api_key": "sk-relay-local-0000",
+            "custom_providers": {
+                "mock_sf": {
+                    "name": "Mock SF",
+                    "base": f"http://127.0.0.1:{up_port}/v1",
+                    "protocol": "openai",
+                    "key": "sk-sf-test-key",
+                    "models": ["deepseek-ai/DeepSeek-V3"]
+                }
+            },
+            "router": {
+                "route": "mock_sf"
+            }
+        }
+
+        relay_srv = cc_relay.ExclusiveThreadingHTTPServer(("127.0.0.1", 0), cc_relay.Relay)
+        relay_port = relay_srv.server_port
+        relay_srv.reload_conf = lambda: test_conf
+        relay_thread = threading.Thread(target=relay_srv.serve_forever, daemon=True)
+        relay_thread.start()
+
+        try:
+            req_data = {
+                "model": "deepseek-ai/DeepSeek-V3",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "stream": False
+            }
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{relay_port}/v1/messages",
+                data=json.dumps(req_data).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": "sk-relay-local-0000"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp_status = resp.status
+                resp_json = json.loads(resp.read().decode("utf-8"))
+
+            self.assertEqual(resp_status, 200)
+            self.assertEqual(resp_json["type"], "message")
+            self.assertEqual(resp_json["role"], "assistant")
+            self.assertEqual(resp_json["content"][0]["text"], "Non-streaming answer")
+            self.assertEqual(resp_json["stop_reason"], "end_turn")
+            self.assertEqual(resp_json["usage"]["output_tokens"], 8)
+        finally:
+            relay_srv.shutdown()
+            relay_srv.server_close()
+            upstream_srv.shutdown()
+            upstream_srv.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()

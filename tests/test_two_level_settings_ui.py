@@ -96,7 +96,16 @@ class TestTwoLevelSettingsUI(unittest.TestCase):
         self.assertIn('id="btn-record-hotkey"', self.html)
         self.assertIn('id="btn-reset-hotkey"', self.html)
         self.assertIn('id="cfg-voice-engine"', self.html)
-        self.assertIn('id="btn-test-voice-mic"', self.html)
+        self.assertIn('id="cfg-voice-device"', self.html)
+        self.assertIn('id="card-engine-sensevoice"', self.html)
+        self.assertIn('id="card-engine-qwen"', self.html)
+        self.assertIn('id="voice-group-compute"', self.html)
+        self.assertIn('id="voice-device-advice"', self.html)
+        self.assertIn('id="voice-qwen-download-banner"', self.html)
+        self.assertIn('id="btn-download-qwen"', self.html)
+        self.assertIn('id="btn-delete-qwen"', self.html)
+        self.assertNotIn('id="btn-test-voice-mic"', self.html)
+        self.assertNotIn('id="voice-overlay"', self.html)
 
         # Relay
         self.assertIn('id="btn-copy-env-snippet"', self.html)

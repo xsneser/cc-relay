@@ -17,6 +17,7 @@ from cc_relay import (
     _is_subagent,
     _classify_request_role,
     pick_route,
+    _tier_from_reason,
 )
 
 
@@ -105,35 +106,35 @@ class TestRoutingAndSubagent(unittest.TestCase):
         self.assertFalse(_is_subagent({}, {}))
 
     def test_pick_route_relay_main_subagent(self):
-        # relay-main[1m] + 普通子代理请求头(无特定提示词) -> 默认命中 hybrid:agent 并选用 agent 档模型
+        # relay-main[1m] + 普通子代理请求头(无特定提示词) -> 默认命中 hybrid:plan 并选用 agent 档模型
         headers = {"x-claude-code-agent-id": "agent-001"}
         body = {"model": "relay-main[1m]", "system": "test"}
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:agent")
+        self.assertEqual(reason, "hybrid:plan")
         self.assertEqual(model, "gpt-5.6-sol")
         self.assertEqual(up, "codex")
 
     def test_pick_route_relay_main_explore_subagent(self):
-        # relay-main[1m] + Explore 代理 (即使带 agent-id，也精准分流到 hybrid:opus)
+        # relay-main[1m] + Explore 代理 (即使带 agent-id，也精准分流到 hybrid:explore)
         headers = {"x-claude-code-agent-id": "explore-agent-001"}
         body = {
             "model": "relay-main[1m]",
             "system": "You are a file search specialist for Claude Code. Thoroughly navigating and exploring codebases.",
         }
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:opus")
+        self.assertEqual(reason, "hybrid:explore")
         self.assertEqual(model, "gpt-5.6-sol")
         self.assertEqual(up, "codex")
 
     def test_pick_route_relay_main_plan_subagent(self):
-        # relay-main[1m] + Plan 代理 (带 agent-id，精准命中 hybrid:agent)
+        # relay-main[1m] + Plan 代理 (带 agent-id，精准命中 hybrid:plan)
         headers = {"x-claude-code-agent-id": "plan-agent-001"}
         body = {
             "model": "relay-main[1m]",
             "system": "You are a software architect and planning specialist for Claude Code.",
         }
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:agent")
+        self.assertEqual(reason, "hybrid:plan")
         self.assertEqual(model, "gpt-5.6-sol")
         self.assertEqual(up, "codex")
 
@@ -150,14 +151,14 @@ class TestRoutingAndSubagent(unittest.TestCase):
         self.assertEqual(up, "deepseek")
 
     def test_pick_route_relay_main_plan_system_prompt(self):
-        # relay-main[1m] + Plan 代理 system prompt (即使无 header) -> 命中 hybrid:agent
+        # relay-main[1m] + Plan 代理 system prompt (即使无 header) -> 命中 hybrid:plan
         headers = {}
         body = {
             "model": "relay-main[1m]",
             "system": "You are a software architect and planning specialist for Claude Code.",
         }
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:agent")
+        self.assertEqual(reason, "hybrid:plan")
         self.assertEqual(model, "gpt-5.6-sol")
 
     def test_pick_route_relay_main_normal_request(self):
@@ -177,15 +178,15 @@ class TestRoutingAndSubagent(unittest.TestCase):
         headers = {"X-Claude-Code-Agent-Id": "agent-002"}
         body = {"model": "本地中转[1m]"}
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:agent")
+        self.assertEqual(reason, "hybrid:plan")
         self.assertEqual(model, "gpt-5.6-sol")
 
     def test_pick_route_opus_and_other_tiers(self):
-        # 轨道一：CLI 占位符 OPUS_MODEL 始终走 opus 档
+        # 轨道一：CLI 占位符 OPUS_MODEL 始终走 opus 档 -> 映射为 hybrid:explore
         headers = {"x-claude-code-agent-id": "explore-agent-003"}
         body = {"model": "OPUS_MODEL[1m]"}
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:opus")
+        self.assertEqual(reason, "hybrid:explore")
         self.assertEqual(model, "gpt-5.6-sol")
 
         # 轨道二：官方模型名 claude-opus-5 在主循环时，依据 system 提示词正确命中 main 档 (而不是 opus 档！)
@@ -204,23 +205,23 @@ class TestRoutingAndSubagent(unittest.TestCase):
         self.assertEqual(reason, "hybrid:main")
         self.assertEqual(model, "deepseek-flash")
 
-        # 轨道二：官方模型名 claude-opus-5 下 Plan 代理依据提示词特征正确命中 agent 档
+        # 轨道二：官方模型名 claude-opus-5 下 Plan 代理依据提示词特征正确命中 agent 档 -> hybrid:plan
         headers = {"x-claude-code-agent-id": "plan-agent-004"}
         body = {
             "model": "claude-opus-5",
             "system": "You are a software architect and planning specialist for Claude Code.",
         }
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:agent")
+        self.assertEqual(reason, "hybrid:plan")
         self.assertEqual(model, "gpt-5.6-sol")
 
-        # 轨道二：官方模型名 claude-opus-5 下 Explore 代理依据提示词特征正确命中 opus 档
+        # 轨道二：官方模型名 claude-opus-5 下 Explore 代理依据提示词特征正确命中 opus 档 -> hybrid:explore
         body = {
             "model": "claude-opus-5",
             "system": "You are a file search specialist for Claude Code.",
         }
         up, model, reason = pick_route(self.conf, headers, body)
-        self.assertEqual(reason, "hybrid:opus")
+        self.assertEqual(reason, "hybrid:explore")
         self.assertEqual(model, "gpt-5.6-sol")
 
         # 轨道二：官方模型名下 安全审查等任务命中 sonnet 档
@@ -258,6 +259,48 @@ class TestRoutingAndSubagent(unittest.TestCase):
         up, model, reason = pick_route(self.conf, {}, body)
         self.assertEqual(reason, "hybrid:fast")
         self.assertEqual(model, "deepseek-flash")
+
+    def test_tier_from_reason_new_and_legacy_names(self):
+        cases = [
+            ("hybrid:explore", "opus"),
+            ("hybrid:opus", "opus"),
+            ("hybrid:plan", "agent"),
+            ("hybrid:agent", "agent"),
+            ("hybrid:main", "main"),
+            ("hybrid:sonnet", "sonnet"),
+            ("hybrid:fast", "fast"),
+            ("hybrid:gpt-direct", None),
+            ("hybrid:opus-direct", None),
+            ("route:agent", None),
+            ("hybrid:unknown", None),
+            ("h:explore", None),
+            ("", None),
+            (None, None),
+            (123, None),
+        ]
+        for reason, expected in cases:
+            with self.subTest(reason=reason):
+                self.assertEqual(_tier_from_reason(reason), expected)
+
+    def test_plan_keeps_using_existing_agent_config_key(self):
+        self.conf["router"]["tiers"]["agent"] = "deepseek-chat"
+        self.conf["router"]["model_routes"]["deepseek-chat"] = "deepseek"
+        body = {
+            "model": "relay-main[1m]",
+            "system": "You are a software architect and planning specialist for Claude Code.",
+        }
+        self.assertEqual(
+            pick_route(self.conf, {}, body),
+            ("deepseek", "deepseek-chat", "hybrid:plan"),
+        )
+
+    def test_explore_placeholder_aliases_keep_existing_opus_config(self):
+        for placeholder in ("OPUS_MODEL[1m]", "relay-opus", "RELAY-OPUS[1m]"):
+            with self.subTest(placeholder=placeholder):
+                self.assertEqual(
+                    pick_route(self.conf, {}, {"model": placeholder}),
+                    ("codex", "gpt-5.6-sol", "hybrid:explore"),
+                )
 
 if __name__ == "__main__":
     unittest.main()

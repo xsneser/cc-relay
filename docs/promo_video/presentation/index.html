@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cc-relay 核心特性交互式演示机 (Interactive Promo Deck)</title>
+  <style>
+    :root {
+      --bg-dark: #070b14;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --border-color: rgba(45, 65, 105, 0.6);
+      --cyan: #00f0ff;
+      --green: #10b981;
+      --violet: #8b5cf6;
+      --amber: #f59e0b;
+      --red: #f43f5e;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    body { background-color: var(--bg-dark); color: var(--text); overflow: hidden; height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+
+    /* Top Bar */
+    header {
+      height: 64px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      background: rgba(10, 15, 28, 0.85);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 20px; color: var(--cyan); letter-spacing: 0.5px; }
+    .brand span { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+    .nav-act {
+      background: rgba(20, 30, 55, 0.9);
+      border: 1px solid var(--cyan);
+      padding: 6px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--cyan);
+    }
+    .header-status { display: flex; align-items: center; gap: 20px; font-size: 13px; font-family: monospace; }
+    .dot-online { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; box-shadow: 0 0 8px var(--green); }
+
+    /* Main Deck Stage */
+    main { flex: 1; position: relative; overflow: hidden; }
+    .slide {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      padding: 40px 60px 100px 60px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(20px) scale(0.98);
+      transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .slide.active { opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); }
+
+    .slide-header { margin-bottom: 24px; }
+    .slide-title { font-size: 32px; font-weight: 800; color: var(--cyan); margin-bottom: 6px; }
+    .slide-subtitle { font-size: 16px; color: var(--muted); }
+
+    /* Layout Cards */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; flex: 1; }
+    .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; flex: 1; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 24px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+    }
+    .card-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+    /* Terminal Simulation */
+    .terminal {
+      background: #080c14;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 18px;
+      font-family: "Consolas", monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #e2e8f0;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .term-prompt { color: var(--muted); }
+    .term-cmd { color: var(--cyan); font-weight: 600; }
+    .term-warn { color: var(--amber); }
+    .term-err { color: var(--red); }
+    .term-succ { color: var(--green); }
+
+    /* 5-Tier Cards */
+    .tier-badge { font-family: monospace; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); width: fit-content; margin-bottom: 10px; }
+    .tier-model { font-family: monospace; font-size: 13px; color: var(--text); background: rgba(0,0,0,0.5); padding: 8px; border-radius: 6px; margin: 10px 0; }
+    .gear-box { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; margin-top: auto; font-size: 13px; font-weight: 600; }
+
+    /* Capsule Animation */
+    .capsule-box {
+      width: 380px; height: 90px; border-radius: 45px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 2px solid var(--cyan);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+      display: flex; align-items: center; padding: 0 25px; gap: 15px;
+      margin: 20px auto;
+    }
+    .wave-bars { display: flex; align-items: center; gap: 4px; height: 40px; }
+    .bar { width: 4px; background: var(--green); border-radius: 2px; animation: bounce 0.8s infinite ease-in-out alternate; }
+    .bar:nth-child(2) { animation-delay: 0.1s; }
+    .bar:nth-child(3) { animation-delay: 0.2s; }
+    .bar:nth-child(4) { animation-delay: 0.3s; }
+    .bar:nth-child(5) { animation-delay: 0.4s; }
+    .bar:nth-child(6) { animation-delay: 0.5s; }
+    @keyframes bounce { 0% { height: 6px; } 100% { height: 36px; } }
+
+    /* Bottom Subtitle / Controls */
+    footer {
+      height: 90px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      background: rgba(8, 12, 22, 0.95);
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+    }
+    .controls { display: flex; align-items: center; gap: 14px; }
+    .btn {
+      background: rgba(30, 45, 75, 0.8);
+      border: 1px solid var(--border-color);
+      color: var(--text);
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: var(--cyan); color: #000; border-color: var(--cyan); }
+    .btn.active { background: var(--green); color: #000; border-color: var(--green); }
+
+    .subtitle-display {
+      flex: 1;
+      max-width: 900px;
+      margin: 0 30px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+      padding: 10px 24px;
+      border-radius: 30px;
+      text-align: center;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .progress-bar-container {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 3px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .progress-bar { width: 0%; height: 100%; background: var(--cyan); transition: width 0.3s; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header>
+    <div class="brand">
+      ⚡ cc-relay
+      <span>Claude Code 本地流量调度与特征修剪中枢</span>
+    </div>
+    <div class="nav-act" id="actPill">ACT 01 · 痛点与破局</div>
+    <div class="header-status">
+      <span style="color: var(--green)">PORT: 8400</span>
+      <span style="color: var(--cyan)">WEB: 8610</span>
+      <span><span class="dot-online"></span> ONLINE</span>
+    </div>
+  </header>
+
+  <!-- Main Slides Deck -->
+  <main>
+    <div class="progress-bar-container"><div class="progress-bar" id="progressBar"></div></div>
+
+    <!-- Act 1 -->
+    <div class="slide active" id="slide-1">
+      <div class="slide-header">
+        <div class="slide-title">痛点引入 · 算力失控与协议壁垒</div>
+        <div class="slide-subtitle">Claude Code 派生出的子任务悄悄吞噬昂贵主模型配额，第三方模型因指纹遭遇拦截</div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">🖥️ Claude Code 终端运行仿真</div>
+          <div class="terminal">
+            <p><span class="term-prompt">user@devbox:~$</span> <span class="term-cmd">claude "深度分析 50 个文件并给出重构规划"</span></p>
+            <p>╭── Claude Code CLI v2.0 ─────────────────────────────╮</p>
+            <p>│  <span class="term-warn">[Subagent 启动]</span> 正在并发派生多个子代理...               │</p>
+            <p>│   > Agent: Explore (文件搜索) ... 消耗 42,000 Tokens │</p>
+            <p>│   > Agent: Plan    (架构规划) ... 消耗 38,500 Tokens │</p>
+            <p>│   > Agent: Guide   (安全审查) ... 消耗 15,200 Tokens │</p>
+            <p>│   > Agent: Naming  (会话命名) ... 消耗  1,200 Tokens │</p>
+            <p>│                                                      │</p>
+            <p>│  <span class="term-err">[警报] 单次交互累计消耗达 96,900 Tokens!</span>           │</p>
+            <p>╰──────────────────────────────────────────────────────╯</p>
+          </div>
+        </div>
+        <div class="card" style="border-color: var(--red);">
+          <div class="card-title" style="color: var(--red);">⚠️ 核心痛点诊断</div>
+          <div style="font-size: 15px; line-height: 1.8; margin-top: 10px;">
+            <p><strong>1. Subagent 全走顶级主模型：</strong> 探索与审查无差别调度高价模型，额度极速告急；</p>
+            <p><strong>2. 官方身份指纹遭到拦截：</strong> 携带 CC 计费头导致第三方 upstream 直接返回 403 Forbidden；</p>
+            <p><strong>3. 终端繁琐长指令输入：</strong> 频繁手工敲打代码长句，打字交互效率低下。</p>
+          </div>
+          <div style="margin-top: auto; padding: 15px; border-radius: 8px; background: rgba(244, 63, 94, 0.1); border: 1px solid var(--red); color: var(--red); font-weight: 600;">
+            💥 破局时刻：亟需一套能够识别角色意图、本地分流调度与特征修剪的中枢！
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Act 2 -->
+    <div class="slide" id="slide-2">
+      <div class="slide-header">
+        <div class="slide-title">Subagent 5档模型动态智能分配</div>
+        <div class="slide-subtitle">深度自省意图特征，架构规划与轻量辅助各得其所，算力成本直降 70%</div>
+      </div>
+      <div class="grid-5">
+        <div class="card" style="border-color: var(--green);">
+          <div class="tier-badge" style="color: var(--green)">MAIN</div>
+          <div style="font-weight: 700; font-size: 17px;">主交互模型</div>
+          <div style="font-size: 13px; color: var(--muted); margin: 6px 0;">常规命令行对话</div>
+          <div class="tier-model">DeepSeek-V3 / Flash</div>
+          <div class="gear-box" style="color: var(--green);">⚡ Low Effort (极速低成本)</div>
+        </div>
+        <div class="card" style="border-color: var(--violet);">
+          <div class="tier-badge" style="color: var(--violet)">AGENT (PLAN)</div>
+          <div style="font-weight: 700; font-size: 17px;">Plan 代理</div>
+          <div style="font-size: 13px; color: var(--muted); margin: 6px 0;">长远架构规划</div>
+          <div class="tier-model">Codex / GPT-5.6-Sol</div>
+          <div class="gear-box" style="color: var(--violet);">⚡ High Effort (满血推理)</div>
+        </div>
+        <div class="card" style="border-color: var(--cyan);">
+          <div class="tier-badge" style="color: var(--cyan)">OPUS (EXPLORE)</div>
+          <div style="font-weight: 700; font-size: 17px;">Explore 代理</div>
+          <div style="font-size: 13px; color: var(--muted); margin: 6px 0;">全库文件探索</div>
+          <div class="tier-model">Codex / GPT-5.6</div>
+          <div class="gear-box" style="color: var(--cyan);">⚡ Medium (深度检索)</div>
+        </div>
+        <div class="card" style="border-color: #38bdf8;">
+          <div class="tier-badge" style="color: #38bdf8">SONNET (REVIEW)</div>
+          <div style="font-weight: 700; font-size: 17px;">审查 / Guide 代理</div>
+          <div style="font-size: 13px; color: var(--muted); margin: 6px 0;">代码审查与指引</div>
+          <div class="tier-model">Claude 3.7 Sonnet</div>
+          <div class="gear-box" style="color: #38bdf8;">⚡ Low Effort (稳健质检)</div>
+        </div>
+        <div class="card" style="border-color: var(--amber);">
+          <div class="tier-badge" style="color: var(--amber)">FAST (NAMING)</div>
+          <div style="font-weight: 700; font-size: 17px;">会话命名代理</div>
+          <div style="font-size: 13px; color: var(--muted); margin: 6px 0;">2-5 词会话名称</div>
+          <div class="tier-model">Claude 3.5 Haiku</div>
+          <div class="gear-box" style="color: var(--amber);">⚡ Instant (秒级零额度)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Act 3 -->
+    <div class="slide" id="slide-3">
+      <div class="slide-header">
+        <div class="slide-title">零依赖本地网关 & 独创流量暂停闸门</div>
+        <div class="slide-subtitle">纯标准库构建 · 微秒级包审计 · 首创 SSE 心跳保活模拟机制</div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">🛡️ 本地透明调度核心</div>
+          <p style="font-size: 15px; margin-bottom: 15px;">100% Python 标准库编写，零 pip 依赖，开箱即用。</p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div style="background: rgba(0,0,0,0.4); padding: 12px; border-radius: 8px;">
+              <div style="color: var(--muted); font-size: 12px;">实时吞吐速率</div>
+              <div style="color: var(--green); font-size: 20px; font-weight: 700;">88.5 Tokens/s</div>
+            </div>
+            <div style="background: rgba(0,0,0,0.4); padding: 12px; border-radius: 8px;">
+              <div style="color: var(--muted); font-size: 12px;">转发耗时</div>
+              <div style="color: var(--cyan); font-size: 20px; font-weight: 700;">11.2 ms</div>
+            </div>
+          </div>
+          <p style="font-size: 14px; color: var(--muted);">✔ 独占端口绑定 (SO_EXCLUSIVEADDRUSE)，彻底杜绝 Windows 孤儿进程冲突。</p>
+        </div>
+        <div class="card" style="border-color: var(--amber);">
+          <div class="card-title" style="color: var(--amber);">⚡ 流量暂停闸门 (Traffic Pause Gate)</div>
+          <div style="padding: 12px; border-radius: 8px; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--amber); margin-bottom: 15px;">
+            <strong>闸门状态: PAUSED (1 Request Waiting in Queue)</strong>
+          </div>
+          <p style="font-size: 14px; line-height: 1.7;">
+            任务进行中途切模型、换 Key 或改参数？<br>
+            网关自动以 3 秒间隔向终端发送 <code>event: ping</code> SSE 心跳数据块！<br>
+            保持 HTTP 200 chunked 通道活跃，终端绝不超时中断！
+          </p>
+          <div style="margin-top: auto; padding: 12px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); color: var(--green); font-size: 14px;">
+            ✔ 点击 Resume 瞬间唤醒，请求立即放行并无缝继续流式打印。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Act 4 -->
+    <div class="slide" id="slide-4">
+      <div class="slide-header">
+        <div class="slide-title">CLI 语音输入伴侣 (Voice Input Companion)</div>
+        <div class="slide-subtitle">Win32 免激活悬浮胶囊 · 鼠标侧键瞬时推讲 · 智能命令规范化</div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">🎙️ 免激活悬浮麦克风胶囊</div>
+          <div class="capsule-box">
+            <span style="font-size: 24px;">🎙️</span>
+            <div class="wave-bars">
+              <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+              <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            </div>
+            <div style="font-size: 13px; font-family: monospace; color: var(--green); margin-left: auto;">
+              REC · SenseVoice
+            </div>
+          </div>
+          <div style="font-size: 14px; line-height: 1.8; margin-top: 15px;">
+            <p>• <strong>WS_EX_NOACTIVATE 免激活：</strong> 绝不抢占终端或 IDE 输入光标；</p>
+            <p>• <strong>窗口双重句柄校验：</strong> 切屏自动取消录音，严防误触；</p>
+            <p>• <strong>SenseVoice 纯 CPU 推理：</strong> 239MB 极小体积，毫秒级响应，无需显卡。</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">⚡ 智能命令纠偏 (Normalizer)</div>
+          <div class="terminal" style="height: 160px; margin-bottom: 15px;">
+            <p><span class="term-prompt">口播录音:</span> "斜杠 cost 以及查看当前 git status"</p>
+            <p><span class="term-succ">规范注入:</span> <span class="term-cmd">/cost 以及查看当前 git status</span></p>
+          </div>
+          <p style="font-size: 14px; line-height: 1.8;">
+            ✔ 自动将“斜杠 cost”、“反斜杠 compact”纠偏为标准斜杠命令；<br>
+            ✔ 自动清理末尾中文标点句号；<br>
+            ✔ 仅粘贴供用户审阅，<strong>绝不自动附加回车 (Enter)</strong>！
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Act 5 -->
+    <div class="slide" id="slide-5">
+      <div class="slide-header">
+        <div class="slide-title">CC 指纹剥离 & Prompt Cache 断点无损继承</div>
+        <div class="slide-subtitle">原/净/自三态修剪 · 兼容 Gemini & DeepSeek · 保留 90% 缓存折扣</div>
+      </div>
+      <div class="grid-2">
+        <div class="card" style="border-color: var(--red);">
+          <div class="card-title" style="color: var(--red);">原始载荷 (携带 CC 官方指纹)</div>
+          <div class="terminal" style="font-size: 12px;">
+            <p>system: [</p>
+            <p style="color: var(--red); text-decoration: line-through;">  { "text": "You are Claude Code, official CLI..." },</p>
+            <p style="color: var(--red); text-decoration: line-through;">  { "text": "x-anthropic-billing-header: cc_is_subagent..." },</p>
+            <p>  { "text": "项目规范与系统提示词...",</p>
+            <p style="color: var(--amber);">    "cache_control": { "type": "ephemeral" } }</p>
+            <p>]</p>
+          </div>
+          <p style="font-size: 13px; color: var(--amber); margin-top: 10px;">
+            ⚠️ 直接删除前置文本块会导致附带的缓存断点遗失，引发下游全量计费！
+          </p>
+        </div>
+        <div class="card" style="border-color: var(--green);">
+          <div class="card-title" style="color: var(--green);">cc-relay 净模式 (断点自动顺延)</div>
+          <div class="terminal" style="font-size: 12px;">
+            <p>system: [</p>
+            <p>  { "text": "项目规范与系统提示词...",</p>
+            <p style="color: var(--green);">    "cache_control": { "type": "ephemeral" }  <-- [完美顺延接力!]</p>
+            <p>  }</p>
+            <p>]</p>
+          </div>
+          <div style="font-size: 14px; margin-top: 15px; line-height: 1.8;">
+            <p>✔ <strong>无缝接入 Gemini 2.5 Pro (Antigravity Tools)</strong> 与各类第三方上游；</p>
+            <p>✔ <strong>Prompt Cache 命中率维持 > 90%</strong>，杜绝重复扣费；</p>
+            <p>✔ 支持「自 (Custom)」模式自由配置注入个性化 System Prompt。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Act 6 -->
+    <div class="slide" id="slide-6">
+      <div class="slide-header" style="text-align: center;">
+        <div class="slide-title" style="font-size: 38px;">⚡ cc-relay · 开启全知中枢</div>
+        <div class="slide-subtitle" style="font-size: 18px;">零外部依赖 · 5档分流 · 语音对讲 · 彻底自由</div>
+      </div>
+      <div class="grid-2" style="max-width: 1000px; margin: 0 auto; width: 100%;">
+        <div class="card">
+          <div class="card-title">🚀 极速上手 (两步完成)</div>
+          <div class="terminal">
+            <p><span class="term-prompt"># 1. 启动本地调度中枢</span></p>
+            <p><span class="term-cmd">python cc_relay.py</span></p>
+            <br>
+            <p><span class="term-prompt"># 2. 一键配置 CLI 与桌面端</span></p>
+            <p><span class="term-cmd">python apply_settings.py --all</span></p>
+          </div>
+        </div>
+        <div class="card" style="border-color: var(--cyan); text-align: center; justify-content: center;">
+          <div style="font-size: 40px; margin-bottom: 10px;">⭐</div>
+          <div style="font-size: 22px; font-weight: 700; color: var(--cyan); margin-bottom: 10px;">开源于 GitHub</div>
+          <p style="font-size: 15px; color: var(--muted); margin-bottom: 20px;">欢迎 Star、体验与共建！</p>
+          <button class="btn" style="background: var(--cyan); color: #000; width: fit-content; margin: 0 auto; padding: 10px 24px; font-size: 16px;">
+            访问代码仓库
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Subtitles & Controls -->
+  <footer>
+    <div class="controls">
+      <button class="btn" id="prevBtn">◀ 上一幕</button>
+      <button class="btn" id="playBtn">▶ 自动巡航演示</button>
+      <button class="btn" id="nextBtn">下一幕 ▶</button>
+    </div>
+    <div class="subtitle-display" id="subDisplay">
+      在使用 Claude Code 时，你是否也遇到过这样的痛点？
+    </div>
+    <div class="controls">
+      <span style="font-size: 13px; color: var(--muted);" id="slideCounter">1 / 6</span>
+      <button class="btn" id="fsBtn">⛶ 全屏</button>
+    </div>
+  </footer>
+
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const actPill = document.getElementById('actPill');
+    const subDisplay = document.getElementById('subDisplay');
+    const slideCounter = document.getElementById('slideCounter');
+    const progressBar = document.getElementById('progressBar');
+    const playBtn = document.getElementById('playBtn');
+
+    let currentSlide = 0;
+    let isPlaying = false;
+    let playTimer = null;
+
+    const ACT_INFOS = [
+      { title: "ACT 01 · 痛点与破局", sub: "在使用 Claude Code 时，你是否也遇到过这样的痛点？派生子代理悄悄吞噬昂贵配额..." },
+      { title: "ACT 02 · 5-Tier 智能分流", sub: "cc-relay 首创五档 Subagent 智能路由引擎，让重算力用在刀刃上，综合成本立降 70%！" },
+      { title: "ACT 03 · 本地网关与暂停闸门", sub: "纯 Python 标准库构建，零 pip 依赖。独创流量暂停闸门与 SSE 心跳保活模拟机制！" },
+      { title: "ACT 04 · CLI 语音输入伴侣", sub: "Win32 免激活悬浮胶囊绝不抢焦点；鼠标侧键推讲，口播斜杠 cost 秒变规范命令！" },
+      { title: "ACT 05 · 指纹剥离与缓存顺延", sub: "彻底剥离官方指纹，无缝接入 Gemini 与各类第三方大模型，同时保留 90% 缓存折扣！" },
+      { title: "ACT 06 · 开源生态与极简接入", sub: "零额外依赖，一键双端接入。立即前往 GitHub 仓库，开启属于你的本地智能调度之旅！" }
+    ];
+
+    function showSlide(index) {
+      slides.forEach((s, i) => s.classList.toggle('active', i === index));
+      actPill.textContent = ACT_INFOS[index].title;
+      subDisplay.textContent = ACT_INFOS[index].sub;
+      slideCounter.textContent = `${index + 1} / ${slides.length}`;
+      progressBar.style.width = `${((index + 1) / slides.length) * 100}%`;
+      currentSlide = index;
+    }
+
+    document.getElementById('prevBtn').onclick = () => {
+      showSlide((currentSlide - 1 + slides.length) % slides.length);
+    };
+    document.getElementById('nextBtn').onclick = () => {
+      showSlide((currentSlide + 1) % slides.length);
+    };
+
+    playBtn.onclick = () => {
+      isPlaying = !isPlaying;
+      playBtn.classList.toggle('active', isPlaying);
+      playBtn.textContent = isPlaying ? "⏸ 暂停巡航" : "▶ 自动巡航演示";
+      if (isPlaying) {
+        playTimer = setInterval(() => {
+          showSlide((currentSlide + 1) % slides.length);
+        }, 8000);
+      } else {
+        clearInterval(playTimer);
+      }
+    };
+
+    document.getElementById('fsBtn').onclick = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    };
+
+    // Keyboard navigation
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        showSlide((currentSlide + 1) % slides.length);
+      } else if (e.key === 'ArrowLeft') {
+        showSlide((currentSlide - 1 + slides.length) % slides.length);
+      } else if (e.key === 'f' || e.key === 'F') {
+        document.getElementById('fsBtn').click();
+      }
+    });
+  </script>
+</body>
+</html>
