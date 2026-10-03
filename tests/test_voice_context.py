@@ -114,23 +114,19 @@ class TestVoiceContext(unittest.TestCase):
         self.assertIsNone(registry.observe_request("s", 1, "m", [{"role": "user", "content": "x"}], is_main_session=False))
         self.assertIsNone(registry.snapshot_for_target(1, {1: 1}))
 
-    def test_extract_technical_terms_and_render_header(self):
-        from voice_context import extract_technical_terms
+    def test_render_dialogue_is_pure_and_preserves_clean_paragraphs(self):
         messages = [
-            ("user", "请修改 `cc_relay.py` 里的 `pick_route` 函数，并且调用 SessionCoordinator"),
-            ("assistant", "好的，我们来看一下 tools/voice_input/session.py 中的实现以及 my_custom_var"),
+            ("user", "请帮我分析一下问题"),
+            ("assistant", "这两个问题定位非常精准！\n\n问题一：关于上下文消息。\n问题二：关于在抓包里查看。"),
         ]
-        terms = extract_technical_terms(messages)
-        self.assertIn("cc_relay.py", terms)
-        self.assertIn("pick_route", terms)
-        self.assertIn("SessionCoordinator", terms)
-        self.assertIn("my_custom_var", terms)
-
         registry = VoiceContextRegistry(max_chars=500)
         rendered = registry._render(messages)
-        self.assertIn("参考标识符/术语:", rendered)
-        self.assertIn("pick_route", rendered)
-        self.assertIn("用户: 请修改 `cc_relay.py`", rendered)
+        # 确保没有伪术语头部，完全是纯净的原汁原味对话
+        self.assertNotIn("参考标识符/术语:", rendered)
+        self.assertIn("用户: 请帮我分析一下问题", rendered)
+        self.assertIn("助手: 这两个问题定位非常精准！", rendered)
+        self.assertIn("问题一：关于上下文消息。", rendered)
+        self.assertIn("问题二：关于在抓包里查看。", rendered)
 
     def test_single_active_session_automatically_matches_unrelated_pid_and_empty_title(self):
         registry = VoiceContextRegistry(ttl_seconds=60)
@@ -181,6 +177,65 @@ class TestVoiceContext(unittest.TestCase):
         snap_global = registry.snapshot_for_target(999, target_title="", parent_map={}, now=12)
         self.assertIsNotNone(snap_global)
         self.assertEqual(snap_global.session_id, "pending-session")
+
+    def test_multiple_sessions_disambiguated_by_session_name_in_window_title(self):
+        registry = VoiceContextRegistry(ttl_seconds=60)
+        # Session A: release-cc-relay-v2410 (PID 201, updated at 12)
+        tok_a = registry.observe_request("uuid-sess-a", 201, "m", [{"role": "user", "content": "release v2.4.10"}], now=10)
+        registry.observe_response(tok_a, json.dumps({"content": [{"type": "text", "text": "release answer"}], "stop_reason": "end_turn"}).encode(), now=12)
+
+        # Session B: seamless-focus-replacement (PID 202, updated earlier at 8)
+        tok_b = registry.observe_request("uuid-sess-b", 202, "m", [{"role": "user", "content": "seamless focus test"}], now=5)
+        registry.observe_response(tok_b, json.dumps({"content": [{"type": "text", "text": "focus answer"}], "stop_reason": "end_turn"}).encode(), now=8)
+
+        # 模拟 session_name 绑定
+        with registry._lock:
+            registry._entries[("uuid-sess-a", 201)]["session_name"] = "release-cc-relay-v2410"
+            registry._entries[("uuid-sess-b", 202)]["session_name"] = "seamless-focus-replacement"
+
+        # 即使 Session A 更新时间更晚（12 > 8），但当前活动窗口标题为 "◑ seamless-focus-replacement" 时，必须精准选取 Session B！
+        snap = registry.snapshot_for_target(
+            target_pid=100,  # Windows Terminal 父进程 PID
+            target_title="◑ seamless-focus-replacement",
+            parent_map={201: 100, 202: 100},
+            now=15,
+        )
+        self.assertIsNotNone(snap)
+        self.assertEqual(snap.session_id, "uuid-sess-b")
+        self.assertIn("focus answer", snap.context)
+        self.assertNotIn("release answer", snap.context)
+
+    def test_direct_disk_session_resolution_when_in_memory_missing_or_mismatched(self):
+        from unittest import mock
+        registry = VoiceContextRegistry(ttl_seconds=60)
+        # 内存中只有会话 A
+        registry.observe_request("sess-a", 101, "m", [{"role": "user", "content": "会话A内容"}])
+        with registry._lock:
+            registry._pending[("sess-a", 101)]["session_name"] = "session-a-name"
+
+        # 模拟磁盘解析器返回会话 B 的直接读取结果
+        mock_disk_sess = {
+            "session_id": "sess-b-uuid",
+            "session_name": "session-b-name",
+            "ai_title": "cc-relay 架构与文件精简",
+            "jsonl_path": "/path/to/b.jsonl",
+        }
+        mock_msgs = [
+            ("user", "分析架构精简"),
+            ("assistant", "这是关于架构精简的 Plan 计划内容"),
+        ]
+        with mock.patch("voice_context._find_session_from_disk", return_value=mock_disk_sess), \
+                mock.patch("voice_context._read_session_messages_from_jsonl", return_value=mock_msgs):
+            # 当当前窗口标题是“✳ cc-relay 架构与文件精简”时，即使内存只有会话 A，也坚决直读磁盘会话 B！
+            snap = registry.snapshot_for_target(
+                target_pid=11948,
+                target_title="✳ cc-relay 架构与文件精简",
+                parent_map={101: 11948},
+            )
+            self.assertIsNotNone(snap)
+            self.assertEqual(snap.session_id, "sess-b-uuid")
+            self.assertIn("这是关于架构精简的 Plan 计划内容", snap.context)
+            self.assertNotIn("会话A内容", snap.context)
 
 
 if __name__ == "__main__":

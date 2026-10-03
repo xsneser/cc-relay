@@ -27,7 +27,7 @@ GITHUB_RAW_UI_URL = "https://raw.githubusercontent.com/xsneser/cc-relay/master/u
 GITHUB_MASTER_ZIP_URL = "https://github.com/xsneser/cc-relay/archive/refs/heads/master.zip"
 GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/xsneser/cc-relay/releases/latest"
 USER_AGENT = "cc-relay-updater/1.0"
-RELAY_VERSION = "2.4.9"
+RELAY_VERSION = "2.4.10"
 VERSION_RE = re.compile(r"v?([0-9]+(?:\.[0-9]+)+)")
 UI_VERSION_RE = re.compile(r'<meta\s+name=["\']ui-version["\']\s+content=["\']([0-9]+(?:\.[0-9]+)*)["\']')
 

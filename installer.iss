@@ -5,7 +5,7 @@
 ; =====================================================================
 
 #define MyAppName "CC Relay"
-#define MyAppVersion "2.4.9"
+#define MyAppVersion "2.4.10"
 #define MyAppPublisher "CC Relay Team"
 #define MyAppURL "https://github.com/xsneser/cc-relay"
 #define MyAppExeName "cc-relay.exe"

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="ui-version" content="2.4.9">
+<meta name="ui-version" content="2.4.10">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -2586,6 +2586,7 @@
   }
   .src.main { background: rgba(255, 255, 255, 0.08); color: var(--text-muted); border: 1px solid var(--glass-border); }
   .src.agent { background: rgba(249, 115, 22, 0.15); color: var(--orange); border: 1px solid rgba(249, 115, 22, 0.3); }
+  .src.voice { background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.35); }
 
   /* 抓包展开详情 */
   .detail {
@@ -3575,7 +3576,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.9</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.10</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -4210,6 +4211,7 @@
           <span class="cl-chip" data-filter="codex">Codex</span>
           <span class="cl-chip" data-filter="gemini">Gemini</span>
           <span class="cl-chip" data-filter="error">仅异常 (4xx/5xx)</span>
+          <span class="cl-chip" data-filter="voice">语音系统 (Voice)</span>
           <span class="cl-chip" data-filter="agent">子代理 (Agent)</span>
           <span class="cl-chip" data-filter="main">主循环 (Main)</span>
           <span class="cl-chip" data-filter="cached">带缓存命中</span>
@@ -4753,10 +4755,8 @@
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);padding-bottom:6px;">
-                  <label for="cfg-voice-correction-timeout">超时 (秒):</label>
-                  <input id="cfg-voice-correction-timeout" type="number" min="1" max="30" step="1" value="8" style="width:58px;padding:4px 6px;">
-                  <label for="cfg-voice-correction-context" style="margin-left:8px;">上下文字符:</label>
-                  <input id="cfg-voice-correction-context" type="number" min="512" max="12000" step="512" value="12000" style="width:84px;padding:4px 6px;">
+                  <label for="cfg-voice-correction-context">上下文字符:</label>
+                  <input id="cfg-voice-correction-context" type="number" min="512" max="12000" step="512" value="2500" style="width:84px;padding:4px 6px;">
                 </div>
               </div>
             </div>
@@ -6078,13 +6078,13 @@ async function saveConfigDraft() {
   try {
     const oldHk = (window._currentVoiceHotkey || '');
     const oldVramMode = (window._currentVoiceVramMode || 'resident');
-    const oldCorrection = window._currentVoiceCorrection || 'false|||8|12000';
+    const oldCorrection = window._currentVoiceCorrection || 'false|||8|2500';
     const oldCodexProxy = (window._currentCodexProxy || '');
     const newCfg = collectConfig();
     const newHk = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.hotkey) || '';
     const newVramMode = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.vram_mode) || 'resident';
     const newVoiceConf = (newCfg.tools && newCfg.tools.voice) || {};
-    const newCorrection = `${!!newVoiceConf.semantic_correction_enabled}|${newVoiceConf.semantic_correction_model || ''}|${newVoiceConf.semantic_correction_effort || ''}|${newVoiceConf.semantic_correction_timeout_seconds || 8}|${newVoiceConf.semantic_correction_context_chars || 12000}`;
+    const newCorrection = `${!!newVoiceConf.semantic_correction_enabled}|${newVoiceConf.semantic_correction_model || ''}|${newVoiceConf.semantic_correction_effort || ''}|${newVoiceConf.semantic_correction_timeout_seconds || 8}|${newVoiceConf.semantic_correction_context_chars || 2500}`;
     const newCodexProxy = (newCfg.tools && newCfg.tools.codex && newCfg.tools.codex.outbound_proxy) || '';
 
     const r = await api('/api/config', newCfg);
@@ -6401,7 +6401,7 @@ function updateDetailStatusPill(subpage) {
     }
   } else {
     pill.className = 'cfg-mod-badge on';
-    pill.textContent = '● 核心运行中 v2.4.9';
+    pill.textContent = '● 核心运行中 v2.4.10';
   }
 }
 
@@ -7463,8 +7463,8 @@ function renderConfig(cfg) {
   const activeCorrEffort = ($('#sel-voice-correction')?.dataset.effort || corrEffort).trim();
   if ($('#cfg-voice-semantic-correction')) $('#cfg-voice-semantic-correction').checked = vConf.semantic_correction_enabled === true;
   if ($('#cfg-voice-correction-timeout')) $('#cfg-voice-correction-timeout').value = vConf.semantic_correction_timeout_seconds || 8;
-  if ($('#cfg-voice-correction-context')) $('#cfg-voice-correction-context').value = vConf.semantic_correction_context_chars || 12000;
-  window._currentVoiceCorrection = `${!!vConf.semantic_correction_enabled}|${activeCorrModel}|${activeCorrEffort}|${vConf.semantic_correction_timeout_seconds || 8}|${vConf.semantic_correction_context_chars || 12000}`;
+  if ($('#cfg-voice-correction-context')) $('#cfg-voice-correction-context').value = vConf.semantic_correction_context_chars || 2500;
+  window._currentVoiceCorrection = `${!!vConf.semantic_correction_enabled}|${activeCorrModel}|${activeCorrEffort}|${vConf.semantic_correction_timeout_seconds || 8}|${vConf.semantic_correction_context_chars || 2500}`;
   if ($('#cfg-voice-hotkey')) $('#cfg-voice-hotkey').value = vHk;
   if ($('#txt-record-hotkey')) $('#txt-record-hotkey').textContent = formatHotkeyLabel(vHk);
   if ($('#cfg-voice-engine')) {
@@ -7574,8 +7574,8 @@ function collectConfig() {
         semantic_correction_enabled: !!($('#cfg-voice-semantic-correction') && $('#cfg-voice-semantic-correction').checked),
         semantic_correction_model: ($('#sel-voice-correction')?.dataset.model || '').trim(),
         semantic_correction_effort: ($('#sel-voice-correction')?.dataset.effort || '').trim(),
-        semantic_correction_timeout_seconds: Math.max(1, Math.min(30, Number($('#cfg-voice-correction-timeout')?.value || 8))),
-        semantic_correction_context_chars: Math.floor(Math.max(512, Math.min(12000, Number($('#cfg-voice-correction-context')?.value || 12000))))
+        semantic_correction_timeout_seconds: 60.0,
+        semantic_correction_context_chars: Math.floor(Math.max(512, Math.min(12000, Number($('#cfg-voice-correction-context')?.value || 2500))))
       }
     }
   };
@@ -8553,16 +8553,19 @@ function renderCallsTable(calls) {
       if (c.route !== 'antigravity' && c.route !== 'gemini' && !(c.sent_model || '').toLowerCase().includes('gemini')) return false;
     } else if (_clFilter === 'error') {
       if ((c.status || 0) < 400 && !c.resp_error) return false;
+    } else if (_clFilter === 'voice') {
+      if (c.purpose !== 'voice-correction' && c.app !== 'voice-input') return false;
     } else if (_clFilter === 'agent') {
-      if (!c.agent_id) return false;
+      if (!c.agent_id || c.purpose === 'voice-correction' || c.app === 'voice-input') return false;
     } else if (_clFilter === 'main') {
-      if (c.agent_id) return false;
+      if (c.agent_id || c.purpose === 'voice-correction' || c.app === 'voice-input') return false;
     } else if (_clFilter === 'cached') {
       if (!c.cache || !c.cache.cache_read_tokens) return false;
     }
 
     // 关键词模糊匹配
     if (kw) {
+      const isVoiceText = (c.purpose === 'voice-correction' || c.app === 'voice-input') ? '语音系统 voice' : '';
       const match = (c.orig_model || '').toLowerCase().includes(kw) ||
                     (c.sent_model || '').toLowerCase().includes(kw) ||
                     (c.route || '').toLowerCase().includes(kw) ||
@@ -8570,6 +8573,7 @@ function renderCallsTable(calls) {
                     formatRouteReason(c.route_reason).toLowerCase().includes(kw) ||
                     (c.agent_id || '').toLowerCase().includes(kw) ||
                     (c.session || '').toLowerCase().includes(kw) ||
+                    isVoiceText.includes(kw) ||
                     (c.path || '').toLowerCase().includes(kw) ||
                     String(c.status || '').includes(kw) ||
                     String(c.idx || '').includes(kw) ||
@@ -8633,7 +8637,11 @@ function renderCallsTable(calls) {
       '<td class="col-rule" style="color:var(--text-dim);" title="' + escHtml(c.route_reason || '') + '">' + escHtml(rel) + '</td>' +
       '<td class="mono col-status" style="font-weight:700;color:' + (isErr ? 'var(--red)' : 'var(--emerald)') + '">' + (cst || '—') + '</td>' +
       '<td class="mono col-cache ' + cs.className + '" title="' + escHtml(cs.title) + '">' + cs.label + '</td>' +
-      '<td class="col-source">' + (c.agent_id ? '<span class="src agent" title="Agent ID: ' + escHtml(c.agent_id) + '">子代理</span>' : '<span class="src main">主循环</span>') + '</td>' +
+      '<td class="col-source">' + (
+        (c.purpose === 'voice-correction' || c.app === 'voice-input')
+          ? '<span class="src voice" title="语音系统 (语音语义校正)">语音系统</span>'
+          : (c.agent_id ? '<span class="src agent" title="Agent ID: ' + escHtml(c.agent_id) + '">子代理</span>' : '<span class="src main">主循环</span>')
+      ) + '</td>' +
       '</tr>';
     html += '<tr><td colspan="11" style="padding:0;border:none"><div class="detail" id="dt-' + c.idx + '"></div></td></tr>';
   }
@@ -8697,7 +8705,10 @@ async function fetchDetail(idx) {
       return '── 消息 #' + (i + 1) + ' [' + escHtml((m.role || 'user').toUpperCase()) + '] ──\n' + String(t).slice(0, 800);
     }).filter(Boolean).join('\n\n');
 
-    const agentId = (r.headers && (r.headers['x-claude-code-agent-id'] || r.headers['X-Claude-Code-Agent-Id'])) || '(主循环交互)';
+    const isVoiceReq = Boolean(r.headers && (r.headers['x-cc-relay-purpose'] === 'voice-correction' || r.headers['x-app'] === 'voice-input'));
+    const agentId = isVoiceReq
+      ? '语音系统 (语义校正)'
+      : ((r.headers && (r.headers['x-claude-code-agent-id'] || r.headers['X-Claude-Code-Agent-Id'])) || '(主循环交互)');
     const cu = r.cache;
     const fmtN = n => Number.isFinite(Number(n)) ? Number(n).toLocaleString() : '—';
     let cacheHtml = '';

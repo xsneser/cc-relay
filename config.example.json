@@ -59,7 +59,7 @@
       "restore_clipboard": true,
       "semantic_correction_enabled": false,
       "semantic_correction_timeout_seconds": 8,
-      "semantic_correction_context_chars": 12000
+      "semantic_correction_context_chars": 2500
     },
     "relay_update": {
       "auto_check": true,

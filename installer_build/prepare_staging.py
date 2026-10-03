@@ -123,7 +123,7 @@ def main():
         pass
 
     build_info = {
-        "version": "2.4.9",
+        "version": "2.4.10",
         "commit": commit_sha,
         "short_sha": short_sha,
         "branch": branch_name,

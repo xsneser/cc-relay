@@ -40,7 +40,7 @@ This guide walks through a complete `cc-relay` setup from scratch: installation,
 ## 2. Windows One-Click Installer & Cooperative Uninstaller (Recommended)
 
 ### 2.1 Installer Highlights
-- **Out of the box**: Packaged with Inno Setup 6 as standard installer `CC-Relay-Setup-v2.4.9.exe`, installed by default into `%LOCALAPPDATA%\Programs\CC-Relay`, **no administrator privileges required**.
+- **Out of the box**: Packaged with Inno Setup 6 as standard installer `CC-Relay-Setup-v2.4.10.exe`, installed by default into `%LOCALAPPDATA%\Programs\CC-Relay`, **no administrator privileges required**.
 - **Integrated Offline Voice ASR**: Bundles an embedded portable Python 3.10 runtime, `sherpa-onnx`, and the **SenseVoice INT8 model (~228MB)**. Users can immediately use global speech typing and desktop capsule even on a clean system without network or system Python.
 - **Automatic Environment Setup**: Automatically adds `{app}\wrapper` to the user's `PATH` environment variable and broadcasts `WM_SETTINGCHANGE`. Open any terminal and type `claude` to connect to the local relay.
 - **Asset Protection**: Upgrades preserve existing `config.json` without overwriting API keys or routing rules.
@@ -58,7 +58,7 @@ Run the one-click build pipeline:
 ```cmd
 build_installer.bat
 ```
-Produces `output\CC-Relay-Setup-v2.4.9.exe`.
+Produces `output\CC-Relay-Setup-v2.4.10.exe`.
 
 ---
 

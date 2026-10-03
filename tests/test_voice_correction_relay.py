@@ -348,7 +348,7 @@ class TestVoiceCorrectionRelay(unittest.TestCase):
         valid_snapshot = {
             "session_id": "session-12345",
             "model": "relay-main",
-            "context": "参考标识符/术语: git, rebase\n\n用户: 帮我 rebase 到 master",
+            "context": "用户: 帮我 rebase 到 master\n\n助手: 好的，这就 rebase 到 master",
             "revision": 3,
         }
         response_body = json.dumps({
@@ -366,7 +366,8 @@ class TestVoiceCorrectionRelay(unittest.TestCase):
         payload = json.loads(req.data.decode("utf-8"))
         content = payload["messages"][0]["content"]
         self.assertIn("<conversation_context>", content)
-        self.assertIn("参考标识符/术语: git, rebase", content)
+        self.assertIn("用户: 帮我 rebase 到 master", content)
+        self.assertIn("助手: 好的，这就 rebase 到 master", content)
         self.assertIn("<recognized_transcript>", content)
         self.assertIn("帮我热贝斯到 master", content)
 
@@ -397,6 +398,37 @@ class TestVoiceCorrectionRelay(unittest.TestCase):
             res = client.correct(target, fallback_snapshot, "rebase master")
         self.assertTrue(res["ok"])
         self.assertEqual(res["text"], "rebase master")
+
+    def test_system_prompt_instructs_filler_removal_and_order_restructuring(self):
+        from tools.voice_input.correction import CORRECTION_SYSTEM_PROMPT
+        self.assertIn("filler words", CORRECTION_SYSTEM_PROMPT)
+        self.assertIn("Restructure sentence word order", CORRECTION_SYSTEM_PROMPT)
+        self.assertIn("呃", CORRECTION_SYSTEM_PROMPT)
+
+    def test_calls_snapshot_includes_purpose_and_app_for_voice_correction(self):
+        record_item = {
+            "idx": 9999,
+            "ts": "2026-10-03 19:30:00",
+            "path": "/v1/messages",
+            "orig_model": "gpt-6-luna",
+            "sent_model": "gpt-6-luna",
+            "route": "codex",
+            "route_reason": "hybrid:gpt-direct",
+            "resp_status": 200,
+            "headers": {
+                "x-cc-relay-purpose": "voice-correction",
+                "x-app": "voice-input",
+            },
+            "body": {"messages": [{"role": "user", "content": "text"}]},
+            "resp_body": b'{"content":[{"type":"text","text":"ok"}]}',
+        }
+        with mock.patch("cc_relay._iter_records_tail", return_value=[record_item]), \
+                mock.patch.dict("cc_relay._CALLS_CACHE", {}, clear=True):
+            data = cc_relay._calls_snapshot(1)
+            calls = data.get("calls") or []
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]["purpose"], "voice-correction")
+            self.assertEqual(calls[0]["app"], "voice-input")
 
 
 if __name__ == "__main__":

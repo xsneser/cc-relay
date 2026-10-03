@@ -31,7 +31,7 @@ class TestUIDropdowns(unittest.TestCase):
 
         # 提取 #sel-voice-correction 的容器内容
         start = self.html.index('id="sel-voice-correction"')
-        end = self.html.index('id="cfg-voice-correction-timeout"', start)
+        end = self.html.index('id="cfg-voice-correction-context"', start)
         voice_sel_block = self.html[start:end]
         self.assertIn("ve-head", voice_sel_block, "#sel-voice-correction should contain .ve-head")
         self.assertIn("eff-rng", voice_sel_block, "#sel-voice-correction should contain .eff-rng")

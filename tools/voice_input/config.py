@@ -26,7 +26,7 @@ class VoiceConfig:
     fake_api_key: str = "sk-relay-local-0000"
     semantic_correction_enabled: bool = False
     semantic_correction_model: str = ""
-    semantic_correction_timeout_seconds: float = 8.0
+    semantic_correction_timeout_seconds: float = 60.0
     semantic_correction_context_chars: int = 2500
 
     # 引擎模式: "qwen_2pass" (推荐高精流式: Zipformer + Qwen3-ASR-1.7B) | "qwen_offline" (Qwen 1.7B 离线单 Pass) | "sherpa_2pass" (统一 2-Pass：流式 Zipformer + 离线 SenseVoice) | "sensevoice_offline" (轻量极速，纯 CPU) | "paraformer_streaming_2pass" (向后兼容别名)
@@ -164,8 +164,8 @@ class VoiceConfig:
             raise ValueError(f"端口超出范围: {self.port}")
         if not (1024 <= self.relay_ui_port <= 65535):
             raise ValueError(f"Relay UI 端口超出范围: {self.relay_ui_port}")
-        if not (1.0 <= self.semantic_correction_timeout_seconds <= 30.0):
-            raise ValueError("语义校正超时必须在 1~30 秒之间")
+        if not (1.0 <= self.semantic_correction_timeout_seconds <= 120.0):
+            raise ValueError("语义校正超时必须在 1~120 秒之间")
         if not (512 <= self.semantic_correction_context_chars <= 12000):
             raise ValueError("语义校正上下文长度必须在 512~12000 字符之间")
         if self.num_threads <= 0:

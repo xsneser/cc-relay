@@ -2,6 +2,8 @@
 
 import ctypes
 import ctypes.wintypes
+import json
+import os
 import re
 import socket
 import threading
@@ -17,55 +19,6 @@ AF_INET = 2
 AF_INET6 = 23
 TH32CS_SNAPPROCESS = 0x00000002
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
-
-TERM_BACKTICK_RE = re.compile(r"`([^`\n\r]{1,60})`")
-TERM_IDENTIFIER_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_]{2,40}\b")
-TERM_PATH_RE = re.compile(r"(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]+")
-
-COMMON_STOPWORDS = {
-    "the", "and", "for", "with", "this", "that", "from", "have", "will", "your",
-    "can", "not", "are", "but", "all", "any", "user", "assistant", "true", "false",
-    "none", "null", "self", "text", "line", "code", "file", "error", "name",
-    "type", "return", "import", "class", "def", "if", "else", "elif", "in", "or",
-}
-
-
-def extract_technical_terms(messages: Iterable[Tuple[str, str]], max_terms: int = 30) -> List[str]:
-    """Extract code identifiers, backticked symbols, paths, and technical terms from recent dialogue."""
-    seen = set()
-    terms = []
-    msg_list = list(messages)
-    for _, text in reversed(msg_list):
-        if not text:
-            continue
-        # 1. Backticked terms
-        for m in TERM_BACKTICK_RE.finditer(text):
-            val = m.group(1).strip()
-            if val and len(val) >= 2 and val.lower() not in COMMON_STOPWORDS and val not in seen:
-                seen.add(val)
-                terms.append(val)
-                if len(terms) >= max_terms:
-                    return terms
-        # 2. File paths
-        for m in TERM_PATH_RE.finditer(text):
-            val = m.group(0).strip()
-            if val and val not in seen:
-                seen.add(val)
-                terms.append(val)
-                if len(terms) >= max_terms:
-                    return terms
-        # 3. CamelCase or snake_case identifiers
-        for m in TERM_IDENTIFIER_RE.finditer(text):
-            val = m.group(0).strip()
-            is_snake = "_" in val
-            is_camel = any(c.isupper() for c in val[1:])
-            is_all_caps = val.isupper() and len(val) >= 2
-            if (is_snake or is_camel or is_all_caps) and val.lower() not in COMMON_STOPWORDS and val not in seen:
-                seen.add(val)
-                terms.append(val)
-                if len(terms) >= max_terms:
-                    return terms
-    return terms
 
 
 @dataclass(frozen=True)
@@ -359,6 +312,152 @@ def _is_process_related(client_pid: int, target_pid: int, parent_map: Dict[int, 
     )
 
 
+def _lookup_session_name(client_pid: int, parent_map: Optional[Dict[int, int]] = None) -> str:
+    """Best-effort lookup of Claude Code session name from ~/.claude/sessions/{pid}.json."""
+    if not client_pid:
+        return ""
+    try:
+        pids_to_check = [int(client_pid)]
+        if parent_map and int(client_pid) in parent_map:
+            pids_to_check.append(parent_map[int(client_pid)])
+        sessions_dir = os.path.expanduser("~/.claude/sessions")
+        for pid in pids_to_check:
+            session_file = os.path.join(sessions_dir, f"{pid}.json")
+            if os.path.isfile(session_file):
+                with open(session_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        name = str(data.get("name") or "").strip()
+                        if name:
+                            return name
+    except Exception:
+        pass
+    return ""
+
+
+def _read_session_messages_from_jsonl(jsonl_path: str, max_turns: int = 25) -> List[Tuple[str, str]]:
+    """Extract recent user/assistant dialogue turns directly from Claude Code session transaction jsonl."""
+    if not jsonl_path or not os.path.isfile(jsonl_path):
+        return []
+    try:
+        raw_msgs = []
+        with open(jsonl_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    etype = entry.get("type")
+                    if etype in ("user", "assistant") and "message" in entry:
+                        raw_msgs.append(entry["message"])
+                except Exception:
+                    pass
+        return extract_conversation(raw_msgs)[-max_turns:]
+    except Exception:
+        return []
+
+
+def _find_session_from_disk(target_title: str = "", target_pid: Optional[int] = None,
+                            parent_map: Optional[Dict[int, int]] = None) -> Optional[dict]:
+    """Directly resolve active Claude Code session from ~/.claude/ on disk without requiring HTTP traffic."""
+    sessions_dir = os.path.expanduser("~/.claude/sessions")
+    projects_dir = os.path.expanduser("~/.claude/projects")
+    if not os.path.isdir(sessions_dir):
+        return None
+
+    title_lower = str(target_title or "").strip().lower()
+    candidates = []
+
+    try:
+        session_files = [f for f in os.listdir(sessions_dir) if f.endswith(".json")]
+    except Exception:
+        return None
+
+    for fname in session_files:
+        filepath = os.path.join(sessions_dir, fname)
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                sdata = json.load(f)
+            if not isinstance(sdata, dict):
+                continue
+            pid = int(sdata.get("pid") or 0)
+            sid = str(sdata.get("sessionId") or "").strip()
+            name = str(sdata.get("name") or "").strip()
+            if not sid:
+                continue
+
+            # Verify process is still alive on Windows
+            if pid and hasattr(ctypes, "windll"):
+                h = ctypes.windll.kernel32.OpenProcess(0x0400, False, pid)
+                if not h:
+                    continue
+                ctypes.windll.kernel32.CloseHandle(h)
+
+            ai_title = ""
+            jsonl_path = ""
+            # Locate the session jsonl in projects directory
+            if os.path.isdir(projects_dir):
+                for root, _, files in os.walk(projects_dir):
+                    if f"{sid}.jsonl" in files:
+                        jsonl_path = os.path.join(root, f"{sid}.jsonl")
+                        try:
+                            with open(jsonl_path, "r", encoding="utf-8", errors="replace") as jf:
+                                for line in reversed(jf.readlines()[-60:]):
+                                    if '"ai-title"' in line or '"aiTitle"' in line:
+                                        d = json.loads(line)
+                                        ai_title = str(d.get("aiTitle") or "").strip()
+                                        if ai_title:
+                                            break
+                        except Exception:
+                            pass
+                        break
+
+            candidates.append({
+                "pid": pid,
+                "session_id": sid,
+                "session_name": name,
+                "ai_title": ai_title,
+                "jsonl_path": jsonl_path,
+                "updated_at": float(sdata.get("updatedAt") or 0) / 1000.0,
+            })
+        except Exception:
+            pass
+
+    if not candidates:
+        return None
+
+    # 1. Title match (ai_title, session_name, or session_id in window title)
+    if title_lower:
+        title_matches = []
+        for c in candidates:
+            ai_t = c["ai_title"].lower()
+            s_n = c["session_name"].lower()
+            s_id = c["session_id"].lower()
+            if ai_t and ai_t in title_lower:
+                title_matches.append((len(ai_t) + 100, c))
+            elif s_n and s_n in title_lower:
+                title_matches.append((len(s_n), c))
+            elif s_id and s_id in title_lower:
+                title_matches.append((len(s_id), c))
+        if title_matches:
+            title_matches.sort(key=lambda item: item[0], reverse=True)
+            return title_matches[0][1]
+
+    # 2. Process relationship match
+    if target_pid and parent_map:
+        proc_matches = [
+            c for c in candidates
+            if c["pid"] and _is_process_related(c["pid"], int(target_pid), parent_map)
+        ]
+        if len(proc_matches) == 1:
+            return proc_matches[0]
+        elif len(proc_matches) > 1:
+            return max(proc_matches, key=lambda c: c["updated_at"])
+
+    return None
+
+
 class VoiceContextRegistry:
     """Bounded in-memory map from CLI session/client process to plain-text history."""
 
@@ -378,33 +477,39 @@ class VoiceContextRegistry:
             return ""
         limit = self.max_chars if max_chars is None else max(256, min(int(max_chars), self.max_chars))
 
-        terms = extract_technical_terms(msg_list, max_terms=25)
-        terms_header = ""
-        if terms:
-            terms_header = "参考标识符/术语: " + ", ".join(terms) + "\n\n"
+        # 从最新轮次倒序收集纯净问答块，最新一轮的助手回复与用户输入拥有最高优先级
+        dialogue_blocks = []
+        chars_used = 0
 
-        lines = []
-        for role, text in msg_list:
+        for role, text in reversed(msg_list):
+            clean_text = text.strip()
+            if not clean_text:
+                continue
             label = "用户" if role == "user" else "助手"
-            clean_text = " ".join(text.split())
-            lines.append(f"{label}: {clean_text}")
-        joined_dialogue = "\n".join(lines)
+            block = f"{label}: {clean_text}"
+            block_len = len(block) + 2  # account for \n\n
 
-        remaining_limit = limit - len(terms_header)
-        if remaining_limit <= 64:
-            return (terms_header + joined_dialogue)[-limit:]
+            if chars_used + block_len <= limit:
+                dialogue_blocks.append(block)
+                chars_used += block_len
+            else:
+                remaining = limit - chars_used
+                if remaining >= 200:
+                    # 较早的历史轮次放不下时，按段落/换行边界整块截断，坚决杜绝把词语或句子切断
+                    clipped = block[-remaining:]
+                    nl = clipped.find("\n\n")
+                    if nl != -1 and nl < remaining // 2:
+                        clipped = clipped[nl + 2:].strip()
+                    else:
+                        nl_single = clipped.find("\n")
+                        if nl_single != -1 and nl_single < remaining // 2:
+                            clipped = clipped[nl_single + 1:].strip()
+                    if clipped:
+                        dialogue_blocks.append(clipped)
+                break
 
-        if len(joined_dialogue) > remaining_limit:
-            clipped = joined_dialogue[-remaining_limit:]
-            newline_idx = clipped.find("\n")
-            if newline_idx != -1 and newline_idx < remaining_limit // 2:
-                clipped = clipped[newline_idx + 1:]
-            dialogue_part = clipped
-        else:
-            dialogue_part = joined_dialogue
-
-        result = (terms_header + dialogue_part).strip()
-        return result[-limit:]
+        dialogue_blocks.reverse()
+        return "\n\n".join(dialogue_blocks).strip()
 
     def observe_request(self, session_id: str, client_pid: Optional[int], model: str,
                         messages: Sequence[dict], is_main_session: bool = True,
@@ -418,11 +523,13 @@ class VoiceContextRegistry:
         conversation = extract_conversation(messages)
         if not conversation:
             return None
+        session_name = _lookup_session_name(int(client_pid))
         with self._lock:
             self._revision += 1
             revision = self._revision
             self._pending[key] = {
                 "session_id": session_id,
+                "session_name": session_name,
                 "client_pid": int(client_pid),
                 "process_start": process_start,
                 "model": str(model or ""),
@@ -490,15 +597,31 @@ class VoiceContextRegistry:
                     if candidate_entry and key not in matches:
                         matches[key] = candidate_entry
 
+            def _find_by_title(pool):
+                title_lower = str(target_title or "").strip().lower()
+                if not title_lower:
+                    return None
+                matched = []
+                for e in pool:
+                    s_name = str(e.get("session_name") or "").strip().lower()
+                    s_id = str(e.get("session_id") or "").strip().lower()
+                    if s_name and s_name in title_lower:
+                        matched.append((len(s_name), e))
+                    elif s_id and s_id in title_lower:
+                        matched.append((len(s_id), e))
+                if not matched:
+                    return None
+                matched.sort(key=lambda item: item[0], reverse=True)
+                return matched[0][1]
+
             chosen = None
             if len(matches) == 1:
                 chosen = next(iter(matches.values()))
             elif len(matches) > 1:
                 # Disambiguate multiple sessions under the same terminal (e.g. Windows Terminal tabs)
-                title_lower = str(target_title or "").strip().lower()
-                exact_title = [e for e in matches.values() if e["session_id"].lower() in title_lower] if title_lower else []
-                if len(exact_title) == 1:
-                    chosen = exact_title[0]
+                title_match = _find_by_title(matches.values())
+                if title_match is not None:
+                    chosen = title_match
                 else:
                     # Fallback to the most recently active session under this window
                     chosen = max(matches.values(), key=lambda e: e.get("updated_at", 0))
@@ -510,13 +633,42 @@ class VoiceContextRegistry:
                     # 单机全局仅 1 个活跃会话时无条件自动关联
                     chosen = next(iter(all_entries.values()))
                 else:
-                    title_lower = str(target_title or "").strip().lower()
-                    exact_title = [e for e in all_entries.values() if e["session_id"].lower() in title_lower] if title_lower else []
-                    if len(exact_title) == 1:
-                        chosen = exact_title[0]
+                    title_match = _find_by_title(all_entries.values())
+                    if title_match is not None:
+                        chosen = title_match
                     else:
                         # 全局 MRU (Most Recently Used) 兜底
                         chosen = max(all_entries.values(), key=lambda e: e.get("updated_at", 0))
+
+            # 本地磁盘会话直读检查：
+            # 若内存中没有选出有效会话，或者当前窗口标题与内存选取结果不匹配（跨窗口/分屏），
+            # 直接从 ~/.claude/ 本地磁盘文件 0ms 直读该窗口的会话 ID 与完整问答！
+            need_disk_lookup = False
+            if chosen is None:
+                need_disk_lookup = True
+            elif target_title:
+                title_lower = str(target_title or "").strip().lower()
+                chosen_sname = str(chosen.get("session_name") or "").strip().lower()
+                chosen_sid = str(chosen.get("session_id") or "").strip().lower()
+                has_match = (
+                    (chosen_sname and chosen_sname in title_lower)
+                    or (chosen_sid and chosen_sid in title_lower)
+                )
+                if not has_match:
+                    need_disk_lookup = True
+
+            if need_disk_lookup:
+                disk_session = _find_session_from_disk(target_title, target_pid, parent_map)
+                if disk_session:
+                    disk_msgs = _read_session_messages_from_jsonl(disk_session.get("jsonl_path") or "")
+                    if disk_msgs:
+                        context = self._render(disk_msgs, max_chars=max_chars)
+                        return VoiceContextSnapshot(
+                            session_id=disk_session["session_id"],
+                            model="relay-main",
+                            context=context,
+                            revision=1,
+                        )
 
             if chosen is not None:
                 context = self._render(chosen["messages"], max_chars=max_chars)

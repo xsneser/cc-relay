@@ -185,7 +185,7 @@ assert.equal($('#cpa-card-status').textContent, '正在回滚');
 renderRelayProgressCard({
   has_update: true,
   latest_version: '2.5.0',
-  current_version: '2.4.9',
+  current_version: '2.4.10',
   update_state: 'idle'
 });
 assert.equal($('#relay-card-title').textContent, 'CC Relay', 'Relay title must be CC Relay');
@@ -195,7 +195,7 @@ assert.equal($('#relay-card-ver').textContent, 'v2.5.0');
 renderRelayProgressCard({
   has_update: true,
   latest_version: '2.5.0',
-  current_version: '2.4.9',
+  current_version: '2.4.10',
   update_state: 'downloading'
 });
 assert.equal($('#relay-card-title').textContent, 'CC Relay');
