@@ -10,7 +10,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
+
+
+_SILENT_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
 
 
 def get_repo_root() -> Path:
@@ -26,6 +29,7 @@ def _probe_interpreter(py_path: str) -> bool:
             [py_path, "-c", "import numpy"],
             capture_output=True,
             timeout=3,
+            creationflags=_SILENT_FLAGS,
         )
         return res.returncode == 0
     except Exception:
@@ -33,12 +37,26 @@ def _probe_interpreter(py_path: str) -> bool:
 
 
 def _probe_desktop_capability(py_path: str) -> bool:
-    """验证目标解释器是否具备桌面悬浮窗图形界面 (Tkinter) 初始化能力"""
+    """静态验证目标解释器包含 Tkinter 与 Tcl/Tk 脚本资源，不创建临时 GUI 窗口"""
     if not py_path or sys.platform != "win32":
         return True
+    code = (
+        "import tkinter\n"
+        "from tools.voice_input.tk_runtime import find_tcl_tk_dirs\n"
+        "tcl_dir, tk_dir = find_tcl_tk_dirs()\n"
+        "assert tcl_dir and (tcl_dir / 'init.tcl').is_file()\n"
+        "assert tk_dir and (tk_dir / 'tk.tcl').is_file()\n"
+        "print('TK_STATIC_OK')\n"
+    )
     try:
-        from .tk_runtime import validate_tk_runtime
-        return validate_tk_runtime(py_path)
+        res = subprocess.run(
+            [py_path, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            creationflags=_SILENT_FLAGS,
+        )
+        return res.returncode == 0 and "TK_STATIC_OK" in res.stdout
     except Exception:
         return False
 
@@ -53,7 +71,13 @@ def _score_interpreter(py_path: str) -> int:
         "print(sum(1 for m in mods if importlib.util.find_spec(m) is not None))\n"
     )
     try:
-        res = subprocess.run([py_path, "-c", code], capture_output=True, text=True, timeout=3)
+        res = subprocess.run(
+            [py_path, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            creationflags=_SILENT_FLAGS,
+        )
         if res.returncode == 0 and res.stdout.strip().isdigit():
             return int(res.stdout.strip())
     except Exception:
@@ -67,7 +91,12 @@ def _check_module_in_interpreter(py_path: str, module_name: str) -> bool:
         return False
     code = f"import importlib.util; exit(0 if importlib.util.find_spec('{module_name}') is not None else 1)"
     try:
-        res = subprocess.run([py_path, "-c", code], capture_output=True, timeout=2)
+        res = subprocess.run(
+            [py_path, "-c", code],
+            capture_output=True,
+            timeout=2,
+            creationflags=_SILENT_FLAGS,
+        )
         return res.returncode == 0
     except Exception:
         return False
@@ -133,24 +162,45 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
             seen.add(c)
             unique_candidates.append(c)
 
-    # 优先匹配：满足目标引擎核心模块 + 桌面 GUI 能力（若需要）
+    # Memoize candidate results within this resolution pass; fallback passes reuse probes.
+    interpreter_results: Dict[str, bool] = {}
+    module_results: Dict[Tuple[str, str], bool] = {}
+    desktop_results: Dict[str, bool] = {}
+
+    def interpreter_ok(candidate: str) -> bool:
+        if candidate not in interpreter_results:
+            interpreter_results[candidate] = _probe_interpreter(candidate)
+        return interpreter_results[candidate]
+
+    def module_ok(candidate: str, module: str) -> bool:
+        key = (candidate, module)
+        if key not in module_results:
+            module_results[key] = _check_module_in_interpreter(candidate, module)
+        return module_results[key]
+
+    def desktop_ok(candidate: str) -> bool:
+        if candidate not in desktop_results:
+            desktop_results[candidate] = _probe_desktop_capability(candidate)
+        return desktop_results[candidate]
+
+    # 优先匹配：满足目标引擎核心模块 + 桌面静态能力（若需要）
     if target_mod:
         if require_desktop:
             for cand in unique_candidates:
-                if _probe_interpreter(cand) and _check_module_in_interpreter(cand, target_mod) and _probe_desktop_capability(cand):
+                if interpreter_ok(cand) and module_ok(cand, target_mod) and desktop_ok(cand):
                     return cand
         for cand in unique_candidates:
-            if _probe_interpreter(cand) and _check_module_in_interpreter(cand, target_mod):
+            if interpreter_ok(cand) and module_ok(cand, target_mod):
                 return cand
 
     # 其次按优先级探针测试候选者
     if require_desktop:
         for cand in unique_candidates:
-            if _probe_interpreter(cand) and _probe_desktop_capability(cand):
+            if interpreter_ok(cand) and desktop_ok(cand):
                 return cand
 
     for cand in unique_candidates:
-        if _probe_interpreter(cand):
+        if interpreter_ok(cand):
             return cand
 
     # 最终保底
@@ -159,102 +209,126 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
     return "python"
 
 
-def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, bool]:
-    """探测指定解释器中各项核心语音依赖的就绪状态 (毫秒级 find_spec 探测与 Tkinter 运行验证)"""
-    py_exe = python_exe or find_voice_python()
-    modules = [
-        "sherpa_onnx",
-        "transformers",
-        "torch",
-        "torchaudio",
-        "modelscope",
-        "webrtcvad",
-        "websockets",
-        "sounddevice",
-        "numpy",
-        "pynput",
-        "win32gui",
-        "tkinter",
-    ]
+_DIAGNOSTIC_MODULES = (
+    "sherpa_onnx", "transformers", "torch", "torchaudio", "modelscope", "webrtcvad",
+    "websockets", "sounddevice", "numpy", "pynput", "win32gui", "tkinter", "PIL",
+)
+_REQUIRED_DESKTOP_MODULES = ("numpy", "sounddevice", "pynput", "websockets", "win32gui")
 
+
+def _probe_dependency_report(python_exe: str, timeout: float = 5.0) -> Tuple[Optional[Dict[str, bool]], Optional[str]]:
+    """静态探测依赖；不创建 Tk 窗口。返回 None report 表示探测进程本身失败。"""
+    mods = repr(list(_DIAGNOSTIC_MODULES))
     code = (
         "import importlib.util, json\n"
-        "mods = ['sherpa_onnx', 'transformers', 'torch', 'torchaudio', 'modelscope', 'webrtcvad', 'websockets', "
-        "'sounddevice', 'numpy', 'pynput', 'win32gui', 'tkinter']\n"
+        f"mods = {mods}\n"
         "res = {m: importlib.util.find_spec(m) is not None for m in mods}\n"
-        "try:\n"
-        "    from tools.voice_input.tk_runtime import validate_tk_runtime\n"
-        "    res['tkinter'] = validate_tk_runtime()\n"
-        "except Exception:\n"
-        "    pass\n"
         "print('__JSON_START__' + json.dumps(res))\n"
     )
-
     try:
         res = subprocess.run(
-            [py_exe, "-c", code],
+            [python_exe, "-c", code],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=timeout,
+            creationflags=_SILENT_FLAGS,
         )
-        if res.returncode == 0 and "__JSON_START__" in res.stdout:
-            json_part = res.stdout.split("__JSON_START__")[-1].strip()
-            return json.loads(json_part)
-    except Exception:
-        pass
+        if res.returncode != 0:
+            detail = (res.stderr or res.stdout or f"probe exited {res.returncode}").strip()[-1200:]
+            return None, detail
+        if "__JSON_START__" not in res.stdout:
+            return None, "dependency probe returned no result marker"
+        data = json.loads(res.stdout.split("__JSON_START__")[-1].strip())
+        if not isinstance(data, dict):
+            return None, "dependency probe returned invalid data"
+        return {name: bool(data.get(name, False)) for name in _DIAGNOSTIC_MODULES}, None
+    except Exception as exc:
+        return None, str(exc)
 
-    # 若子进程探测失败，直接返回全部 False，绝不混淆宿主环境
-    return {m: False for m in modules}
+
+def diagnose_python_environment(python_exe: Optional[str] = None) -> Dict[str, bool]:
+    """静态探测解释器中的模块可用性，不会创建临时 Tk 窗口。"""
+    py_exe = python_exe or find_voice_python()
+    report, _error = _probe_dependency_report(py_exe)
+    return report if report is not None else {name: False for name in _DIAGNOSTIC_MODULES}
 
 
 def check_deps_ready(python_exe: Optional[str] = None) -> bool:
-    """快速检查必要桌面语音依赖是否全部就绪"""
+    """快速检查必要桌面语音依赖是否全部就绪。"""
     diag = diagnose_python_environment(python_exe)
-    required = ["numpy", "sounddevice", "pynput", "websockets", "win32gui"]
-    return all(diag.get(m, False) for m in required)
+    return all(diag.get(name, False) for name in _REQUIRED_DESKTOP_MODULES)
 
 
-def ensure_voice_dependencies(python_exe: Optional[str] = None, timeout: int = 120) -> bool:
-    """自动自检并静默补齐语音伴侣缺失的桌面依赖 (sounddevice / pynput)
-
-    - 幂等执行：若所有必要依赖已就绪，立即返回 True，零开销；
-    - 智能适配系统代理，确保 pip 下载顺畅；
-    - 仅在确实缺失依赖时触发安装。
-    """
+def ensure_voice_dependencies(
+    python_exe: Optional[str] = None,
+    timeout: int = 120,
+    on_progress: Optional[Callable[[str, Dict[str, object]], None]] = None,
+) -> bool:
+    """检查并按需修复桌面依赖；报告探测/安装阶段，保留有界 pip 超时。"""
     py_exe = python_exe or find_voice_python()
-    if check_deps_ready(py_exe):
+
+    def report(phase: str, **details) -> None:
+        if on_progress:
+            try:
+                on_progress(phase, details)
+            except Exception:
+                pass
+
+    report("checking_dependencies", interpreter=py_exe)
+    diag, probe_error = _probe_dependency_report(py_exe)
+    if diag is None:
+        report("dependency_probe_failed", error=probe_error or "unknown probe error")
+        return False
+
+    missing = [name for name in _REQUIRED_DESKTOP_MODULES if not diag.get(name, False)]
+    if not missing:
+        report("dependencies_ready", missing=[])
         return True
 
+    report("installing_dependencies", missing=missing)
     repo_root = get_repo_root()
     req_file = repo_root / "tools" / "voice_input" / "requirements-desktop.txt"
     if not req_file.is_file():
         req_file = repo_root / "tools" / "voice_input" / "requirements.txt"
     if not req_file.is_file():
+        report("dependency_install_failed", missing=missing, error="requirements file not found")
         return False
 
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
-    # 自适应代理配置
     if "127.0.0.1:7900" in os.environ.get("HTTP_PROXY", "") or "127.0.0.1:7900" in os.environ.get("ALL_PROXY", ""):
         env["HTTP_PROXY"] = "http://127.0.0.1:7900"
         env["HTTPS_PROXY"] = "http://127.0.0.1:7900"
 
-    cmd = [
-        py_exe,
-        "-m",
-        "pip",
-        "install",
-        "-r",
-        str(req_file),
-    ]
-
+    cmd = [py_exe, "-m", "pip", "install", "-r", str(req_file)]
     try:
-        res = subprocess.run(cmd, env=env, capture_output=True, timeout=timeout)
-        if res.returncode == 0:
-            return check_deps_ready(py_exe)
-    except Exception:
-        pass
-    return False
+        result = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=True,
+            timeout=timeout,
+            creationflags=_SILENT_FLAGS,
+        )
+    except Exception as exc:
+        report("dependency_install_failed", missing=missing, error=str(exc))
+        return False
+
+    if result.returncode != 0:
+        raw_detail = result.stderr or result.stdout or f"pip exited {result.returncode}"
+        detail = raw_detail.decode("utf-8", errors="replace") if isinstance(raw_detail, bytes) else str(raw_detail)
+        report("dependency_install_failed", missing=missing, error=detail[-1200:])
+        return False
+
+    diag, probe_error = _probe_dependency_report(py_exe)
+    if diag is None:
+        report("dependency_recheck_failed", missing=missing, error=probe_error or "unknown probe error")
+        return False
+    remaining = [name for name in _REQUIRED_DESKTOP_MODULES if not diag.get(name, False)]
+    if remaining:
+        report("dependency_install_incomplete", missing=remaining)
+        return False
+    report("dependencies_ready", installed=missing)
+    return True
 
 
 if __name__ == "__main__":

@@ -20,6 +20,14 @@ class VoiceConfig:
     host: str = "127.0.0.1"
     port: int = 8401
     auto_start: bool = False
+    relay_host: str = "127.0.0.1"
+    relay_port: int = 8400
+    relay_ui_port: int = 8610
+    fake_api_key: str = "sk-relay-local-0000"
+    semantic_correction_enabled: bool = False
+    semantic_correction_model: str = ""
+    semantic_correction_timeout_seconds: float = 8.0
+    semantic_correction_context_chars: int = 2500
 
     # 引擎模式: "qwen_2pass" (推荐高精流式: Zipformer + Qwen3-ASR-1.7B) | "qwen_offline" (Qwen 1.7B 离线单 Pass) | "sherpa_2pass" (统一 2-Pass：流式 Zipformer + 离线 SenseVoice) | "sensevoice_offline" (轻量极速，纯 CPU) | "paraformer_streaming_2pass" (向后兼容别名)
     engine: str = "sherpa_2pass"
@@ -29,6 +37,10 @@ class VoiceConfig:
     qwen_model_dir_name: str = "Qwen3-ASR-1.7B"
     qwen_device: str = "auto"          # "auto" | "cuda" | "cpu"
     qwen_torch_dtype: str = "auto"     # "auto" | "bfloat16" | "float16" | "float32"
+    qwen_trailing_audio_guard_seconds: float = 2.0
+    qwen_stable_hypothesis_count: int = 3
+    qwen_segment_silence_seconds: float = 0.6
+    vram_mode: str = "resident"        # "resident" | "on_demand_offload"
 
     # 音频参数
     sample_rate: int = 16000
@@ -55,6 +67,8 @@ class VoiceConfig:
     restore_clipboard: bool = True
     restore_clipboard_delay: float = 0.15
     beep_feedback: bool = False
+    auto_reactivate_target: bool = True
+    restore_switched_focus: bool = True
 
     @property
     def model_name(self) -> str:
@@ -133,14 +147,27 @@ class VoiceConfig:
             raise ValueError(f"vad_mode 必须为 0~3，当前: {self.vad_mode}")
         if self.min_recording_seconds <= 0 or self.max_recording_seconds <= self.min_recording_seconds:
             raise ValueError("录音时长阈值非法")
+        if self.qwen_trailing_audio_guard_seconds <= 0 or self.qwen_segment_silence_seconds <= 0:
+            raise ValueError("Qwen 音频保留与静音边界阈值必须大于 0")
+        if self.qwen_stable_hypothesis_count < 2:
+            raise ValueError("Qwen 稳定前缀至少需要 2 次成功识别")
         valid_engines = ("qwen_2pass", "qwen_offline", "sherpa_2pass", "sensevoice_offline", "paraformer_streaming_2pass")
         if self.engine not in valid_engines:
             raise ValueError(f"不支持的引擎: {self.engine}")
         valid_dev = str(self.device or "auto").strip().lower()
         if not (valid_dev in ("auto", "cpu") or valid_dev.startswith("cuda")):
             raise ValueError(f"不支持的设备配置: {self.device}")
+        self.vram_mode = str(self.vram_mode or "resident").strip().lower()
+        if self.vram_mode not in ("resident", "on_demand_offload"):
+            raise ValueError(f"不支持的显存策略: {self.vram_mode}")
         if not (1024 <= self.port <= 65535):
             raise ValueError(f"端口超出范围: {self.port}")
+        if not (1024 <= self.relay_ui_port <= 65535):
+            raise ValueError(f"Relay UI 端口超出范围: {self.relay_ui_port}")
+        if not (1.0 <= self.semantic_correction_timeout_seconds <= 30.0):
+            raise ValueError("语义校正超时必须在 1~30 秒之间")
+        if not (512 <= self.semantic_correction_context_chars <= 12000):
+            raise ValueError("语义校正上下文长度必须在 512~12000 字符之间")
         if self.num_threads <= 0:
             self.num_threads = 2
 
@@ -157,12 +184,30 @@ class VoiceConfig:
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            if isinstance(data.get("ui_port"), int):
+                cfg.relay_ui_port = data["ui_port"]
+            if isinstance(data.get("listen_port"), int):
+                cfg.relay_port = data["listen_port"]
+            if isinstance(data.get("listen_host"), str) and data["listen_host"].strip():
+                cfg.relay_host = data["listen_host"].strip()
+            if isinstance(data.get("fake_api_key"), str) and data["fake_api_key"].strip():
+                cfg.fake_api_key = data["fake_api_key"].strip()
             v_conf = data.get("tools", {}).get("voice", {})
             if not isinstance(v_conf, dict):
                 return cfg
 
             if "auto_start" in v_conf:
                 cfg.auto_start = bool(v_conf["auto_start"])
+            if "semantic_correction_enabled" in v_conf:
+                cfg.semantic_correction_enabled = bool(v_conf["semantic_correction_enabled"])
+            if "semantic_correction_model" in v_conf and isinstance(v_conf["semantic_correction_model"], str):
+                cfg.semantic_correction_model = v_conf["semantic_correction_model"].strip()
+            timeout = v_conf.get("semantic_correction_timeout_seconds")
+            if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+                cfg.semantic_correction_timeout_seconds = float(timeout)
+            context_chars = v_conf.get("semantic_correction_context_chars")
+            if isinstance(context_chars, int) and not isinstance(context_chars, bool):
+                cfg.semantic_correction_context_chars = context_chars
             if "hotkey" in v_conf and isinstance(v_conf["hotkey"], str):
                 cfg.hotkey = v_conf["hotkey"].strip().lower()
             if "engine" in v_conf and isinstance(v_conf["engine"], str):
@@ -178,6 +223,14 @@ class VoiceConfig:
                     cfg.device = cfg.qwen_device
             if "qwen_torch_dtype" in v_conf and isinstance(v_conf["qwen_torch_dtype"], str):
                 cfg.qwen_torch_dtype = v_conf["qwen_torch_dtype"].strip()
+            if isinstance(v_conf.get("qwen_trailing_audio_guard_seconds"), (int, float)):
+                cfg.qwen_trailing_audio_guard_seconds = float(v_conf["qwen_trailing_audio_guard_seconds"])
+            if isinstance(v_conf.get("qwen_stable_hypothesis_count"), int):
+                cfg.qwen_stable_hypothesis_count = int(v_conf["qwen_stable_hypothesis_count"])
+            if isinstance(v_conf.get("qwen_segment_silence_seconds"), (int, float)):
+                cfg.qwen_segment_silence_seconds = float(v_conf["qwen_segment_silence_seconds"])
+            if "vram_mode" in v_conf and isinstance(v_conf["vram_mode"], str):
+                cfg.vram_mode = v_conf["vram_mode"].strip().lower()
             if "port" in v_conf and isinstance(v_conf["port"], int):
                 cfg.port = v_conf["port"]
             if "vad_mode" in v_conf and isinstance(v_conf["vad_mode"], int):
@@ -188,6 +241,10 @@ class VoiceConfig:
                 cfg.restore_clipboard = bool(v_conf["restore_clipboard"])
             if "beep_feedback" in v_conf:
                 cfg.beep_feedback = bool(v_conf["beep_feedback"])
+            if "auto_reactivate_target" in v_conf:
+                cfg.auto_reactivate_target = bool(v_conf["auto_reactivate_target"])
+            if "restore_switched_focus" in v_conf:
+                cfg.restore_switched_focus = bool(v_conf["restore_switched_focus"])
         except Exception:
             pass
 

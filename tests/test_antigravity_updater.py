@@ -141,6 +141,18 @@ class TestAntigravityUpdater(unittest.TestCase):
         self.assertEqual(res["open_mode"], "main_window")
         mock_popen.assert_called()
 
+    def test_status_returns_cached_snapshot_without_blocking_query(self):
+        updater = AntigravityUpdater(upstream_url="http://127.0.0.1:8045")
+        updater._snapshot["current_version"] = "4.8.4"
+        updater._snapshot["latest_version"] = "4.9.0"
+        updater._local_probe_last = 9999999999.0
+        with patch.object(updater, "_query_local_version") as mock_query:
+            status = updater.status()
+            mock_query.assert_not_called()
+            self.assertEqual(status["current_version"], "4.8.4")
+            self.assertEqual(status["latest_version"], "4.9.0")
+            self.assertTrue(status["has_update"])
+
     def test_stats_snapshot_includes_antigravity_update(self):
         with patch("cc_relay.load_conf", return_value={}), \
              patch("cc_relay.live_models", return_value={"ds": [], "cx": [], "gm": []}), \

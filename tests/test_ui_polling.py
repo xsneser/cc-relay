@@ -7,6 +7,21 @@ from pathlib import Path
 
 
 class UIPollingTests(unittest.TestCase):
+    def test_status_and_config_fetch_use_shorter_timeouts_than_mutations(self):
+        html = (Path(__file__).resolve().parents[1] / "ui.html").read_text(encoding="utf-8")
+        self.assertIn("await api('/api/status', undefined, 8000)", html)
+        self.assertIn("await api('/api/config', undefined, 4000)", html)
+        self.assertIn("defaultTimeoutMs = body ? 60000 : 20000", html)
+
+    def test_voice_status_exposes_startup_phase_and_elapsed_time(self):
+        html = (Path(__file__).resolve().parents[1] / "ui.html").read_text(encoding="utf-8")
+        self.assertIn("const startup = vstat.startup || {}", html)
+        self.assertIn("startup.elapsed_seconds", html)
+        self.assertIn("checking_dependencies: '检查依赖'", html)
+        self.assertIn("model_loading: '加载语音模型'", html)
+        self.assertIn("启动较慢，仍在等待", html)
+        self.assertIn("当前阶段:", html)
+
     def test_status_requests_are_shared_and_recover_after_failure(self):
         node = shutil.which("node")
         if not node:
@@ -17,7 +32,7 @@ class UIPollingTests(unittest.TestCase):
         script = r'''
 const assert = require('node:assert/strict');
 let st, calls = 0, rendered = 0, traffic = 0, resolveStatus, rejectStatus;
-const nodes = { '#routedot': {}, '#tf-since': {} };
+const nodes = { '#routedot': {}, '#tf-since': {}, '#codex-status': {}, '#gemini-status': {}, '#voice-status': {} };
 const $ = key => nodes[key];
 const api = () => { calls++; return new Promise((resolve, reject) => {
   resolveStatus = resolve; rejectStatus = reject;

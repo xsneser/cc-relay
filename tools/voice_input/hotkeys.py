@@ -12,6 +12,14 @@ except ImportError:
     keyboard = None
     mouse = None
 
+try:
+    from .inject import capture_target_snapshot
+except ImportError:
+    try:
+        from inject import capture_target_snapshot
+    except ImportError:
+        capture_target_snapshot = None
+
 
 class HotkeyState(enum.Enum):
     IDLE = "IDLE"
@@ -177,6 +185,7 @@ class HotkeyController:
         self._mouse_poller: Optional[WindowsMousePoller] = None
         self._lock = threading.Lock()
         self._threshold_timer: Optional[threading.Timer] = None
+        self._initial_target: Optional[object] = None
 
     @property
     def state(self) -> HotkeyState:
@@ -250,13 +259,30 @@ class HotkeyController:
                 return True
         return False
 
+    def _dispatch_start_record(self, snap=None):
+        if not self.on_start_record:
+            return
+        try:
+            import inspect
+            sig = inspect.signature(self.on_start_record)
+            if len(sig.parameters) > 0:
+                self.on_start_record(snap)
+            else:
+                self.on_start_record()
+        except Exception:
+            try:
+                self.on_start_record(snap)
+            except TypeError:
+                self.on_start_record()
+
     def _on_threshold_reached(self):
         """长按达到阈值，真正触发录音"""
         with self._lock:
             if self._state == HotkeyState.PRESSED:
                 self._state = HotkeyState.RECORDING
+                snap = self._initial_target
                 if self.on_start_record:
-                    threading.Thread(target=self.on_start_record, daemon=True).start()
+                    threading.Thread(target=self._dispatch_start_record, args=(snap,), daemon=True).start()
 
     # ── 触发事件核心调度 ──
     def _on_mouse_trigger_down(self):
@@ -266,8 +292,10 @@ class HotkeyController:
                 return
             self._state = HotkeyState.RECORDING
             self._press_time = time.monotonic()
+            snap = capture_target_snapshot() if capture_target_snapshot else None
+            self._initial_target = snap
             if self.on_start_record:
-                threading.Thread(target=self.on_start_record, daemon=True).start()
+                threading.Thread(target=self._dispatch_start_record, args=(snap,), daemon=True).start()
 
     def _on_mouse_trigger_up(self):
         """鼠标按键松开"""
@@ -319,6 +347,8 @@ class HotkeyController:
 
             self._state = HotkeyState.PRESSED
             self._press_time = time.monotonic()
+            snap = capture_target_snapshot() if capture_target_snapshot else None
+            self._initial_target = snap
 
             if self.hotkey_name in ("caps_lock", "capslock"):
                 self._threshold_timer = threading.Timer(
@@ -329,7 +359,7 @@ class HotkeyController:
             else:
                 self._state = HotkeyState.RECORDING
                 if self.on_start_record:
-                    threading.Thread(target=self.on_start_record, daemon=True).start()
+                    threading.Thread(target=self._dispatch_start_record, args=(snap,), daemon=True).start()
 
     def _on_keyboard_release(self, key):
         if self.is_mouse_trigger() or not self._match_keyboard_key(key):

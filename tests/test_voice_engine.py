@@ -94,31 +94,558 @@ class TestQwen2PassEngine(unittest.TestCase):
         self.engine.cancel_session("sess_001")
         self.assertNotIn("sess_001", self.engine._sessions)
 
-    def test_finalize_uses_qwen_pass2(self):
+    def test_finalize_tail_flush(self):
         self.engine.create_session("sess_004")
         chunk = np.zeros(4000, dtype=np.int16).tobytes()
         self.engine.feed_chunk("sess_004", chunk)
 
-        with mock.patch.object(self.engine, "_transcribe_samples", return_value="Qwen终审结果"):
+        with mock.patch.object(self.engine, "_transcribe_samples", return_value="Qwen收尾结果"):
             text = self.engine.finalize_session("sess_004")
-            self.assertEqual(text, "Qwen终审结果")
+            self.assertEqual(text, "Qwen收尾结果")
 
-    def test_qwen_fast_path_finalize_skips_duplicate_inference(self):
-        ctx = self.engine.create_session("sess_fast")
-        # 模拟 10 秒音频 (160,000 samples = 320,000 bytes)
-        total_bytes = 320000
-        chunk = np.zeros(total_bytes // 2, dtype=np.int16).tobytes()
-        ctx.accumulated_pcm.extend(chunk)
+    def test_qwen_finalize_reuses_current_segment_partial(self):
+        ctx = self.engine.create_session("sess_stream")
+        ctx.accumulated_pcm.extend(b"\x00" * 32000)
+        ctx.total_pcm_len = 32000
+        ctx.last_inferred_pcm_len = len(ctx.accumulated_pcm)
+        ctx.current_partial = "流式实时输出的文本"
 
-        # 模拟流式阶段已推演至 9.5 秒处 (相差 0.5 秒，即 16000 字节，在 1.0 秒容差内)
-        ctx.last_inferred_pcm_len = total_bytes - 16000
-        ctx.current_partial = "这是流式实时出字的文本"
-
-        # 校验 fast-path 直接返回 partial，跳过耗时的二次重复全音频推演
         with mock.patch.object(self.engine, "_transcribe_samples") as mock_transcribe:
-            result = self.engine.finalize_session("sess_fast")
-            self.assertEqual(result, "这是流式实时出字的文本")
+            result = self.engine.finalize_session("sess_stream")
+            self.assertEqual(result, "流式实时输出的文本")
             mock_transcribe.assert_not_called()
+
+    def test_qwen_tail_audio_decoded_without_loss(self):
+        ctx = self.engine.create_session("sess_tail")
+        tail_bytes = np.zeros(8000, dtype=np.int16).tobytes()
+        self.engine.feed_chunk("sess_tail", tail_bytes)
+
+        with mock.patch.object(self.engine, "_transcribe_samples", return_value="尾部补全文本") as mock_transcribe:
+            result = self.engine.finalize_session("sess_tail")
+            self.assertEqual(result, "尾部补全文本")
+            mock_transcribe.assert_called_once()
+            self.assertEqual(len(mock_transcribe.call_args.args[0]), 8000)
+
+    def test_qwen_streaming_no_repetition(self):
+        ctx = self.engine.create_session("sess_norep")
+        chunk_1s = np.zeros(16000, dtype=np.int16).tobytes()
+
+        # 模拟第 1 秒出字
+        with mock.patch.object(self.engine, "_transcribe_samples", return_value="现在右上角"):
+            conf, part1 = self.engine.feed_chunk("sess_norep", chunk_1s)
+            self.assertEqual(part1, "现在右上角")
+
+        # 模拟第 2 秒出字，确认不会把第 1 秒短语重复拼接成两遍
+        with mock.patch.object(self.engine, "_transcribe_samples", return_value="现在右上角这个悬浮窗"):
+            conf, part2 = self.engine.feed_chunk("sess_norep", chunk_1s)
+            self.assertEqual(part2, "现在右上角这个悬浮窗")
+            self.assertNotIn("现在右上角现在右上角", part2)
+
+    def test_qwen_stable_prefix_commits_only_after_vad_and_eight_second_guard(self):
+        cfg = VoiceConfig(
+            engine="qwen_2pass",
+            qwen_trailing_audio_guard_seconds=8.0,
+            qwen_stable_hypothesis_count=3,
+            qwen_segment_silence_seconds=0.1,
+        )
+        engine = Qwen2PassEngine(cfg)
+        ctx = engine.create_session("sess_stable_prefix")
+        frame_index = 0
+
+        def is_speech(_frame):
+            nonlocal frame_index
+            current = frame_index
+            frame_index += 1
+            return current < 40 or current >= 45
+
+        engine._vad.is_speech_bytes = is_speech
+        observed_lengths = []
+
+        def transcribe(samples, context=""):
+            observed_lengths.append(len(samples))
+            if ctx.audio_base_offset == 0:
+                return "第一句。" if len(samples) <= 14400 else "第一句。后续内容。"
+            return "后续内容。更多文字。"
+
+        with mock.patch.object(engine, "_transcribe_samples", side_effect=transcribe):
+            engine.feed_chunk("sess_stable_prefix", np.zeros(12800, dtype=np.int16).tobytes())  # 0.8s speech
+            engine.feed_chunk("sess_stable_prefix", np.zeros(1600, dtype=np.int16).tobytes())    # 0.1s VAD pause
+            self.assertEqual(len(ctx.vad_boundaries), 1)
+            boundary_offset = ctx.vad_boundaries[0]["offset"]
+            engine.feed_chunk("sess_stable_prefix", np.zeros(127680, dtype=np.int16).tobytes()) # 7.98s after boundary
+
+            self.assertEqual(ctx.confirmed_text, "")
+            self.assertEqual(ctx.audio_base_offset, 0)
+            engine.feed_chunk("sess_stable_prefix", np.zeros(320, dtype=np.int16).tobytes())    # reaches 8s guard
+
+            self.assertEqual(ctx.confirmed_text, "第一句。")
+            self.assertEqual(ctx.audio_base_offset, boundary_offset)
+            self.assertEqual(len(ctx.accumulated_pcm), 8 * 16000 * 2)
+            self.assertTrue(ctx.current_partial.startswith("后续内容"))
+
+            engine.feed_chunk("sess_stable_prefix", np.zeros(12800, dtype=np.int16).tobytes()) # 0.8s more
+
+        self.assertTrue(observed_lengths)
+        self.assertEqual(observed_lengths[-1], int(8.8 * 16000))
+        self.assertLess(observed_lengths[-1], ctx.total_pcm_len // 2)
+
+    def test_qwen_continuous_speech_has_no_arbitrary_eight_second_cut(self):
+        cfg = VoiceConfig(engine="qwen_2pass", qwen_trailing_audio_guard_seconds=8.0)
+        engine = Qwen2PassEngine(cfg)
+        ctx = engine.create_session("sess_no_forced_cap")
+        engine._vad.is_speech_bytes = mock.Mock(return_value=True)
+
+        with mock.patch.object(engine, "_transcribe_samples", return_value="连续讲话"):
+            engine.feed_chunk("sess_no_forced_cap", np.zeros(10 * 16000, dtype=np.int16).tobytes())
+
+        self.assertEqual(ctx.confirmed_text, "")
+        self.assertEqual(ctx.audio_base_offset, 0)
+        self.assertEqual(len(ctx.accumulated_pcm), 10 * 16000 * 2)
+
+    def test_qwen_failed_pause_decode_keeps_audio_for_final_retry(self):
+        cfg = VoiceConfig(engine="qwen_2pass", qwen_segment_silence_seconds=0.1)
+        engine = Qwen2PassEngine(cfg)
+        ctx = engine.create_session("sess_retry_pause")
+        frame_index = 0
+
+        def is_speech(_frame):
+            nonlocal frame_index
+            current = frame_index
+            frame_index += 1
+            return current < 40
+
+        engine._vad.is_speech_bytes = is_speech
+        with mock.patch.object(
+            engine,
+            "_transcribe_samples",
+            side_effect=["partial draft", "", "recovered final"],
+        ) as mock_transcribe:
+            engine.feed_chunk("sess_retry_pause", np.zeros(12800, dtype=np.int16).tobytes())
+            engine.feed_chunk("sess_retry_pause", np.zeros(1600, dtype=np.int16).tobytes())
+            self.assertGreater(len(ctx.accumulated_pcm), 0)
+            self.assertEqual(ctx.confirmed_text, "")
+            result = engine.finalize_session("sess_retry_pause")
+
+        self.assertEqual(result, "recovered final")
+        self.assertEqual(mock_transcribe.call_count, 3)
+
+    def test_qwen_finalize_does_not_repeat_already_decoded_segment(self):
+        ctx = self.engine.create_session("sess_no_final_repeat")
+        segment = np.zeros(12800, dtype=np.int16).tobytes()  # 0.8 seconds
+
+        with mock.patch.object(self.engine, "_transcribe_samples", return_value="partial文本") as mock_transcribe:
+            self.engine.feed_chunk("sess_no_final_repeat", segment)
+            self.assertEqual(ctx.last_inferred_pcm_len, len(ctx.accumulated_pcm))
+            result = self.engine.finalize_session("sess_no_final_repeat")
+
+        self.assertEqual(result, "partial文本")
+        mock_transcribe.assert_called_once()
+
+    def test_qwen_silence_tail_fast_path_avoids_redundant_inference(self):
+        """当语音在按键期间已完成识别，且松键尾部仅为静音时，必须命中 Fast-path 免重算。"""
+        ctx = self.engine.create_session("sess_fast_path")
+        frame_index = 0
+
+        # 前 40 帧 (0.8s) 为有声，后 25 帧 (0.5s) 为静音
+        def is_speech(_frame):
+            nonlocal frame_index
+            current = frame_index
+            frame_index += 1
+            return current < 40
+
+        self.engine._vad.is_speech_bytes = is_speech
+        speech_bytes = np.zeros(12800, dtype=np.int16).tobytes()  # 0.8s
+        silence_bytes = np.zeros(8000, dtype=np.int16).tobytes()  # 0.5s
+
+        with mock.patch.object(self.engine, "_transcribe_samples", return_value="完整说话文本") as mock_transcribe:
+            # 1. 说话期间触发流式推理
+            self.engine.feed_chunk("sess_fast_path", speech_bytes)
+            self.assertEqual(mock_transcribe.call_count, 1)
+            self.assertEqual(ctx.current_partial, "完整说话文本")
+            self.assertGreater(ctx.last_inferred_pcm_len, 0)
+
+            # 2. 松键阶段排空静音帧
+            self.engine.feed_chunk("sess_fast_path", silence_bytes)
+            self.assertGreater(len(ctx.accumulated_pcm), ctx.last_inferred_pcm_len)
+
+            # 3. 终态结算：断言直接复用 partial，不发起二次 GPU 运算
+            result = self.engine.finalize_session("sess_fast_path")
+            self.assertEqual(result, "完整说话文本")
+            self.assertEqual(mock_transcribe.call_count, 1)
+
+    def test_qwen_speech_tail_triggers_inference_to_avoid_loss(self):
+        """若松键前夕仍有新的有效说话语音，必须触发增量终态推理，确保不漏字。"""
+        ctx = self.engine.create_session("sess_voiced_tail")
+        frame_index = 0
+
+        # 所有帧皆为人声
+        self.engine._vad.is_speech_bytes = mock.Mock(return_value=True)
+        part1_bytes = np.zeros(12800, dtype=np.int16).tobytes()  # 0.8s
+        tail_bytes = np.zeros(6400, dtype=np.int16).tobytes()   # 0.4s
+
+        with mock.patch.object(
+            self.engine,
+            "_transcribe_samples",
+            side_effect=["第一部分", "第一部分加尾音"],
+        ) as mock_transcribe:
+            self.engine.feed_chunk("sess_voiced_tail", part1_bytes)
+            self.assertEqual(mock_transcribe.call_count, 1)
+
+            # 尾部继续有有效语音
+            self.engine.feed_chunk("sess_voiced_tail", tail_bytes)
+
+            # 终态结算：必须执行第 2 次解码以捕获尾音
+            result = self.engine.finalize_session("sess_voiced_tail")
+            self.assertEqual(result, "第一部分加尾音")
+            self.assertEqual(mock_transcribe.call_count, 2)
+
+    def test_qwen_drain_mode_suppresses_speculative_decode(self):
+        """进入 Drain 阶段后，feed_chunk 仅摄入音频，不应触发投机性中间推断。"""
+        ctx = self.engine.create_session("sess_drain_suppress")
+        self.engine.begin_drain("sess_drain_suppress")
+        self.assertTrue(ctx.is_draining)
+
+        long_chunk = np.zeros(25600, dtype=np.int16).tobytes()  # 1.6s (> stride)
+        with mock.patch.object(self.engine, "_transcribe_samples") as mock_transcribe:
+            self.engine.feed_chunk("sess_drain_suppress", long_chunk)
+            mock_transcribe.assert_not_called()
+            self.assertEqual(len(ctx.accumulated_pcm), len(long_chunk))
+
+    def test_qwen_inference_lock_reentrancy_no_deadlock(self):
+        import threading
+        self.assertIsInstance(self.engine._inference_lock, type(threading.RLock()))
+        ctx = self.engine.create_session("sess_deadlock")
+        # 验证 RLock 可安全重入，杜绝 feed_chunk 与内部 _transcribe_samples 嵌套时自死锁
+        self.engine._inference_lock.acquire()
+        try:
+            with self.engine._inference_lock:
+                pass
+        finally:
+            self.engine._inference_lock.release()
+
+    def test_on_demand_mode_moves_weights_for_session_then_offloads(self):
+        import threading
+        import time
+        cfg = VoiceConfig(engine="qwen_2pass", device="cuda:0", vram_mode="on_demand_offload")
+        engine = Qwen2PassEngine(cfg)
+        engine._is_loaded = True
+        engine._resolved_device = "cuda:0"
+        engine._active_device = "cpu"
+        engine._resource_state = "cpu_ready"
+        engine._gpu_ready.clear()
+        moved = []
+        engine._move_backends = lambda device: moved.append(device)
+
+        with mock.patch("tools.voice_input.asr_engine.torch", None):
+            engine._resource_thread = threading.Thread(target=engine._resource_worker, daemon=True)
+            engine._resource_thread.start()
+            engine.create_session("on_demand")
+            self.assertTrue(engine._gpu_ready.wait(1.0))
+            self.assertEqual(engine.get_capabilities()["model_device"], "cuda:0")
+            self.assertTrue(engine.get_capabilities()["gpu_resident"])
+
+            engine.finalize_session("on_demand")
+            deadline = time.monotonic() + 1.0
+            while engine._active_device != "cpu" and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+        self.assertEqual(engine._active_device, "cpu")
+        self.assertEqual(moved, ["cuda:0", "cpu"])
+        engine.shutdown()
+
+    def test_on_demand_pcm_replay_matches_resident_frame_path(self):
+        import threading
+        import time
+
+        cfg_resident = VoiceConfig(
+            engine="qwen_2pass", device="cuda:0", vram_mode="resident",
+            qwen_segment_silence_seconds=0.06,
+        )
+        cfg_demand = VoiceConfig(
+            engine="qwen_2pass", device="cuda:0", vram_mode="on_demand_offload",
+            qwen_segment_silence_seconds=0.06,
+        )
+        resident = Qwen2PassEngine(cfg_resident)
+        demand = Qwen2PassEngine(cfg_demand)
+        for engine in (resident, demand):
+            engine._is_loaded = True
+            engine._resolved_device = "cuda:0"
+            engine._segment_silence_bytes = 3 * engine._frame_bytes
+            engine._vad.is_speech_bytes = lambda frame: bool(np.frombuffer(frame, dtype=np.int16)[0])
+
+        resident._active_device = "cuda:0"
+        resident._resource_state = "gpu_ready"
+        resident._gpu_ready.set()
+
+        move_started = threading.Event()
+        allow_move = threading.Event()
+        moved = []
+
+        def move_backend(device):
+            moved.append(device)
+            if device.startswith("cuda"):
+                move_started.set()
+                if not allow_move.wait(2.0):
+                    raise TimeoutError("test GPU activation gate timed out")
+
+        demand._active_device = "cpu"
+        demand._resource_state = "cpu_ready"
+        demand._gpu_ready.clear()
+        demand._move_backends = move_backend
+
+        resident_calls = []
+        demand_calls = []
+
+        def install_decoder(engine, calls):
+            def decode(samples):
+                calls.append(np.array(samples, copy=True))
+                return f"segment-{len(calls)}"
+            engine._transcribe_samples = decode
+
+        install_decoder(resident, resident_calls)
+        install_decoder(demand, demand_calls)
+
+        frames = [
+            np.full(320, i + 1 if i < 6 else 0, dtype=np.int16).tobytes()
+            for i in range(20)
+        ]
+        first_chunk = b"".join(frames[:12])
+        second_chunk = b"".join(frames[12:])
+        resident_ctx = resident.create_session("resident")
+        demand_ctx = demand.create_session("demand")
+        resident.feed_chunk("resident", first_chunk)
+        resident.feed_chunk("resident", second_chunk)
+
+        with mock.patch("tools.voice_input.asr_engine.torch", None):
+            demand._resource_thread = threading.Thread(target=demand._resource_worker, daemon=True)
+            demand._resource_thread.start()
+            self.assertTrue(move_started.wait(1.0))
+            demand.feed_chunk("demand", first_chunk)
+            self.assertEqual(demand_calls, [])
+            self.assertEqual(demand._sessions["demand"].total_pcm_len, len(first_chunk))
+
+            allow_move.set()
+            self.assertTrue(demand._gpu_ready.wait(1.0))
+            # An empty feed drains pending chunks before any newer live PCM.
+            demand.feed_chunk("demand", b"")
+            demand.feed_chunk("demand", second_chunk)
+            resident_text = resident.finalize_session("resident")
+            demand_text = demand.finalize_session("demand")
+
+            deadline = time.monotonic() + 1.0
+            while demand._active_device != "cpu" and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+        self.assertEqual(demand_text, resident_text)
+        self.assertEqual(demand._sessions, {})
+        self.assertEqual(demand._active_device, "cpu")
+        self.assertEqual(moved, ["cuda:0", "cpu"])
+        self.assertEqual(demand_ctx.total_pcm_len, len(first_chunk) + len(second_chunk))
+        self.assertEqual(resident_ctx.total_pcm_len, len(first_chunk) + len(second_chunk))
+        self.assertEqual(len(demand_calls), len(resident_calls))
+        for expected, actual in zip(resident_calls, demand_calls):
+            np.testing.assert_array_equal(actual, expected)
+        self.assertEqual(
+            [s["text"] for s in demand_ctx.completed_segments],
+            [s["text"] for s in resident_ctx.completed_segments],
+        )
+        self.assertEqual(demand_ctx.accumulated_pcm, resident_ctx.accumulated_pcm)
+        self.assertEqual(resident._sessions, {})
+        demand.shutdown()
+
+    def test_cancel_discards_pending_pcm_during_gpu_activation(self):
+        import threading
+        import time
+
+        cfg = VoiceConfig(engine="qwen_2pass", device="cuda:0", vram_mode="on_demand_offload")
+        engine = Qwen2PassEngine(cfg)
+        engine._is_loaded = True
+        engine._resolved_device = "cuda:0"
+        engine._active_device = "cpu"
+        engine._resource_state = "cpu_ready"
+        engine._gpu_ready.clear()
+        move_started = threading.Event()
+        allow_move = threading.Event()
+        calls = []
+
+        def move_backend(device):
+            if device.startswith("cuda"):
+                move_started.set()
+                if not allow_move.wait(2.0):
+                    raise TimeoutError("test GPU activation gate timed out")
+
+        engine._move_backends = move_backend
+        engine._transcribe_samples = lambda samples: calls.append(samples) or "unexpected"
+        ctx = engine.create_session("cancel-during-load")
+
+        with mock.patch("tools.voice_input.asr_engine.torch", None):
+            engine._resource_thread = threading.Thread(target=engine._resource_worker, daemon=True)
+            engine._resource_thread.start()
+            self.assertTrue(move_started.wait(1.0))
+            engine.feed_chunk("cancel-during-load", np.full(5000, 3, dtype=np.int16).tobytes())
+            self.assertTrue(ctx.pending_pcm_chunks)
+            engine.cancel_session("cancel-during-load")
+            self.assertFalse(ctx.pending_pcm_chunks)
+            self.assertNotIn("cancel-during-load", engine._active_sessions)
+            allow_move.set()
+
+            deadline = time.monotonic() + 1.0
+            while engine._active_device != "cpu" and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+        self.assertEqual(calls, [])
+        self.assertNotIn("cancel-during-load", engine._sessions)
+        self.assertEqual(engine._active_device, "cpu")
+        engine.shutdown()
+
+    def test_finalize_replays_pending_pcm_when_no_more_chunks_arrive(self):
+        import threading
+        import time
+
+        cfg = VoiceConfig(engine="qwen_2pass", device="cuda:0", vram_mode="on_demand_offload")
+        engine = Qwen2PassEngine(cfg)
+        engine._is_loaded = True
+        engine._resolved_device = "cuda:0"
+        engine._active_device = "cpu"
+        engine._resource_state = "cpu_ready"
+        engine._gpu_ready.clear()
+        move_started = threading.Event()
+        allow_move = threading.Event()
+        finalized = threading.Event()
+        gpu_waiting = threading.Event()
+        calls = []
+        engine._move_backends = lambda device: (
+            move_started.set() or allow_move.wait(2.0)
+            if device.startswith("cuda") else None
+        )
+        original_ensure_gpu_ready = engine._ensure_gpu_ready
+        def ensure_gpu_ready():
+            gpu_waiting.set()
+            original_ensure_gpu_ready()
+        engine._ensure_gpu_ready = ensure_gpu_ready
+        engine._transcribe_samples = lambda samples: calls.append(np.array(samples, copy=True)) or "final text"
+        ctx = engine.create_session("stop-before-ready")
+
+        with mock.patch("tools.voice_input.asr_engine.torch", None):
+            engine._resource_thread = threading.Thread(target=engine._resource_worker, daemon=True)
+            engine._resource_thread.start()
+            self.assertTrue(move_started.wait(1.0))
+            pcm = np.full(5000, 7, dtype=np.int16).tobytes()
+            engine.feed_chunk("stop-before-ready", pcm)
+            self.assertEqual(calls, [])
+
+            result = []
+            def finalize():
+                result.append(engine.finalize_session("stop-before-ready"))
+                finalized.set()
+
+            finalizer = threading.Thread(target=finalize)
+            finalizer.start()
+            self.assertTrue(gpu_waiting.wait(1.0))
+            self.assertFalse(finalized.is_set())
+            allow_move.set()
+            finalizer.join(2.0)
+            self.assertFalse(finalizer.is_alive())
+
+            deadline = time.monotonic() + 1.0
+            while engine._active_device != "cpu" and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+        self.assertEqual(result, ["final text"])
+        self.assertEqual(len(calls), 1)
+        np.testing.assert_array_equal(calls[0], np.full(5000, 7, dtype=np.float32) / 32768.0)
+        self.assertEqual(ctx.total_pcm_len, len(pcm))
+        self.assertEqual(list(ctx.pending_pcm_chunks), [])
+        self.assertNotIn("stop-before-ready", engine._sessions)
+        engine.shutdown()
+
+    def test_short_vad_segment_replays_before_minimum_duration_return(self):
+        import threading
+        import time
+
+        cfg_resident = VoiceConfig(
+            engine="qwen_2pass", device="cuda:0", vram_mode="resident",
+            min_recording_seconds=0.25, qwen_segment_silence_seconds=0.04,
+        )
+        cfg_demand = VoiceConfig(
+            engine="qwen_2pass", device="cuda:0", vram_mode="on_demand_offload",
+            min_recording_seconds=0.25, qwen_segment_silence_seconds=0.04,
+        )
+        resident = Qwen2PassEngine(cfg_resident)
+        demand = Qwen2PassEngine(cfg_demand)
+        for engine in (resident, demand):
+            engine._is_loaded = True
+            engine._resolved_device = "cuda:0"
+            engine._segment_silence_bytes = 2 * engine._frame_bytes
+            engine._vad.is_speech_bytes = lambda frame: bool(np.frombuffer(frame, dtype=np.int16)[0])
+
+        resident._active_device = "cuda:0"
+        resident._resource_state = "gpu_ready"
+        resident._gpu_ready.set()
+        resident_calls = []
+        demand_calls = []
+        resident._transcribe_samples = lambda samples: resident_calls.append(np.array(samples, copy=True)) or "short"
+        demand._transcribe_samples = lambda samples: demand_calls.append(np.array(samples, copy=True)) or "short"
+
+        move_started = threading.Event()
+        allow_move = threading.Event()
+        gpu_waiting = threading.Event()
+        demand._active_device = "cpu"
+        demand._resource_state = "cpu_ready"
+        demand._gpu_ready.clear()
+
+        def move_backend(device):
+            if device.startswith("cuda"):
+                move_started.set()
+                if not allow_move.wait(2.0):
+                    raise TimeoutError("test GPU activation gate timed out")
+        demand._move_backends = move_backend
+        original_ensure_gpu_ready = demand._ensure_gpu_ready
+        def ensure_gpu_ready():
+            gpu_waiting.set()
+            original_ensure_gpu_ready()
+        demand._ensure_gpu_ready = ensure_gpu_ready
+
+        # Two speech frames followed by silence trigger a segment shorter than the
+        # minimum full-utterance duration, which resident mode still partially decodes.
+        frames = [
+            np.full(320, 1 if i < 2 else 0, dtype=np.int16).tobytes()
+            for i in range(5)
+        ]
+        pcm = b"".join(frames)
+        resident.create_session("resident-short")
+        demand_ctx = demand.create_session("demand-short")
+        resident.feed_chunk("resident-short", pcm)
+
+        with mock.patch("tools.voice_input.asr_engine.torch", None):
+            demand._resource_thread = threading.Thread(target=demand._resource_worker, daemon=True)
+            demand._resource_thread.start()
+            self.assertTrue(move_started.wait(1.0))
+            demand.feed_chunk("demand-short", pcm)
+
+            result = []
+            finalizer = threading.Thread(
+                target=lambda: result.append(demand.finalize_session("demand-short"))
+            )
+            finalizer.start()
+            self.assertTrue(gpu_waiting.wait(1.0))
+            self.assertEqual(result, [])
+            allow_move.set()
+            finalizer.join(2.0)
+            self.assertFalse(finalizer.is_alive())
+
+            deadline = time.monotonic() + 1.0
+            while demand._active_device != "cpu" and time.monotonic() < deadline:
+                time.sleep(0.01)
+
+        resident_text = resident.finalize_session("resident-short")
+        self.assertEqual(result, [resident_text])
+        self.assertEqual(result, ["short"])
+        self.assertEqual(demand_ctx.total_pcm_len, len(pcm))
+        self.assertEqual(len(demand_calls), len(resident_calls))
+        for expected, actual in zip(resident_calls, demand_calls):
+            np.testing.assert_array_equal(actual, expected)
+        demand.shutdown()
 
 
 class TestSherpa2PassEngine(unittest.TestCase):

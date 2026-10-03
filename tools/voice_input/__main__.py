@@ -1,8 +1,23 @@
 """CLI 入口模块：支持 service, listen, doctor, devices, download, normalize 子命令"""
 
 import argparse
+import os
 import sys
+import time
 from pathlib import Path
+
+_BOOT_MONOTONIC = time.monotonic()
+_STARTUP_ATTEMPT_ID = os.environ.get("CC_VOICE_START_ATTEMPT_ID", "")
+
+def _startup_log(phase: str, **details) -> None:
+    if not _STARTUP_ATTEMPT_ID:
+        return
+    import json
+    elapsed = round(time.monotonic() - _BOOT_MONOTONIC, 3)
+    event = {"attempt_id": _STARTUP_ATTEMPT_ID, "phase": phase, "child_elapsed_seconds": elapsed, **details}
+    print(f"[{time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())}] [VOICE_STARTUP] {json.dumps(event, ensure_ascii=False)}", flush=True)
+
+_startup_log("child_python_entry", executable=sys.executable, pid=os.getpid())
 
 if sys.platform == "win32":
     try:
@@ -16,6 +31,8 @@ if sys.platform == "win32":
 from .audio import list_input_devices
 from .config import VoiceConfig
 from .normalize import normalize
+
+_startup_log("cli_imports_complete")
 
 
 def cmd_doctor():
@@ -155,6 +172,7 @@ def cmd_service(hotkey: str = None, engine: str = None, device: str = None, port
             except Exception:
                 pass
 
+    _startup_log("reading_config")
     cfg = VoiceConfig.from_relay_config()
     if hotkey:
         cfg.hotkey = hotkey
@@ -166,9 +184,13 @@ def cmd_service(hotkey: str = None, engine: str = None, device: str = None, port
     if port:
         cfg.port = port
 
+    _startup_log("importing_daemon")
     from .daemon import VoiceInputDaemon
+    _startup_log("constructing_daemon")
     daemon = VoiceInputDaemon(cfg)
+    _startup_log("daemon_constructed")
     try:
+        _startup_log("daemon_starting")
         daemon.start(headless=headless)
     finally:
         daemon.stop()

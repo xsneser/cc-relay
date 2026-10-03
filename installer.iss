@@ -5,9 +5,9 @@
 ; =====================================================================
 
 #define MyAppName "CC Relay"
-#define MyAppVersion "2.4.8"
+#define MyAppVersion "2.4.9"
 #define MyAppPublisher "CC Relay Team"
-#define MyAppURL "https://github.com/router-for-me/cc-relay"
+#define MyAppURL "https://github.com/xsneser/cc-relay"
 #define MyAppExeName "cc-relay.exe"
 
 [Setup]
@@ -18,7 +18,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={userlocalappdata}\Programs\CC-Relay
+DefaultDirName={localappdata}\Programs\CC-Relay
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 ; Per-User 当前用户安装模式：无需管理员提权，与 Antigravity Tools (%LOCALAPPDATA%) 权限完全对齐
@@ -26,7 +26,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
 OutputDir=output
 OutputBaseFilename=CC-Relay-Setup-v{#MyAppVersion}
-SetupIconFile=compiler:SetupModern.ico
+SetupIconFile=compiler:SetupClassicIcon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -83,20 +83,25 @@ Filename: "{app}\{#MyAppExeName}"; Description: "立即启动 {#MyAppName} 并�
 
 [Code]
 const
-  HWND_BROADCAST = $FFFF;
   WM_SETTINGCHANGE = $001A;
   SMTO_ABORTIFHUNG = $0002;
 
 // Win32 API 声明：通知 Windows Shell 与终端环境变量已发生变更
-function SendMessageTimeout(hWnd: HWND; Msg: UINT; wParam: WPARAM; lParam: String; fuFlags: UINT; uTimeout: UINT; out lpdwResult: DWORD): Longint;
+function SendMessageTimeout(hWnd: HWND; Msg: UINT; wParam: Longint; lParam: String; fuFlags: UINT; uTimeout: UINT; out lpdwResult: DWORD): Longint;
   external 'SendMessageTimeoutW@user32.dll stdcall';
 
 var
   // 卸载交互界面复选框全局引用
-  ChkUninstallVoice: TCheckBox;
-  ChkUninstallCodex: TCheckBox;
-  ChkUninstallAnti:  TCheckBox;
-  ChkCleanUserData:  TCheckBox;
+  ChkUninstallVoice: TNewCheckBox;
+  ChkUninstallCodex: TNewCheckBox;
+  ChkUninstallAnti:  TNewCheckBox;
+  ChkCleanUserData:  TNewCheckBox;
+
+  // 卸载选项布尔缓存 (防止 Form.Free 后访问失效指针)
+  OptUninstallVoice: Boolean;
+  OptUninstallCodex: Boolean;
+  OptUninstallAnti:  Boolean;
+  OptCleanUserData:  Boolean;
 
   // 组件探针状态
   HasVoice: Boolean;
@@ -192,8 +197,8 @@ end;
 function InitializeUninstall(): Boolean;
 var
   Form: TSetupForm;
-  LblTitle, LblPrompt: TLabel;
-  BtnOK, BtnCancel: TButton;
+  LblTitle, LblPrompt: TNewStaticText;
+  BtnOK, BtnCancel: TNewButton;
   VoicePath, CodexPath, RegAntiStr: String;
 begin
   Result := False;
@@ -227,28 +232,25 @@ begin
   HasVoice := DirExists(VoicePath);
 
   // 4. 构建原生卸载确认与协同卸载交互对话框
-  Form := CreateCustomForm;
+  Form := CreateCustomForm(ScaleX(500), ScaleY(330), False, True);
   try
-    Form.ClientWidth := ScaleX(500);
-    Form.ClientHeight := ScaleY(330);
-    Form.Center;
     Form.Caption := '{#MyAppName} 卸载向导';
 
-    LblTitle := TLabel.Create(Form);
+    LblTitle := TNewStaticText.Create(Form);
     LblTitle.Parent := Form;
     LblTitle.SetBounds(ScaleX(20), ScaleY(15), ScaleX(460), ScaleY(24));
     LblTitle.Font.Size := 11;
     LblTitle.Font.Style := [fsBold];
     LblTitle.Caption := '协同组件卸载与清理确认';
 
-    LblPrompt := TLabel.Create(Form);
+    LblPrompt := TNewStaticText.Create(Form);
     LblPrompt.Parent := Form;
     LblPrompt.SetBounds(ScaleX(20), ScaleY(45), ScaleX(460), ScaleY(40));
     LblPrompt.WordWrap := True;
     LblPrompt.Caption := '检测到以下与 {#MyAppName} 深度集成的伴侣服务组件。请选择您希望一并卸载或清理的项目：';
 
     // 复选框 1: 语音 ASR 离线环境与模型 (~380MB)
-    ChkUninstallVoice := TCheckBox.Create(Form);
+    ChkUninstallVoice := TNewCheckBox.Create(Form);
     ChkUninstallVoice.Parent := Form;
     ChkUninstallVoice.SetBounds(ScaleX(30), ScaleY(95), ScaleX(440), ScaleY(22));
     ChkUninstallVoice.Caption := '卸载 语音伴侣 (Voice ASR) 离线运行环境与 SenseVoice 模型 (~380MB)';
@@ -256,7 +258,7 @@ begin
     ChkUninstallVoice.Enabled := HasVoice;
 
     // 复选框 2: Codex (CLIProxyAPI)
-    ChkUninstallCodex := TCheckBox.Create(Form);
+    ChkUninstallCodex := TNewCheckBox.Create(Form);
     ChkUninstallCodex.Parent := Form;
     ChkUninstallCodex.SetBounds(ScaleX(30), ScaleY(125), ScaleX(440), ScaleY(22));
     if FileExists(CodexUninstallPath) then
@@ -267,7 +269,7 @@ begin
     ChkUninstallCodex.Enabled := HasCodex;
 
     // 复选框 3: Gemini (Antigravity Tools)
-    ChkUninstallAnti := TCheckBox.Create(Form);
+    ChkUninstallAnti := TNewCheckBox.Create(Form);
     ChkUninstallAnti.Parent := Form;
     ChkUninstallAnti.SetBounds(ScaleX(30), ScaleY(155), ScaleX(440), ScaleY(22));
     if HasAnti then
@@ -278,26 +280,33 @@ begin
     ChkUninstallAnti.Enabled := HasAnti;
 
     // 复选框 4: 用户自定义数据与配置
-    ChkCleanUserData := TCheckBox.Create(Form);
+    ChkCleanUserData := TNewCheckBox.Create(Form);
     ChkCleanUserData.Parent := Form;
     ChkCleanUserData.SetBounds(ScaleX(30), ScaleY(195), ScaleX(440), ScaleY(22));
     ChkCleanUserData.Caption := '彻底清除用户个人配置文件 (包含 config.json、历史会话与 API 密钥)';
     ChkCleanUserData.Checked := False; // 默认保留，保护用户个人资产
 
-    BtnOK := TButton.Create(Form);
+    BtnOK := TNewButton.Create(Form);
     BtnOK.Parent := Form;
     BtnOK.SetBounds(ScaleX(300), ScaleY(270), ScaleX(85), ScaleY(30));
     BtnOK.Caption := '开始卸载';
     BtnOK.ModalResult := mrOk;
+    BtnOK.Default := True;
 
-    BtnCancel := TButton.Create(Form);
+    BtnCancel := TNewButton.Create(Form);
     BtnCancel.Parent := Form;
     BtnCancel.SetBounds(ScaleX(395), ScaleY(270), ScaleX(85), ScaleY(30));
     BtnCancel.Caption := '取消';
     BtnCancel.ModalResult := mrCancel;
 
     if Form.ShowModal = mrOk then
+    begin
+      OptUninstallVoice := ChkUninstallVoice.Checked;
+      OptUninstallCodex := ChkUninstallCodex.Checked;
+      OptUninstallAnti  := ChkUninstallAnti.Checked;
+      OptCleanUserData  := ChkCleanUserData.Checked;
       Result := True;
+    end;
   finally
     Form.Free;
   end;
@@ -318,7 +327,7 @@ begin
     // -------------------------------------------------------------
     // 步骤 2: 处理 语音伴侣 (ASR)
     // -------------------------------------------------------------
-    if Assigned(ChkUninstallVoice) and ChkUninstallVoice.Checked then
+    if OptUninstallVoice then
     begin
       // 停止占用 8401 端口的语音进程
       Exec('cmd.exe', '/C for /f "tokens=5" %a in (''netstat -aon ^| findstr :8401 ^| findstr LISTENING'') do taskkill /F /PID %a', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
@@ -331,7 +340,7 @@ begin
     // -------------------------------------------------------------
     // 步骤 3: 处理 Codex (CLIProxyAPI)
     // -------------------------------------------------------------
-    if Assigned(ChkUninstallCodex) and ChkUninstallCodex.Checked then
+    if OptUninstallCodex then
     begin
       // 停止 CPA 进程
       Exec('taskkill.exe', '/F /IM cli-proxy-api.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
@@ -350,7 +359,7 @@ begin
     // -------------------------------------------------------------
     // 步骤 4: 处理 Gemini (Antigravity Tools)
     // -------------------------------------------------------------
-    if Assigned(ChkUninstallAnti) and ChkUninstallAnti.Checked and HasAnti then
+    if OptUninstallAnti and HasAnti then
     begin
       // 停止 Antigravity Tools 进程
       Exec('taskkill.exe', '/F /IM antigravity-tools.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
@@ -361,7 +370,7 @@ begin
     // -------------------------------------------------------------
     // 步骤 5: 处理用户个人配置与历史日志
     // -------------------------------------------------------------
-    if Assigned(ChkCleanUserData) and ChkCleanUserData.Checked then
+    if OptCleanUserData then
     begin
       DeleteFile(ExpandConstant('{app}\config.json'));
       DeleteFile(ExpandConstant('{app}\records.jsonl'));

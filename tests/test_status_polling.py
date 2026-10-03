@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import antigravity_updater
 import cc_relay
 
 
@@ -126,6 +127,32 @@ class StatusPollingCacheTests(unittest.TestCase):
             for thread in threads:
                 thread.join(2)
             self.assertEqual(tail.call_count, 1)
+
+    def test_status_snapshot_does_not_block_on_slow_antigravity_local_health(self):
+        dependencies = self._status_dependencies()
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_open(req, timeout=2.5):
+            entered.set()
+            release.wait(2.0)
+            raise TimeoutError("slow local health probe")
+
+        updater = antigravity_updater.AntigravityUpdater()
+        with dependencies[0], dependencies[1], dependencies[2], dependencies[3], \
+                mock.patch("urllib.request.build_opener") as mock_opener, \
+                mock.patch("antigravity_updater.get_antigravity_updater", return_value=updater):
+            mock_client = mock.Mock()
+            mock_client.open.side_effect = slow_open
+            mock_opener.return_value = mock_client
+            started = time.perf_counter()
+            snapshot = cc_relay.stats_snapshot()
+            elapsed = time.perf_counter() - started
+            self.assertLess(elapsed, 0.4)
+            self.assertEqual(snapshot["antigravity_update"]["current_version"], None)
+            self.assertTrue(entered.wait(1.0))
+            release.set()
+            updater.status()
 
     def test_call_summaries_cache_by_fingerprint_and_requested_range(self):
         self._append(record(1))

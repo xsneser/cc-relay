@@ -272,12 +272,20 @@ def main():
 
     ui_url = f"http://{host}:{ui_port}"
     no_browser = os.environ.get("CC_RELAY_NO_BROWSER") == "1"
+    is_restart = os.environ.get("CC_RELAY_RESTART") == "1"
 
-    # 单实例检查: 如果 8400 或 8610 已经在跑，直接唤醒浏览器 (除非被静默抑制)
-    if is_port_busy(relay_port, host) or is_port_busy(ui_port, host):
-        if not no_browser:
-            webbrowser.open(ui_url)
-        sys.exit(0)
+    if is_restart:
+        # 重启模式: 旧实例退出中，等待端口完全释放后再接管启动 (最多等待 15 秒)
+        for _ in range(50):
+            if not is_port_busy(relay_port, host) and not is_port_busy(ui_port, host):
+                break
+            time.sleep(0.3)
+    else:
+        # 单实例检查: 如果 8400 或 8610 已经在跑，直接唤醒浏览器 (除非被静默抑制)
+        if is_port_busy(relay_port, host) or is_port_busy(ui_port, host):
+            if not no_browser:
+                webbrowser.open(ui_url)
+            sys.exit(0)
 
     # 导入 cc_relay 模块
     try:

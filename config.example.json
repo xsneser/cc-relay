@@ -52,10 +52,14 @@
       "auto_start": false,
       "hotkey": "mouse_x1",
       "engine": "sensevoice_offline",
+      "vram_mode": "resident",
       "port": 8401,
       "vad_mode": 2,
       "beep_feedback": false,
-      "restore_clipboard": true
+      "restore_clipboard": true,
+      "semantic_correction_enabled": false,
+      "semantic_correction_timeout_seconds": 8,
+      "semantic_correction_context_chars": 12000
     },
     "relay_update": {
       "auto_check": true,

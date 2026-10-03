@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="ui-version" content="2.4.8">
+<meta name="ui-version" content="2.4.9">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -3575,7 +3575,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.8</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.9</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -4611,7 +4611,7 @@
           </div>
 
           <!-- 区块 2: ASR 语音识别引擎 (横条架构) -->
-          <div class="voice-group" style="margin-bottom:0;">
+          <div class="voice-group">
             <div class="voice-group-head">
               <div class="voice-group-title">
                 <span>🎙️</span>
@@ -4676,6 +4676,15 @@
                       <option value="cpu">纯 CPU 模式</option>
                     </select>
                   </div>
+                  <div class="ver-device-box">
+                    <label>显存占用策略:</label>
+                    <select id="cfg-voice-vram-mode">
+                      <option value="resident">常驻显存 · 响应最快</option>
+                      <option value="on_demand_offload">按需使用 · 识别后释放</option>
+                    </select>
+                  </div>
+                  <div id="voice-vram-status" style="font-size:11px;color:var(--text-muted);align-self:center;min-width:180px;">语音服务未启动</div>
+                  <div style="flex-basis:100%;font-size:10.5px;color:var(--text-muted);">按需模式待机时把模型保留在系统内存，按键后立即录音并后台加载到显卡；加载期间音频会缓存，显卡就绪后按相同识别流程顺序处理，识别结束后迁回 CPU。需要约 3.5GB 系统内存，首次出字可能稍慢。</div>
                   <div class="ver-buttons">
                     <button type="button" class="btn-action" id="btn-download-qwen" style="background:#ffa657;color:#111;font-weight:700;border:none;padding:6px 14px;cursor:pointer;border-radius:6px;font-size:11.5px;">
                       ⬇️ 一键自动下载 Qwen 1.7B
@@ -4692,6 +4701,63 @@
                   <span id="txt-qwen-download-desc" style="color:var(--text-muted);margin-left:8px;"></span>
                 </div>
                 <div id="voice-device-advice" style="display:none;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 区块 3: 语音语义校正 (全引擎通用增强) -->
+          <div class="voice-group" style="margin-bottom:0;">
+            <div class="voice-group-head">
+              <div class="voice-group-title">
+                <span>✨</span>
+                <span>语音语义校正 (LLM 上下文对齐)</span>
+              </div>
+              <span class="voice-group-sub">结合当前终端上下文与选定模型校准同音字词与专业术语 (SenseVoice 与 Qwen 均支持)</span>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+                <input type="checkbox" id="cfg-voice-semantic-correction" style="cursor:pointer;width:16px;height:16px;accent-color:#39c998;">
+                <span style="font-size:12px;font-weight:600;color:var(--text-main);">启用语音语义校正</span>
+                <span style="font-size:12px;color:var(--text-muted);">(将识别文本与当前 Claude CLI 对话上下文发送至模型校准同音词与专业术语)</span>
+              </label>
+              <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-left:24px;">
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;color:var(--text-muted);margin:0;">校正模型与推理强度 (点击模型名切换模型 · 拖动调节推理强度):</label>
+                  <div class="sel" id="sel-voice-correction" data-kind="voice" style="margin-top:0;min-width:260px;">
+                    <div class="sel-btn" style="min-width:260px;">
+                      <span class="sel-model" id="txt-voice-correction-model">—</span>
+                      <span class="sel-eff">关</span>
+                      <span class="sel-select">选择强度</span>
+                      <span class="chev">▾</span>
+                    </div>
+                    <div class="sel-panel" style="width:300px;">
+                      <div class="view-effort">
+                        <div class="ve-head">
+                          <span class="ve-eff">关</span>
+                          <span class="ve-model">—</span>
+                          <span class="ve-refresh" title="切换模型">↻</span>
+                        </div>
+                        <div class="ve-hint">点击模型名可切换模型 · 拖动调节推理强度</div>
+                        <div class="ve-slider">
+                          <input type="range" class="eff-rng" min="0" max="1" step="1">
+                          <div class="eff-ticks"></div>
+                          <div class="eff-labels"></div>
+                        </div>
+                      </div>
+                      <div class="view-model">
+                        <div class="vm-title">选择校正模型</div>
+                        <div class="opt-list" style="max-height:260px;overflow-y:auto;"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);padding-bottom:6px;">
+                  <label for="cfg-voice-correction-timeout">超时 (秒):</label>
+                  <input id="cfg-voice-correction-timeout" type="number" min="1" max="30" step="1" value="8" style="width:58px;padding:4px 6px;">
+                  <label for="cfg-voice-correction-context" style="margin-left:8px;">上下文字符:</label>
+                  <input id="cfg-voice-correction-context" type="number" min="512" max="12000" step="512" value="12000" style="width:84px;padding:4px 6px;">
+                </div>
               </div>
             </div>
           </div>
@@ -4877,6 +4943,8 @@ function isUpstreamRunning(provider, snapshot = st) {
       : !!(snapshot.upstreams_status || {}).gemini?.available;
   }
   if (provider === 'voice') {
+    const voiceStatus = snapshot.voice_status && snapshot.voice_status.status;
+    if (['starting', 'loading_model', 'recording', 'ready'].includes(voiceStatus)) return true;
     return snapshot.voice_up != null
       ? !!snapshot.voice_up
       : !!(snapshot.upstreams_status || {}).voice?.available;
@@ -4912,9 +4980,11 @@ function toast(msg, err) {
   t._h = setTimeout(() => t.className = 'toast', 2400);
 }
 
-async function api(path, body) {
+async function api(path, body, timeoutMs) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), body ? 60000 : 20000);
+  const defaultTimeoutMs = body ? 60000 : 20000;
+  const requestTimeoutMs = Number.isFinite(timeoutMs) ? timeoutMs : defaultTimeoutMs;
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
     const r = await fetch(path, {
       method: body ? 'POST' : 'GET',
@@ -5675,7 +5745,13 @@ function buildSel(sel, models, curModel, curEff) {
 function closeAllDropdowns(exceptSel) {
   $$('.sel-panel.open').forEach(p => {
     if (!exceptSel || p !== exceptSel.querySelector('.sel-panel')) {
-      p.classList.remove('open', 'model');
+      p.classList.remove('open');
+      const s = p.closest('.sel');
+      if (!s || s.querySelector('.view-effort')) {
+        p.classList.remove('model');
+      } else {
+        p.classList.add('model');
+      }
       p.style.left = '';
       p.style.right = '';
     }
@@ -5715,8 +5791,15 @@ function adjustSelPanelPosition(panel, sel) {
 function openSel(sel) {
   closeAllDropdowns(sel);
   const panel = sel.querySelector('.sel-panel'), btn = sel.querySelector('.sel-btn');
-  panel.classList.remove('model');
-  btn.classList.add('mode-eff');
+  if (!panel || !btn) return;
+  const hasEffort = !!sel.querySelector('.view-effort');
+  if (hasEffort) {
+    panel.classList.remove('model');
+    btn.classList.add('mode-eff');
+  } else {
+    panel.classList.add('model');
+    btn.classList.remove('mode-eff');
+  }
   panel.classList.add('open');
   btn.classList.add('open');
 
@@ -5731,8 +5814,14 @@ function openSel(sel) {
 
 function closeSel(sel) {
   const panel = sel.querySelector('.sel-panel'), btn = sel.querySelector('.sel-btn');
-  panel.classList.remove('open', 'model');
+  if (!panel || !btn) return;
+  panel.classList.remove('open');
   btn.classList.remove('open', 'mode-eff');
+  if (sel.querySelector('.view-effort')) {
+    panel.classList.remove('model');
+  } else {
+    panel.classList.add('model');
+  }
   panel.style.left = '';
   panel.style.right = '';
 
@@ -5766,6 +5855,11 @@ window.addEventListener('resize', () => {
 });
 
 $$('.sel').forEach(sel => {
+  // 纯模型选择框（如语音语义校正）不具备强度滑块和路由控制语义，由专用逻辑管理
+  if (sel.dataset.kind === 'voice' || !sel.querySelector('.view-effort') || !sel.querySelector('.ve-head') || !sel.querySelector('.eff-rng')) {
+    return;
+  }
+
   sel.querySelector('.sel-btn').addEventListener('click', e => {
     e.stopPropagation();
     const p = sel.querySelector('.sel-panel');
@@ -5983,9 +6077,14 @@ async function saveConfigDraft() {
   setAutoSaveStatus('saving');
   try {
     const oldHk = (window._currentVoiceHotkey || '');
+    const oldVramMode = (window._currentVoiceVramMode || 'resident');
+    const oldCorrection = window._currentVoiceCorrection || 'false|||8|12000';
     const oldCodexProxy = (window._currentCodexProxy || '');
     const newCfg = collectConfig();
     const newHk = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.hotkey) || '';
+    const newVramMode = (newCfg.tools && newCfg.tools.voice && newCfg.tools.voice.vram_mode) || 'resident';
+    const newVoiceConf = (newCfg.tools && newCfg.tools.voice) || {};
+    const newCorrection = `${!!newVoiceConf.semantic_correction_enabled}|${newVoiceConf.semantic_correction_model || ''}|${newVoiceConf.semantic_correction_effort || ''}|${newVoiceConf.semantic_correction_timeout_seconds || 8}|${newVoiceConf.semantic_correction_context_chars || 12000}`;
     const newCodexProxy = (newCfg.tools && newCfg.tools.codex && newCfg.tools.codex.outbound_proxy) || '';
 
     const r = await api('/api/config', newCfg);
@@ -6010,18 +6109,34 @@ async function saveConfigDraft() {
       }
     }
 
-    // 若热键发生变化且语音服务正在运行，自动重启语音服务使新热键生效
-    if (oldHk && newHk && oldHk !== newHk && isUpstreamRunning('voice')) {
-      toast('热键已变更，正在自动重启语音伴侣…');
+    // 热键、显存策略或语义校正设置变更时重启语音服务，使新配置生效。
+    const voiceHotkeyChanged = !!(oldHk && newHk && oldHk !== newHk);
+    const voiceVramModeChanged = oldVramMode !== newVramMode;
+    const voiceCorrectionChanged = oldCorrection !== newCorrection;
+    const voiceSessionState = String((st && st.voice_status && st.voice_status.session_state) || '').toUpperCase();
+    const voiceSessionBusy = ['STARTING', 'RECORDING', 'DRAINING', 'FINALIZING', 'INJECTING'].includes(voiceSessionState);
+    if ((voiceVramModeChanged || voiceCorrectionChanged) && voiceSessionBusy && isUpstreamRunning('voice')) {
       window._currentVoiceHotkey = newHk;
+      window._currentVoiceVramMode = newVramMode;
+      window._currentVoiceCorrection = newCorrection;
+      toast('语音设置已保存；当前会话继续运行，请结束后重启语音服务使其生效。');
+    } else if ((voiceHotkeyChanged || voiceVramModeChanged || voiceCorrectionChanged) && isUpstreamRunning('voice')) {
+      toast(voiceCorrectionChanged ? '语音语义校正设置变更，正在重启语音伴侣…' : (voiceVramModeChanged ? '显存策略已变更，正在重启语音伴侣…' : '热键已变更，正在自动重启语音伴侣…'));
+      window._currentVoiceHotkey = newHk;
+      window._currentVoiceVramMode = newVramMode;
+      window._currentVoiceCorrection = newCorrection;
       try {
         await api('/api/upstream', { name: 'voice', action: 'stop' });
         await new Promise(res => setTimeout(res, 800));
         await api('/api/upstream', { name: 'voice', action: 'start' });
-        toast('语音伴侣已重启，新热键立即生效！');
+        toast('语音伴侣已重启，新设置立即生效！');
       } catch(err) {
         toast('自动重启语音服务异常: ' + err, true);
       }
+    } else {
+      window._currentVoiceHotkey = newHk;
+      window._currentVoiceVramMode = newVramMode;
+      window._currentVoiceCorrection = newCorrection;
     }
   } catch (e) {
     console.error('Auto-save config failed:', e);
@@ -6286,13 +6401,38 @@ function updateDetailStatusPill(subpage) {
     }
   } else {
     pill.className = 'cfg-mod-badge on';
-    pill.textContent = '● 核心运行中 v2.4.8';
+    pill.textContent = '● 核心运行中 v2.4.9';
   }
 }
 
 let _voiceDownloadPollTimer = null;
 
+function updateQwenResidencyStatus(snapshot) {
+  const el = $('#voice-vram-status');
+  if (!el) return;
+  const engineSel = $('#cfg-voice-engine');
+  if (engineSel && engineSel.value !== 'qwen_2pass') {
+    el.textContent = '显存策略仅适用于 Qwen';
+    return;
+  }
+  const vStat = (snapshot && (snapshot.voice_status || snapshot.voice)) || {};
+  const selectedMode = ($('#cfg-voice-vram-mode') && $('#cfg-voice-vram-mode').value) || vStat.vram_mode || 'resident';
+  const targetDevice = String(vStat.device || '').toLowerCase();
+  if (selectedMode === 'on_demand_offload' && targetDevice && !targetDevice.startsWith('cuda')) {
+    el.textContent = '当前使用 CPU 推理 · 不占 GPU 显存';
+    return;
+  }
+  if (vStat.residency_state === 'activating_gpu') el.textContent = '按键后正在加载模型到显存…';
+  else if (vStat.residency_state === 'offloading_cpu') el.textContent = '识别结束，正在释放模型显存…';
+  else if (vStat.residency_state === 'error') el.textContent = vStat.residency_error || '模型显存迁移失败';
+  else if (selectedMode === 'on_demand_offload' && vStat.ready && vStat.residency_state === 'cpu_ready') el.textContent = '待机中 · 模型显存已释放';
+  else if (vStat.gpu_resident) el.textContent = '模型当前驻留在 GPU 显存';
+  else if (selectedMode === 'on_demand_offload') el.textContent = '按需模式 · 按键录音后加载显存';
+  else el.textContent = vStat.ready ? '模型常驻显存策略已启用' : '语音服务未启动';
+}
+
 function updateQwenDownloadBanner(snapshot) {
+  updateQwenResidencyStatus(snapshot);
   const banner = $('#voice-qwen-download-banner');
   if (!banner) return;
   const sel = $('#cfg-voice-engine');
@@ -7033,6 +7173,12 @@ function initTwoLevelConfig() {
       updateVoiceDeviceAdvice();
     });
   }
+  const voiceVramModeSel = $('#cfg-voice-vram-mode');
+  if (voiceVramModeSel) {
+    voiceVramModeSel.addEventListener('change', () => {
+      updateQwenResidencyStatus(st);
+    });
+  }
 
   // 8. 概览卡片点击事件
   $$('.cfg-mod-card').forEach(card => {
@@ -7161,6 +7307,109 @@ function initTwoLevelConfig() {
     }
   });
 }
+function populateVoiceCorrectionModels(selectedModel, selectedEffort) {
+  const sel = $('#sel-voice-correction');
+  if (!sel) return;
+  const models = {
+    ds: (st && st.models_ds) || [],
+    cx: (st && st.models_codex) || [],
+    gm: (st && st.models_gemini) || []
+  };
+
+  let cur = (selectedModel !== undefined ? selectedModel : (sel.dataset.model || '')).trim();
+  if (!cur) {
+    cur = (models.ds[0] || models.cx[0] || 'deepseek-flash');
+  }
+
+  const effs = effortsFor(cur);
+  let curEff = (selectedEffort !== undefined ? selectedEffort : (sel.dataset.effort || '')).trim();
+  if (curEff === 'instant') curEff = 'low';
+  if (!curEff || !effs.includes(curEff)) {
+    curEff = effs[0] || 'off';
+  }
+
+  sel.dataset.model = cur;
+  sel.dataset.effort = curEff;
+
+  buildSel(sel, models, cur, curEff);
+
+  if (!sel._voiceSelInitialized) {
+    sel._voiceSelInitialized = true;
+    const btn = sel.querySelector('.sel-btn');
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const p = sel.querySelector('.sel-panel');
+        if (p.classList.contains('open')) closeSel(sel); else openSel(sel);
+      });
+    }
+
+    const veHead = sel.querySelector('.ve-head');
+    if (veHead) {
+      veHead.addEventListener('click', (e) => {
+        if (e.target.classList.contains('ve-refresh')) return;
+        e.stopPropagation();
+        const p = sel.querySelector('.sel-panel');
+        if (p) p.classList.add('model');
+        const b = sel.querySelector('.sel-btn');
+        if (b) b.classList.remove('mode-eff');
+      });
+    }
+
+    const rng = sel.querySelector('.eff-rng');
+    const ve = sel.querySelector('.view-effort');
+    if (rng && ve) {
+      rng.addEventListener('input', () => {
+        const currentModel = sel.dataset.model || '';
+        const currentEffs = effortsFor(currentModel);
+        const v = currentEffs[rng.value] || 'off';
+        sel.dataset.pidx = String(rng.value);
+        sel.dataset.effort = v;
+        const effCn = EFFORT_CN[v] || v;
+        const veEff = ve.querySelector('.ve-eff');
+        if (veEff) veEff.textContent = effCn;
+        const btnEff = sel.querySelector('.sel-btn .sel-eff');
+        if (btnEff) btnEff.textContent = effCn;
+      });
+      rng.addEventListener('change', () => {
+        const currentModel = sel.dataset.model || '';
+        const currentEffs = effortsFor(currentModel);
+        const v = currentEffs[rng.value] || 'off';
+        sel.dataset.effort = v;
+        sel.dataset.pidx = String(rng.value);
+        scheduleConfigAutosave();
+        toast('校正推理强度已设置: ' + (EFFORT_CN[v] || v));
+      });
+    }
+
+    const ol = sel.querySelector('.opt-list');
+    if (ol) {
+      ol.addEventListener('click', (e) => {
+        const opt = e.target.closest('.opt');
+        if (!opt) return;
+        const m = (opt.dataset.m || '').trim();
+        if (!m) return;
+
+        const newEffs = effortsFor(m);
+        let newEff = sel.dataset.effort || 'off';
+        if (!newEffs.includes(newEff)) {
+          newEff = newEffs[0] || 'off';
+        }
+        sel.dataset.model = m;
+        sel.dataset.effort = newEff;
+
+        const panel = sel.querySelector('.sel-panel');
+        const btn = sel.querySelector('.sel-btn');
+        if (panel) panel.classList.remove('model');
+        if (btn) btn.classList.add('mode-eff');
+
+        buildSel(sel, models, m, newEff);
+        scheduleConfigAutosave();
+        toast('校正模型已切换: ' + m);
+      });
+    }
+  }
+}
 function renderConfig(cfg) {
   initTwoLevelConfig();
   _cachedConfig = cfg;
@@ -7202,8 +7451,20 @@ function renderConfig(cfg) {
   const vConf = tools.voice || {};
   const vHk = vConf.hotkey || 'mouse_x1';
   window._currentVoiceHotkey = vHk;
+  const vramMode = vConf.vram_mode || (st && st.voice_status && st.voice_status.vram_mode) || 'resident';
+  window._currentVoiceVramMode = vramMode;
+  if ($('#cfg-voice-vram-mode')) $('#cfg-voice-vram-mode').value = vramMode;
   if ($('#cfg-voice-autostart')) $('#cfg-voice-autostart').checked = vConf.auto_start !== false;
   if ($('#cfg-voice-restore-clipboard')) $('#cfg-voice-restore-clipboard').checked = vConf.restore_clipboard !== false;
+  const corrModel = (vConf.semantic_correction_model || '').trim();
+  const corrEffort = (vConf.semantic_correction_effort || '').trim();
+  populateVoiceCorrectionModels(corrModel, corrEffort);
+  const activeCorrModel = ($('#sel-voice-correction')?.dataset.model || corrModel).trim();
+  const activeCorrEffort = ($('#sel-voice-correction')?.dataset.effort || corrEffort).trim();
+  if ($('#cfg-voice-semantic-correction')) $('#cfg-voice-semantic-correction').checked = vConf.semantic_correction_enabled === true;
+  if ($('#cfg-voice-correction-timeout')) $('#cfg-voice-correction-timeout').value = vConf.semantic_correction_timeout_seconds || 8;
+  if ($('#cfg-voice-correction-context')) $('#cfg-voice-correction-context').value = vConf.semantic_correction_context_chars || 12000;
+  window._currentVoiceCorrection = `${!!vConf.semantic_correction_enabled}|${activeCorrModel}|${activeCorrEffort}|${vConf.semantic_correction_timeout_seconds || 8}|${vConf.semantic_correction_context_chars || 12000}`;
   if ($('#cfg-voice-hotkey')) $('#cfg-voice-hotkey').value = vHk;
   if ($('#txt-record-hotkey')) $('#txt-record-hotkey').textContent = formatHotkeyLabel(vHk);
   if ($('#cfg-voice-engine')) {
@@ -7243,7 +7504,7 @@ function renderConfig(cfg) {
 }
 async function loadConfig() {
   try {
-    const cfg = await api('/api/config');
+    const cfg = await api('/api/config', undefined, 4000);
     if (cfg.error) throw new Error(cfg.error);
     renderConfig(cfg);
   } catch (e) { toast('读取配置失败: ' + e, true); }
@@ -7308,7 +7569,13 @@ function collectConfig() {
         restore_clipboard: !$('#cfg-voice-restore-clipboard') || $('#cfg-voice-restore-clipboard').checked,
         hotkey: ($('#cfg-voice-hotkey') ? $('#cfg-voice-hotkey').value : 'mouse_x1').trim(),
         engine: ($('#cfg-voice-engine') ? $('#cfg-voice-engine').value : 'sensevoice_offline').trim(),
-        device: ($('#cfg-voice-device') ? $('#cfg-voice-device').value : 'auto').trim()
+        device: ($('#cfg-voice-device') ? $('#cfg-voice-device').value : 'auto').trim(),
+        vram_mode: ($('#cfg-voice-vram-mode') ? $('#cfg-voice-vram-mode').value : 'resident').trim(),
+        semantic_correction_enabled: !!($('#cfg-voice-semantic-correction') && $('#cfg-voice-semantic-correction').checked),
+        semantic_correction_model: ($('#sel-voice-correction')?.dataset.model || '').trim(),
+        semantic_correction_effort: ($('#sel-voice-correction')?.dataset.effort || '').trim(),
+        semantic_correction_timeout_seconds: Math.max(1, Math.min(30, Number($('#cfg-voice-correction-timeout')?.value || 8))),
+        semantic_correction_context_chars: Math.floor(Math.max(512, Math.min(12000, Number($('#cfg-voice-correction-context')?.value || 12000))))
       }
     }
   };
@@ -7353,7 +7620,7 @@ function refresh() {
   if (_statusRequest) return _statusRequest;
   _statusRequest = (async () => {
     try {
-      st = await api('/api/status');
+      st = await api('/api/status', undefined, 8000);
       if (st.error) throw new Error(st.error);
       try { localStorage.setItem('cc_traffic_paused', (st && st.traffic_paused) ? '1' : '0'); } catch (e) {}
       renderStatus();
@@ -7361,6 +7628,11 @@ function refresh() {
     } catch (e) {
       $('#routedot').className = 'dot';
       $('#tf-since').textContent = '状态获取失败，正在重试';
+      if (!st) {
+        if ($('#codex-status')) $('#codex-status').textContent = 'Codex :8317 状态获取中…';
+        if ($('#gemini-status')) $('#gemini-status').textContent = 'Gemini :8045 状态获取中…';
+        if ($('#voice-status')) $('#voice-status').textContent = '语音 :8401 状态获取中…';
+      }
       console.error('Status refresh failed:', e);
     } finally {
       _statusRequest = null;
@@ -7500,6 +7772,9 @@ function renderStatus() {
     const sel = $('.sel[data-tier="' + t + '"]');
     buildSel(sel, models, tiers[t] || def[t], te[t] || st.effort || 'medium');
   });
+  if ($('#sel-voice-correction')) {
+    populateVoiceCorrectionModels($('#sel-voice-correction').dataset.model, $('#sel-voice-correction').dataset.effort);
+  }
   // 每档三选修改器状态一律以服务端为准; 提交中的档跳过, 免轮询覆盖乐观状态
   const tm = st.tier_modifier || {};
   document.querySelectorAll('.tmod').forEach(box => {
@@ -7565,20 +7840,47 @@ function renderStatus() {
   const vtext = $('#voice-status');
   if (vdot) {
     if (vstat.status === 'recording') vdot.className = 'dot rec';
-    else if (vstat.status === 'loading_model') vdot.className = 'dot warn';
+    else if (['starting', 'loading_model'].includes(vstat.status)) vdot.className = 'dot warn';
     else if (voiceInfo.state === 'online' && vstat.ready) vdot.className = 'dot on';
     else if (voiceInfo.state === 'online' || voiceInfo.state === 'degraded') vdot.className = 'dot warn';
     else vdot.className = 'dot';
   }
   if (vtext) {
+    const startup = vstat.startup || {};
+    const startupPhase = startup.phase || '';
+    const startupSeconds = Math.floor(Number(startup.elapsed_seconds || 0));
+    const phaseLabels = {
+      accepted: '已受理', selecting_python: '检查运行环境', python_selected: '运行环境已选择',
+      child_python_entry: '启动 Python', cli_imports_complete: '载入音频组件', importing_daemon: '载入语音组件',
+      constructing_daemon: '初始化语音服务', daemon_constructed: '语音服务已初始化', daemon_starting: '启动服务',
+      checking_dependencies: '检查依赖', dependencies_ready: '依赖已就绪', installing_dependencies: '安装依赖',
+      dependency_probe_failed: '依赖检查失败', dependency_recheck_failed: '依赖复查失败',
+      dependency_install_failed: '依赖修复失败', dependency_install_incomplete: '仍缺少依赖',
+      setting_tk_environment: '准备桌面环境', spawning_child: '启动服务进程',
+      binding_http: '绑定服务端口', http_listening: '等待模型载入',
+      waiting_for_child: '等待服务响应', waiting_for_health: '等待健康检查',
+      http_listening: '服务已启动', model_loading: '加载语音模型', loading_model: '加载语音模型',
+      waiting_for_ready: '等待模型就绪', slow_start_warning: '启动较慢，仍在等待',
+      ready: '已就绪', input_ready: '快捷键已就绪', error: '启动失败'
+    };
+    const startupDetail = startup.details && (startup.details.error || startup.details.missing ||
+      (startup.details.current_phase && ('当前阶段: ' + (phaseLabels[startup.details.current_phase] || startup.details.current_phase))));
     let desc = '未启动';
-    if (vrun) {
+    if (vstat.status === 'error' || startupPhase === 'error') desc = '启动失败';
+    else if (vstat.status === 'starting' || (vrun && !vstat.ready)) {
+      const phaseLabel = phaseLabels[startupPhase] || (vstat.status === 'loading_model' ? '加载语音模型' : '启动中');
+      desc = startupPhase === 'slow_start_warning'
+        ? `${phaseLabel} ${startupSeconds}s`
+        : `${phaseLabel}${startupSeconds ? ' · ' + startupSeconds + 's' : '…'}`;
+    } else if (vrun) {
       if (vstat.status === 'recording') desc = '录音中…';
-      else if (vstat.status === 'loading_model') desc = '加载模型…';
+      else if (vstat.ready && vstat.input_status && vstat.input_status.state === 'activating') desc = '模型就绪 · 激活快捷键…';
+      else if (vstat.ready && vstat.input_status && vstat.input_status.state === 'error') desc = '模型就绪 · 快捷键不可用';
       else if (vstat.ready) desc = '就绪 (' + (vstat.hotkey || '侧键') + ')';
       else desc = voiceInfo.reason || '初始化…';
     }
     vtext.textContent = '语音 :8401 ' + desc;
+    vtext.title = startupDetail ? String(startupDetail) : desc;
   }
 
   renderUpstreamToggle('codex', run, true);
@@ -7747,10 +8049,10 @@ function startRestartPolling(prevInstanceId) {
     clearInterval(_restartPollTimer);
     _restartPollTimer = null;
   }
-  showRestartOverlay('正在重新连接，请稍候...', false);
+  showRestartOverlay('正在断开旧连接并启动新进程...', false);
 
   const startTime = Date.now();
-  const maxWaitMs = 25000;
+  const maxWaitMs = 10000;
 
   _restartPollTimer = setInterval(async () => {
     const elapsed = Date.now() - startTime;
@@ -7758,13 +8060,21 @@ function startRestartPolling(prevInstanceId) {
       clearInterval(_restartPollTimer);
       _restartPollTimer = null;
       _restartPending = false;
-      showRestartOverlay('25 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
+      showRestartOverlay('10 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
       const btn = $('#btn-restart');
       if (btn) {
         btn.disabled = false;
         btn.classList.remove('pending');
       }
       return;
+    }
+
+    if (elapsed < 3000) {
+      showRestartOverlay('正在断开旧连接并启动新进程...', false);
+    } else if (elapsed < 7000) {
+      showRestartOverlay('正在等待服务端口释放并启动...', false);
+    } else {
+      showRestartOverlay('正在连接新服务实例，请稍候...', false);
     }
 
     try {
@@ -7819,8 +8129,27 @@ async function restartService() {
       },
       body: '{}',
     });
-    try { await res.json(); } catch (e) {}
+    if (!res.ok) {
+      let errDetail = 'HTTP ' + res.status;
+      try {
+        const j = await res.json();
+        if (j.error || j.message) errDetail = j.error || j.message;
+      } catch (e) {}
+      throw new Error(errDetail);
+    }
   } catch (err) {
+    const msg = (err && err.message) || String(err);
+    const isNetworkAbort = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed') || msg.includes('abort');
+    if (!isNetworkAbort) {
+      hideRestartOverlay();
+      _restartPending = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('pending');
+      }
+      toast('重启请求被拒绝: ' + msg, true);
+      return;
+    }
     // 忽略旧进程断开造成的网络中断
   }
 
@@ -7937,10 +8266,13 @@ function renderUpstreamToggle(provider, running, owned = true) {
   if (!meta) return;
   const button = $('#' + meta.btnId);
   if (!button) return;
-  const pending = upstreamPending[provider];
+  const requestPending = upstreamPending[provider];
+  const voiceStarting = provider === 'voice' && !!(st && st.voice_status &&
+    ['starting', 'loading_model'].includes(st.voice_status.status));
+  const pending = requestPending || (voiceStarting ? { action: 'start' } : false);
   const manual = provider === 'antigravity' && running && !owned && !pending;
   const action = pending ? pending.action : (manual ? null : (running ? 'stop' : 'start'));
-  const pendingLabel = action === 'start' ? '启动中…' : '停止中…';
+  const pendingLabel = action === 'start' ? (voiceStarting && !requestPending ? '载入中…' : '启动中…') : '停止中…';
   const label = pending ? pendingLabel : (manual ? '手动运行 · 不可停止' : (action === 'start' ? '启动' : '停止'));
   button.dataset.action = action || '';
   button.disabled = !!pending || manual;
@@ -7968,6 +8300,7 @@ async function controlUpstream(provider) {
   upstreamPending[provider] = { action };
   if (group) group.setAttribute('aria-busy', 'true');
   renderUpstreamToggle(provider, isUpstreamRunning(provider), provider === 'antigravity' ? !!(st && st.antigravity_owned) : true);
+  toast(meta.label + (action === 'start' ? ' 正在启动中，请稍候…' : ' 正在停止中…'));
   try {
     const res = await api('/api/upstream', { name: meta.apiName, action });
     if (res.error || res.ok === false) throw new Error(res.error || res.result || '操作失败');
@@ -7979,7 +8312,7 @@ async function controlUpstream(provider) {
       const errDetail = res.result.startsWith('start-failed') ? (res.result.replace(/^start-failed:?\s*/, '') || '启动失败') : res.result;
       throw new Error(errDetail);
     } else {
-      toast(meta.label + (action === 'start' ? ' 代理启动请求已发送' : ' 代理已停止'));
+      toast(meta.label + (action === 'start' ? ' 启动指令已受理，正在后台载入…' : ' 代理已停止'));
     }
     await refresh();
   } catch (e) {

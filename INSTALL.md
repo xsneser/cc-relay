@@ -47,7 +47,7 @@
 ## 2. Windows 一键安装包与协同卸载 (推荐)
 
 ### 2.1 安装包核心特性
-- **开箱即用**：采用 Inno Setup 6 封装为标准安装包 `CC-Relay-Setup-v2.4.8.exe`，安装路径默认位于 `%LOCALAPPDATA%\Programs\CC-Relay`，**无需管理员提权**即可完成安装。
+- **开箱即用**：采用 Inno Setup 6 封装为标准安装包 `CC-Relay-Setup-v2.4.9.exe`，安装路径默认位于 `%LOCALAPPDATA%\Programs\CC-Relay`，**无需管理员提权**即可完成安装。
 - **集成离线 ASR 语音环境**：内置独立的便携式 Python 3.10 运行时、`sherpa-onnx` 依赖库以及 **228MB SenseVoice INT8 语音大模型**。用户即使在无网络或无系统 Python 的纯净机上，双击安装即可立即使用全局语音打字与悬浮胶囊。
 - **环境自动配置**：安装向导自动将 `{app}\wrapper` 目录追加到当前用户的 `PATH` 环境变量中，并实时广播 `WM_SETTINGCHANGE` 消息，用户打开任何终端直接输入 `claude` 即可无感直通本地中转。
 - **用户资产保护**：升级安装时严格保护已存在的 `config.json`，用户填写的各上游 API Key、路由规则及历史记录绝不被覆盖。
@@ -70,7 +70,7 @@ build_installer.bat
 2. 主程序编译：通过 PyInstaller 根据 `cc-relay.spec` 编译生成后台静默版 `dist\cc-relay.exe`；
 3. ASR 运行时封装：调用 `tools\voice_input\bundle_runtime.py` 自动化组装便携 Python 运行时并验证模型；
 4. 静态元数据固化：调用 `installer_build\prepare_staging.py` 写入 Git Commit Hash 至 `build_info.json`；
-5. 生成安装包：调用 Inno Setup 进行 LZMA2 高压缩打包，产物生成在 `output\CC-Relay-Setup-v2.4.8.exe`。
+5. 生成安装包：调用 Inno Setup 进行 LZMA2 高压缩打包，产物生成在 `output\CC-Relay-Setup-v2.4.9.exe`。
 
 ---
 

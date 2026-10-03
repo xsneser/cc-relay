@@ -9,8 +9,12 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+_TK_VALIDATION_CACHE: Dict[str, bool] = {}
+_TK_VALIDATION_LOCK = threading.Lock()
 
 
 def _is_valid_tcl_dir(p: Path) -> bool:
@@ -185,40 +189,63 @@ def setup_tk_environment(py_exe: Optional[str] = None) -> Dict[str, str]:
 
 
 def validate_tk_runtime(py_exe: Optional[str] = None, timeout: float = 4.0) -> bool:
-    """验证目标解释器（或当前进程环境）是否能够成功初始化 Tkinter 视窗系统"""
-    # 确保本进程已尝试自愈环境变量
+    """验证目标解释器是否可用 Tk；结果按解释器与 Tcl/Tk 路径缓存，避免重复弹窗探测。"""
     env_overrides = setup_tk_environment(py_exe)
+    interpreter = os.path.normcase(os.path.abspath(py_exe or sys.executable))
+    tcl_path = env_overrides.get("TCL_LIBRARY", os.environ.get("TCL_LIBRARY", ""))
+    tk_path = env_overrides.get("TK_LIBRARY", os.environ.get("TK_LIBRARY", ""))
+    cache_key = f"{interpreter}|{tcl_path}|{tk_path}"
+    with _TK_VALIDATION_LOCK:
+        cached = _TK_VALIDATION_CACHE.get(cache_key)
+    if cached is True:
+        return True
 
     if py_exe:
         code = (
-            "import os, sys\n"
             "from tools.voice_input.tk_runtime import setup_tk_environment\n"
             "setup_tk_environment()\n"
             "import tkinter\n"
             "root = tkinter.Tk()\n"
             "root.withdraw()\n"
+            "root.overrideredirect(True)\n"
+            "try: root.attributes('-alpha', 0.0)\n"
+            "except Exception: pass\n"
+            "root.update_idletasks()\n"
             "root.destroy()\n"
             "print('TK_OK')\n"
         )
         try:
             env = dict(os.environ)
             env.update(env_overrides)
+            silent_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
             res = subprocess.run(
                 [py_exe, "-c", code],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 env=env,
+                creationflags=silent_flags,
             )
-            return res.returncode == 0 and "TK_OK" in res.stdout
+            valid = res.returncode == 0 and "TK_OK" in res.stdout
         except Exception:
-            return False
+            valid = False
     else:
         try:
             import tkinter
             root = tkinter.Tk()
             root.withdraw()
+            root.overrideredirect(True)
+            try:
+                root.attributes("-alpha", 0.0)
+            except Exception:
+                pass
+            root.update_idletasks()
             root.destroy()
-            return True
+            valid = True
         except Exception:
-            return False
+            valid = False
+
+    if valid:
+        with _TK_VALIDATION_LOCK:
+            _TK_VALIDATION_CACHE[cache_key] = True
+    return valid

@@ -3,6 +3,7 @@
 排除源码开发环境冗余文件 (.venv, __pycache__, 日志文件等)
 """
 
+import fnmatch
 import os
 import shutil
 import sys
@@ -39,9 +40,7 @@ def copy_tree_filtered(src_dir: Path, dst_dir: Path, ignore_patterns=None):
         name = path.name
         if ignore_patterns:
             for pat in ignore_patterns:
-                if pat.startswith("*") and name.endswith(pat[1:]):
-                    return True
-                elif pat == name:
+                if fnmatch.fnmatch(name, pat):
                     return True
         return False
 
@@ -124,7 +123,7 @@ def main():
         pass
 
     build_info = {
-        "version": "2.4.8",
+        "version": "2.4.9",
         "commit": commit_sha,
         "short_sha": short_sha,
         "branch": branch_name,
@@ -134,11 +133,11 @@ def main():
         json.dump(build_info, f, indent=2, ensure_ascii=False)
     print(f"  [+] build_info.json -> commit={short_sha or 'unknown'}, branch={branch_name}")
 
-    # 2. 复制 codex-proxy 目录 (排除日志与更新暂存)
+    # 2. 复制 codex-proxy 目录 (排除日志、更新暂存与本地私有配置)
     print("\n[*] 复制 Codex (CPA) 组件资源...")
     codex_src = REPO_ROOT / "codex-proxy"
     codex_dst = STAGING_DIR / "codex-proxy"
-    codex_ignores = [".staging", "*.log", "*.bak", "__pycache__"]
+    codex_ignores = [".staging", "*.log", "*.bak", "__pycache__", ".proxy_key", "config.yaml"]
     copy_tree_filtered(codex_src, codex_dst, codex_ignores)
 
     # 3. 复制 wrapper 目录
@@ -151,7 +150,7 @@ def main():
     print("\n[*] 复制 语音伴侣与 ASR 运行环境 (含 runtime 与 models)...")
     voice_src = REPO_ROOT / "tools" / "voice_input"
     voice_dst = STAGING_DIR / "tools" / "voice_input"
-    voice_ignores = [".venv", ".cache", "__pycache__", "*.pyc", "*.part"]
+    voice_ignores = [".venv", ".cache", "__pycache__", "*.pyc", "*.part", "Qwen*"]
     copy_tree_filtered(voice_src, voice_dst, voice_ignores)
 
     # 校验关键文件是否存在

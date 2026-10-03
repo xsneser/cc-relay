@@ -79,7 +79,7 @@ echo.
 
 :: 4. 组装 ASR 离线自包含运行环境与模型
 echo [4/6] 正在组装 ASR 离线运行环境与 SenseVoice 模型...
-python tools\voice_input\bundle_runtime.py
+python -m tools.voice_input.bundle_runtime
 if %errorlevel% neq 0 (
     echo [错误] ASR 离线环境组装失败！
     pause

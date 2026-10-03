@@ -12,8 +12,9 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any, Callable, Dict, Optional, Set
 from urllib.parse import urlparse
 
 import websockets
@@ -34,6 +35,14 @@ class VoiceServer:
         self.coordinator = None
         self.widget = None
         self.status = "starting"
+        self._ready = False
+        self.input_status = {"state": "waiting", "ready": False, "error": ""}
+        self._startup_attempt_id = os.environ.get("CC_VOICE_START_ATTEMPT_ID", "")
+        self._startup_lock = threading.Lock()
+        self._startup_started = time.monotonic()
+        self._startup_phase = "child_imports_complete"
+        self._startup_phase_started = self._startup_started
+        self._startup_phase_durations: Dict[str, float] = {}
         self.on_ready: Optional[Callable[[], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="VoiceInference")
@@ -41,6 +50,45 @@ class VoiceServer:
 
         # 客户端会话映射: connection -> session_id
         self._conn_sessions: Dict[ServerConnection, str] = {}
+
+    @property
+    def is_ready(self) -> bool:
+        return self._ready and self.status == "ready" and bool(self.engine.is_loaded)
+
+    def _set_startup_phase(self, phase: str, **details) -> None:
+        now = time.monotonic()
+        with self._startup_lock:
+            previous = self._startup_phase
+            self._startup_phase_durations[previous] = self._startup_phase_durations.get(previous, 0.0) + now - self._startup_phase_started
+            self._startup_phase = phase
+            self._startup_phase_started = now
+            event = {
+                "attempt_id": self._startup_attempt_id,
+                "phase": phase,
+                "elapsed_seconds": round(now - self._startup_started, 2),
+                **details,
+            }
+        print(
+            f"[{time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())}] "
+            f"[VOICE_STARTUP] {json.dumps(event, ensure_ascii=False)}",
+            flush=True,
+        )
+
+    def _startup_snapshot(self) -> Dict[str, Any]:
+        now = time.monotonic()
+        with self._startup_lock:
+            phase = self._startup_phase
+            phase_started = self._startup_phase_started
+            started = self._startup_started
+            durations = dict(self._startup_phase_durations)
+        durations[phase] = durations.get(phase, 0.0) + now - phase_started
+        return {
+            "attempt_id": self._startup_attempt_id,
+            "phase": phase,
+            "elapsed_seconds": round(now - started, 1),
+            "phase_elapsed_seconds": round(now - phase_started, 1),
+            "phase_durations": {key: round(value, 2) for key, value in durations.items()},
+        }
 
     def is_allowed_origin(self, origin: Optional[str]) -> bool:
         """Origin 安全白名单校验"""
@@ -68,6 +116,9 @@ class VoiceServer:
             caps["hotkey"] = True
         except Exception:
             caps["hotkey"] = False
+        # Engine backends may set is_loaded before warm-up finishes; expose server readiness consistently.
+        caps["is_loaded"] = self.is_ready
+        caps["ready"] = self.is_ready
         return caps
 
     def process_request(self, conn: ServerConnection, req: Any):
@@ -85,12 +136,14 @@ class VoiceServer:
                 {
                     "service": "voice",
                     "protocol_version": "1.1",
-                    "ready": self.engine.is_loaded,
+                    "ready": self.is_ready,
                     "status": self.status,
                     "engine": self.config.engine,
                     "capabilities": caps,
                     "session_state": coord_state,
+                    "input_status": dict(self.input_status),
                     "pid": os.getpid(),
+                    "startup": self._startup_snapshot(),
                 },
                 ensure_ascii=False,
             )
@@ -109,10 +162,12 @@ class VoiceServer:
             "type": "hello",
             "service": "voice",
             "protocol_version": "1.1",
-            "ready": self.engine.is_loaded,
+            "ready": self.is_ready,
             "status": self.status,
             "engine": self.config.engine,
             "capabilities": caps,
+            "input_status": dict(self.input_status),
+            "startup": self._startup_snapshot(),
         }
         await websocket.send(json.dumps(hello_msg, ensure_ascii=False))
 
@@ -150,10 +205,12 @@ class VoiceServer:
                             "type": "hello",
                             "service": "voice",
                             "protocol_version": "1.1",
-                            "ready": self.engine.is_loaded,
+                            "ready": self.is_ready,
                             "status": self.status,
                             "engine": self.config.engine,
                             "capabilities": self._build_capabilities(),
+                            "input_status": dict(self.input_status),
+                            "startup": self._startup_snapshot(),
                         }
                         await websocket.send(json.dumps(fresh_hello, ensure_ascii=False))
 
@@ -173,7 +230,14 @@ class VoiceServer:
                         )
 
                     elif action == "start":
-                        if not self.engine.is_loaded:
+                        if current_session is not None:
+                            await websocket.send(json.dumps({
+                                "type": "error",
+                                "error": "session_active",
+                                "message": "当前连接已有识别会话，请先结束或取消。",
+                            }, ensure_ascii=False))
+                            continue
+                        if not self.is_ready:
                             await websocket.send(
                                 json.dumps(
                                     {
@@ -202,10 +266,21 @@ class VoiceServer:
                         sid = data.get("session_id") or current_session
                         if sid:
                             t0 = time.monotonic()
-                            # 触发 2-Pass 离线纠错与尾部提取
-                            final_text = await loop.run_in_executor(
-                                self._executor, self.engine.finalize_session, sid
-                            )
+                            try:
+                                # 触发尾部提取与最终识别
+                                final_text = await loop.run_in_executor(
+                                    self._executor, self.engine.finalize_session, sid
+                                )
+                            except Exception as exc:
+                                await websocket.send(json.dumps({
+                                    "type": "error",
+                                    "error": "asr_error",
+                                    "session_id": sid,
+                                    "message": str(exc),
+                                }, ensure_ascii=False))
+                                current_session = None
+                                self._conn_sessions.pop(websocket, None)
+                                continue
                             cost_ms = (time.monotonic() - t0) * 1000
                             reply = {
                                 "type": "final",
@@ -239,8 +314,10 @@ class VoiceServer:
 
     async def start(self):
         """服务主入口：即时监听 8401 端口，后台异步预载 ASR 模型"""
-        self.status = "loading_model"
-        print(f"[*] 语音服务正在启动并监听: ws://{self.config.host}:{self.config.port}/ws/voice")
+        self.status = "starting"
+        self._ready = False
+        self._set_startup_phase("binding_http", host=self.config.host, port=self.config.port)
+        print(f"[*] 语音服务正在启动并监听: ws://{self.config.host}:{self.config.port}/ws/voice", flush=True)
 
         # 1. 率先启动 WebSocket 与 HTTP 综合服务 (端口立即打开并可响应 /health!)
         server = await serve(
@@ -249,25 +326,33 @@ class VoiceServer:
             port=self.config.port,
             process_request=self.process_request,
         )
-        print(f"[+] 语音服务端口已就绪: {self.config.host}:{self.config.port}")
+        self.status = "loading_model"
+        self._set_startup_phase("http_listening", host=self.config.host, port=self.config.port)
+        print(f"[+] 语音服务端口已就绪: {self.config.host}:{self.config.port}", flush=True)
 
         # 2. 异步在工作线程中载入 ASR 模型
         loop = asyncio.get_running_loop()
 
         def _load_task():
-            print(f"[*] 正在后台载入 ASR 模型 ({self.config.engine})...")
+            load_started = time.monotonic()
+            self._set_startup_phase("model_loading", engine=self.config.engine)
+            print(f"[*] 正在后台载入 ASR 模型 ({self.config.engine})...", flush=True)
             try:
                 self.engine.load()
+                self._ready = True
                 self.status = "ready"
-                print("[+] ASR 模型载入成功，引擎完全就绪！")
+                self._set_startup_phase("ready", model_load_seconds=round(time.monotonic() - load_started, 2))
+                print("[+] ASR 模型载入成功，引擎完全就绪！", flush=True)
                 if self.on_ready:
                     try:
                         self.on_ready()
                     except Exception as ex:
                         print(f"[!] on_ready 调度异常: {ex}")
             except Exception as e:
+                self._ready = False
                 self.status = "error"
-                print(f"[-] ASR 模型载入失败: {e}")
+                self._set_startup_phase("error", error=str(e), model_load_seconds=round(time.monotonic() - load_started, 2))
+                print(f"[-] ASR 模型载入失败: {e}", flush=True)
                 if self.on_error:
                     try:
                         self.on_error(str(e))
@@ -283,6 +368,11 @@ class VoiceServer:
             server.close()
             await server.wait_closed()
             self._executor.shutdown(wait=False)
+            if hasattr(self.engine, "shutdown"):
+                try:
+                    self.engine.shutdown()
+                except Exception as exc:
+                    print(f"[ASR] 引擎资源清理异常: {exc}")
 
     def stop(self):
         self._stop_event.set()

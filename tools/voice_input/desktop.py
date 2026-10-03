@@ -18,9 +18,16 @@ import time
 import tkinter as tk
 from typing import Callable, Optional
 
-from PIL import Image, ImageDraw, ImageTk
+try:
+    from PIL import Image, ImageDraw, ImageTk
+    HAS_PIL = True
+except ImportError:
+    Image = None
+    ImageDraw = None
+    ImageTk = None
+    HAS_PIL = False
 
-from .inject import InjectionOutcome, InjectionResult
+from .inject import InjectionOutcome, InjectionResult, set_clipboard_text
 from .session import SessionCoordinator, SessionState
 
 # Win32 常量定义
@@ -51,6 +58,9 @@ class DesktopVoiceWidget:
         self._dragged = False
         self._current_audio_level = 0.0
         self._on_close = on_close
+        self._feedback_until = 0.0
+        self._correction_suggestion = ""
+        self._resource_ui_key = None
 
         # 浮窗尺寸 (固定胶囊宽度，竖向伸缩展示文字)
         self.capsule_width = 276
@@ -125,7 +135,7 @@ class DesktopVoiceWidget:
 
         # 若是 Qwen 引擎，且设备尚未识别为 GPU 时，进行显式环境预检/探测
         if "qwen" in eng_name.lower():
-            if device_label != "GPU":
+            if not device_label.startswith("GPU"):
                 cfg_dev = str(
                     getattr(self.coordinator.config, "device", "")
                     or getattr(self.coordinator.config, "qwen_device", "")
@@ -161,69 +171,92 @@ class DesktopVoiceWidget:
 
     def _render_pill_image(
         self, width: int, height: int, border_color: str, radius: Optional[int] = None
-    ) -> ImageTk.PhotoImage:
-        """使用 Pillow 4x 超采样生成完全抗锯齿、纯净无黑边的圆角胶囊背景底图"""
-        scale = 4
-        W = width * scale
-        H = height * scale
-        # 统一绘制状态边框 (待机绿框、录音红框、纠错黄框)
-        has_border = bool(
-            border_color and border_color.lower() not in ("none", "transparent")
-        )
-        BW = (self.border_width * scale) if has_border else 0
-        R = (radius * scale) if radius else (H // 2)
+    ) -> Optional[object]:
+        """使用 Pillow 4x 超采样生成完全抗锯齿、纯净无黑边的圆角胶囊背景底图 (缺少 Pillow 时返回 None)"""
+        if not HAS_PIL:
+            return None
+        try:
+            scale = 4
+            W = width * scale
+            H = height * scale
+            # 统一绘制状态边框 (待机绿框、录音红框、纠错黄框)
+            has_border = bool(
+                border_color and border_color.lower() not in ("none", "transparent")
+            )
+            BW = (self.border_width * scale) if has_border else 0
+            R = (radius * scale) if radius else (H // 2)
 
-        # 4x 超采样 RGBA 画布
-        im_large = Image.new("RGBA", (W, H), (1, 2, 3, 0))
-        draw = ImageDraw.Draw(im_large)
-        inset = BW / 2.0 if BW > 0 else 0
-        draw.rounded_rectangle(
-            [inset, inset, W - inset, H - inset],
-            radius=R,
-            fill=(255, 255, 255, 255),
-            outline=border_color if has_border else None,
-            width=int(BW) if has_border else 0,
-        )
-        # 高质量 Lanczos 下采样至物理尺寸
-        im = im_large.resize((width, height), Image.Resampling.LANCZOS)
+            # 4x 超采样 RGBA 画布
+            im_large = Image.new("RGBA", (W, H), (1, 2, 3, 0))
+            draw = ImageDraw.Draw(im_large)
+            inset = BW / 2.0 if BW > 0 else 0
+            draw.rounded_rectangle(
+                [inset, inset, W - inset, H - inset],
+                radius=R,
+                fill=(255, 255, 255, 255),
+                outline=border_color if has_border else None,
+                width=int(BW) if has_border else 0,
+            )
+            # 高质量 Lanczos 下采样至物理尺寸
+            im = im_large.resize((width, height), Image.Resampling.LANCZOS)
 
-        # 二值透明切分：彻底消除 Lanczos 下采样与黑色色键混合产生的黑边光晕 (Black Fringe)
-        pixels = im.load()
-        clean_im = Image.new("RGB", (width, height), (1, 2, 3))
-        clean_pixels = clean_im.load()
-        for y in range(height):
-            for x in range(width):
-                r, g, b, a = pixels[x, y]
-                if a >= 128:
-                    clean_pixels[x, y] = (r, g, b)
-                else:
-                    clean_pixels[x, y] = (1, 2, 3)
+            # 二值透明切分：彻底消除 Lanczos 下采样与黑色色键混合产生的黑边光晕 (Black Fringe)
+            pixels = im.load()
+            clean_im = Image.new("RGB", (width, height), (1, 2, 3))
+            clean_pixels = clean_im.load()
+            for y in range(height):
+                for x in range(width):
+                    r, g, b, a = pixels[x, y]
+                    if a >= 128:
+                        clean_pixels[x, y] = (r, g, b)
+                    else:
+                        clean_pixels[x, y] = (1, 2, 3)
 
-        return ImageTk.PhotoImage(clean_im)
+            return ImageTk.PhotoImage(clean_im, master=self.root)
+        except Exception as e:
+            print(f"[Widget] 渲染 Pillow 胶囊底图异常: {e}")
+            return None
 
-    def _apply_rounded_shape(self, width: int, height: int, radius: int = 42):
-        """保持接口兼容存根 (平滑圆角已由 Pillow 4x 超采样与透明窗口原生呈现)"""
-        pass
+    def _apply_rounded_shape(self, width: int, height: int, radius: int = 38):
+        """通过 Win32 GDI 为窗口设置平滑圆角 (缺少 Pillow 时的原生回退)"""
+        if HAS_PIL or sys.platform != "win32" or not self.root:
+            return
+        try:
+            hwnd = int(self.root.winfo_id())
+            gdi32 = ctypes.windll.gdi32
+            rgn = gdi32.CreateRoundRectRgn(0, 0, width + 1, height + 1, radius, radius)
+            if rgn:
+                user32.SetWindowRgn(hwnd, rgn, True)
+        except Exception as e:
+            print(f"[Widget] 应用 Win32 圆角异常: {e}")
 
     def _set_border_color(self, color: str):
         """更新四周胶囊完全抗锯齿边框颜色"""
         self._current_border_color = color
-        if not self.bg_canvas or not self._pill_img_id:
+        if not self.bg_canvas:
             return
         h = self.expanded_height if self.coordinator.is_recording else self.collapsed_height
         rad = 20 if h > 50 else None
-        try:
-            self.bg_canvas.configure(height=h)
-            self._pill_photo = self._render_pill_image(self.capsule_width, h, color, radius=rad)
-            self.bg_canvas.itemconfig(self._pill_img_id, image=self._pill_photo)
-            if self._frame_win_id:
-                self.bg_canvas.itemconfigure(
-                    self._frame_win_id,
-                    width=self.capsule_width - 32,
-                    height=h - 6,
-                )
-        except Exception:
-            pass
+        if HAS_PIL and self._pill_img_id:
+            try:
+                self.bg_canvas.configure(height=h)
+                self._pill_photo = self._render_pill_image(self.capsule_width, h, color, radius=rad)
+                if self._pill_photo:
+                    self.bg_canvas.itemconfig(self._pill_img_id, image=self._pill_photo)
+                if self._frame_win_id:
+                    self.bg_canvas.itemconfigure(
+                        self._frame_win_id,
+                        width=self.capsule_width - 32,
+                        height=h - 6,
+                    )
+            except Exception:
+                pass
+        else:
+            try:
+                self.bg_canvas.configure(height=h, highlightbackground=color, highlightcolor=color)
+                self._apply_rounded_shape(self.capsule_width, h, radius=rad or 38)
+            except Exception:
+                pass
 
     def close_system(self):
         """关闭悬浮窗并彻底退出整个语音伴侣守护进程"""
@@ -251,6 +284,8 @@ class DesktopVoiceWidget:
         except Exception:
             pass
         self.root = tk.Tk()
+        # 实例化后立即隐藏窗口，杜绝初始默认白色方框在屏幕上闪烁
+        self.root.withdraw()
         self.root.title("CC Relay Voice Capsule")
 
         # 无边框 + 保持置顶
@@ -283,10 +318,19 @@ class DesktopVoiceWidget:
         )
         self.bg_canvas.pack(fill=tk.BOTH, expand=True)
 
-        self._pill_photo = self._render_pill_image(
-            self.capsule_width, self.collapsed_height, self._current_border_color
-        )
-        self._pill_img_id = self.bg_canvas.create_image(0, 0, image=self._pill_photo, anchor="nw")
+        if HAS_PIL:
+            self._pill_photo = self._render_pill_image(
+                self.capsule_width, self.collapsed_height, self._current_border_color
+            )
+            if self._pill_photo:
+                self._pill_img_id = self.bg_canvas.create_image(0, 0, image=self._pill_photo, anchor="nw")
+        if not self._pill_img_id:
+            try:
+                self.root.configure(bg="#ffffff")
+                self.bg_canvas.configure(bg="#ffffff", highlightthickness=self.border_width, highlightbackground=self._current_border_color)
+                self._apply_rounded_shape(self.capsule_width, self.collapsed_height, radius=38)
+            except Exception:
+                pass
 
         # 2. 主内容容器 (置于胶囊中央安全矩形内，避免覆盖平滑圆弧)
         self.main_frame = tk.Frame(self.bg_canvas, bg="#ffffff", bd=0, highlightthickness=0)
@@ -452,14 +496,18 @@ class DesktopVoiceWidget:
         self.context_menu.add_command(label="— 隐藏悬浮窗", command=self.hide)
         self.context_menu.add_command(label="⏻ 退出语音系统", command=self.close_system)
 
-        # 窗口初次渲染完毕后，注入 Win32 非抢焦点样式
+        # 窗口初次渲染完毕后，注入 Win32 非抢焦点样式并平滑呈现
         self.root.update_idletasks()
         self._apply_win32_non_activating(self.root)
+        self.root.deiconify()
 
         # 注册协调器观察者回调
         self.coordinator.add_state_listener(self._handle_state_change)
         self.coordinator.add_partial_listener(self._handle_partial_text)
         self.coordinator.add_final_listener(self._handle_final_result)
+        add_correction_listener = getattr(self.coordinator, "add_correction_listener", None)
+        if callable(add_correction_listener):
+            add_correction_listener(self._handle_correction_result)
         self.coordinator.add_audio_level_listener(self._handle_audio_level)
 
         self._start_animation_loop()
@@ -510,6 +558,9 @@ class DesktopVoiceWidget:
         self._pulse_phase += 0.3
         if self.coordinator.is_recording:
             self._draw_mic_icon(state="recording")
+            self._refresh_residency_ui()
+        elif time.monotonic() >= self._feedback_until:
+            self._refresh_residency_ui()
         try:
             self._anim_timer = self.root.after(50, self._start_animation_loop)
         except Exception:
@@ -558,6 +609,44 @@ class DesktopVoiceWidget:
         model_name = self._get_model_display_name()
         fg_col = "#24292f" if is_ready else "#9a6700"
         self.model_badge.configure(text=model_name, fg=fg_col, bg="#f3f4f6")
+
+    def _refresh_residency_ui(self):
+        """在 Tk 主线程刷新空闲时的 GPU 驻留提示。"""
+        engine = getattr(self.coordinator, "engine", None)
+        if engine is None or not hasattr(engine, "get_capabilities"):
+            return
+        try:
+            cap = engine.get_capabilities()
+            if cap.get("vram_mode") != "on_demand_offload" or not str(cap.get("device", "")).startswith("cuda"):
+                return
+            state = cap.get("residency_state", "")
+            recording = bool(getattr(self.coordinator, "is_recording", False))
+            if recording:
+                text_by_state = {
+                    "activating_gpu": "● 录音中 · GPU 准备中",
+                    "gpu_ready": "● 正在聆听",
+                    "error": "✕ 显存加载失败 · 音频已缓存",
+                }
+                fallback_text = "● 正在聆听"
+            else:
+                text_by_state = {
+                    "cpu_ready": "已释放显存",
+                    "activating_gpu": "按键后加载显存…",
+                    "gpu_ready": "模型已载入 GPU",
+                    "offloading_cpu": "正在释放显存…",
+                    "error": "✕ 显存迁移失败",
+                }
+                fallback_text = "等待按键"
+            text = text_by_state.get(state, fallback_text)
+            key = (recording, state, cap.get("gpu_resident"), cap.get("residency_error"))
+            if key == self._resource_ui_key:
+                return
+            self._resource_ui_key = key
+            if self.status_label and self.status_label.cget("text") != text:
+                self.status_label.configure(text=text, fg="#cf222e" if state == "error" else "#1f2328")
+            self._update_model_badge()
+        except Exception:
+            pass
 
     def set_ready(self):
         """引擎载入成功，更新胶囊为就绪状态 (绿框 + 按快捷键说话)"""
@@ -632,13 +721,17 @@ class DesktopVoiceWidget:
         cur_y = self.root.winfo_y()
         self.root.geometry(f"{self.capsule_width}x{self.expanded_height}+{cur_x}+{cur_y}")
         self.root.update_idletasks()
-        if self.bg_canvas and self._pill_img_id:
+        if self.bg_canvas:
             try:
                 self.bg_canvas.configure(height=self.expanded_height)
-                self._pill_photo = self._render_pill_image(
-                    self.capsule_width, self.expanded_height, self._current_border_color, radius=20
-                )
-                self.bg_canvas.itemconfig(self._pill_img_id, image=self._pill_photo)
+                if HAS_PIL and self._pill_img_id:
+                    self._pill_photo = self._render_pill_image(
+                        self.capsule_width, self.expanded_height, self._current_border_color, radius=20
+                    )
+                    if self._pill_photo:
+                        self.bg_canvas.itemconfig(self._pill_img_id, image=self._pill_photo)
+                else:
+                    self._apply_rounded_shape(self.capsule_width, self.expanded_height, radius=32)
                 if self._frame_win_id:
                     self.bg_canvas.itemconfigure(
                         self._frame_win_id,
@@ -661,13 +754,17 @@ class DesktopVoiceWidget:
             cur_y = self.root.winfo_y()
             self.root.geometry(f"{self.capsule_width}x{self.collapsed_height}+{cur_x}+{cur_y}")
             self.root.update_idletasks()
-            if self.bg_canvas and self._pill_img_id:
+            if self.bg_canvas:
                 try:
                     self.bg_canvas.configure(height=self.collapsed_height)
-                    self._pill_photo = self._render_pill_image(
-                        self.capsule_width, self.collapsed_height, "#10b981", radius=None
-                    )
-                    self.bg_canvas.itemconfig(self._pill_img_id, image=self._pill_photo)
+                    if HAS_PIL and self._pill_img_id:
+                        self._pill_photo = self._render_pill_image(
+                            self.capsule_width, self.collapsed_height, "#10b981", radius=None
+                        )
+                        if self._pill_photo:
+                            self.bg_canvas.itemconfig(self._pill_img_id, image=self._pill_photo)
+                    else:
+                        self._apply_rounded_shape(self.capsule_width, self.collapsed_height, radius=38)
                     if self._frame_win_id:
                         self.bg_canvas.itemconfigure(
                             self._frame_win_id,
@@ -716,11 +813,28 @@ class DesktopVoiceWidget:
                 except Exception:
                     pass
                 self._anim_timer = None
+            # Explicitly release the Tk image on the Tk owner thread before destroying its interpreter.
+            photo, self._pill_photo = self._pill_photo, None
+            if photo is not None:
+                try:
+                    photo.__del__()
+                except Exception:
+                    pass
+            root = self.root
             try:
-                self.root.destroy()
+                root.destroy()
             except Exception:
                 pass
             self.root = None
+            # Drop every Python wrapper that holds this Tcl interpreter on the Tk owner thread.
+            for name in (
+                "bg_canvas", "main_frame", "header_frame", "info_container", "title_row", "canvas",
+                "status_label", "model_badge", "partial_label", "btn_cancel", "btn_close",
+                "drawer_frame", "divider", "stream_label", "context_menu",
+            ):
+                setattr(self, name, None)
+            self._pill_img_id = None
+            self._frame_win_id = None
 
     # --- 协调器观察者异步安全调度 ---
 
@@ -743,7 +857,7 @@ class DesktopVoiceWidget:
             self.btn_cancel.pack(side=tk.RIGHT, padx=(0, 4))
 
         elif state in (SessionState.DRAINING, SessionState.FINALIZING):
-            self.status_label.configure(text="⌛ 正在纠错与标点…", fg="#9a6700")
+            self.status_label.configure(text="⌛ 正在输出…", fg="#9a6700")
             self._set_border_color("#d97706")
             self.btn_cancel.pack_forget()
             if self.model_badge:
@@ -760,6 +874,7 @@ class DesktopVoiceWidget:
             self.set_feedback(f"✕ {err_msg}", color="#cf222e")
 
         elif state == SessionState.IDLE:
+            self._resource_ui_key = None
             self.btn_cancel.pack_forget()
             if self.model_badge and not self.model_badge.winfo_ismapped():
                 self.model_badge.pack(side=tk.LEFT, padx=5)
@@ -787,7 +902,11 @@ class DesktopVoiceWidget:
 
     def _apply_final_result(self, text: str, res: InjectionResult):
         if not text:
-            self.set_feedback("未识别到有效语音", color="#656d76")
+            last_error = getattr(self.coordinator, "last_error", "")
+            if last_error.startswith("ASR识别失败:"):
+                self.set_feedback(f"✕ {last_error[:42]}", color="#cf222e")
+            else:
+                self.set_feedback("未识别到有效语音", color="#656d76")
             return
 
         disp = text[:22] + "…" if len(text) > 22 else text
@@ -799,11 +918,63 @@ class DesktopVoiceWidget:
             else:
                 self.set_feedback(f"✕ {res.message}", color="#cf222e")
 
+    def _handle_correction_result(self, status: str, text: str, message: str):
+        if not self.root:
+            return
+        self.root.after(0, self._apply_correction_result, status, text, message)
+
+    def _apply_correction_result(self, status: str, text: str, message: str):
+        if status == "pending":
+            self._feedback_until = time.monotonic() + 12.0
+            if self.status_label:
+                self.status_label.configure(text="语义校正中…", fg="#0969da")
+            if self.partial_label:
+                self.partial_label.configure(text="原文已输入，请稍候", fg="#0969da")
+            self._set_border_color("#0969da")
+            return
+        if status == "suggestion" and text:
+            self._correction_suggestion = text
+            self._feedback_until = time.monotonic() + 15.0
+            self._expand_vertically()
+            shown = text[:180] + ("…" if len(text) > 180 else "")
+            if self.status_label:
+                self.status_label.configure(text="校正建议 · 未自动替换", fg="#9a6700")
+            if self.stream_label:
+                self.stream_label.configure(
+                    text=f"{shown}\n\n{message}\n点击此处复制建议文本",
+                    fg="#9a6700",
+                )
+                self.stream_label.bind("<Button-1>", self._copy_correction_suggestion, add="+")
+            self._set_border_color("#d97706")
+            return
+        self._correction_suggestion = ""
+        if status == "applied":
+            self.set_feedback("✓ 已语义校正", color="#1a7f37")
+        elif status == "unchanged":
+            self.set_feedback("✓ 无需语义修正", color="#1a7f37")
+        elif status == "skipped":
+            clean_msg = str(message or "").strip()
+            if clean_msg.startswith("语义校正") or clean_msg.startswith("校正"):
+                self.set_feedback(f"⚠️ {clean_msg[:40]}", color="#9a6700")
+            else:
+                self.set_feedback(f"⚠️ 语义校正已跳过: {clean_msg[:40]}", color="#9a6700")
+        else:
+            clean_msg = str(message or "").strip()
+            if clean_msg.startswith("语义校正") or clean_msg.startswith("校正"):
+                self.set_feedback(f"⚠️ {clean_msg[:40]}", color="#9a6700")
+            else:
+                self.set_feedback(f"⚠️ 语义校正失败: {clean_msg[:40]}", color="#9a6700")
+
+    def _copy_correction_suggestion(self, _event=None):
+        if self._correction_suggestion and set_clipboard_text(self._correction_suggestion):
+            self.set_feedback("✓ 建议已复制，请手动替换原文", color="#1a7f37")
+
     def _handle_audio_level(self, level: float):
         self._current_audio_level = level
 
     def set_feedback(self, text: str, color: str = "#1a7f37", clickable: bool = False):
         """展示完成或警告反馈，并在 2.2 秒后自动恢复待机微型胶囊"""
+        self._feedback_until = time.monotonic() + 2.2
         self.status_label.configure(text=text, fg=color)
         if self.stream_label:
             self.stream_label.configure(text=text, fg=color)

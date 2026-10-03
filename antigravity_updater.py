@@ -107,6 +107,9 @@ class AntigravityUpdater:
 
         self._lock = threading.RLock()
         self._check_lock = threading.Lock()
+        self._local_probe_lock = threading.Lock()
+        self._local_probe_running = False
+        self._local_probe_last = 0.0
         self._etag = None
         self._snapshot = {
             "current_version": None,
@@ -115,6 +118,9 @@ class AntigravityUpdater:
             "last_checked": None,
             "check_error": None,
             "checking": False,
+            "local_version_loading": False,
+            "local_version_error": None,
+            "local_version_checked_at": None,
             "release_url": f"https://github.com/{REPO}/releases/latest",
             "release_notes": "",
         }
@@ -140,14 +146,60 @@ class AntigravityUpdater:
             pass
         return None
 
-    def status(self):
+    def _refresh_local_version_background(self):
+        try:
+            version = self._query_local_version()
+            checked_at = time.time()
+            with self._lock:
+                self._snapshot["local_version_loading"] = False
+                self._snapshot["local_version_checked_at"] = checked_at
+                if version:
+                    self._snapshot["current_version"] = version
+                    self._snapshot["local_version_error"] = None
+                else:
+                    self._snapshot["local_version_error"] = "local health unavailable"
+                self._recompute_locked()
+        finally:
+            with self._local_probe_lock:
+                self._local_probe_last = time.monotonic()
+                self._local_probe_running = False
+
+    def _schedule_local_version_refresh(self):
+        with self._local_probe_lock:
+            if self._local_probe_running:
+                return
+            self._local_probe_running = True
         with self._lock:
-            # Query local version lazily if not currently set or every status read
-            cur = self._query_local_version()
-            if cur:
-                self._snapshot["current_version"] = cur
+            self._snapshot["local_version_loading"] = True
+            self._snapshot["local_version_error"] = None
+        thread = threading.Thread(
+            target=self._refresh_local_version_background,
+            name="AntigravityLocalVersion",
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except Exception as exc:
+            with self._lock:
+                self._snapshot["local_version_loading"] = False
+                self._snapshot["local_version_error"] = str(exc)
+            with self._local_probe_lock:
+                self._local_probe_running = False
+
+    def status(self):
+        now = time.monotonic()
+        with self._lock:
             self._recompute_locked()
-            return dict(self._snapshot)
+            snapshot = dict(self._snapshot)
+            needs_probe = (
+                self._snapshot.get("current_version") is None
+                or now - self._local_probe_last >= 15.0
+            )
+        if needs_probe:
+            self._schedule_local_version_refresh()
+            with self._lock:
+                snapshot = dict(self._snapshot)
+        return snapshot
 
     def _recompute_locked(self):
         cur = parse_version_tuple(self._snapshot.get("current_version"))

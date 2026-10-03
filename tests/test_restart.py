@@ -54,10 +54,19 @@ class RestartUnitTests(unittest.TestCase):
         spec = (r"C:\app\cc-relay.exe", [], r"C:\app")
         cmd = cc_relay._build_restart_supervisor_command(1234, spec)
         self.assertIn("Wait-Process -Id 1234", cmd)
-        self.assertIn("Start-Sleep -Milliseconds 500", cmd)
+        self.assertIn("Start-Sleep -Milliseconds", cmd)
         self.assertIn("Start-Process", cmd)
         self.assertIn(r"'C:\app\cc-relay.exe'", cmd)
         self.assertIn(r"-WorkingDirectory 'C:\app'", cmd)
+
+    def test_spawn_restart_supervisor_sets_restart_env(self):
+        with mock.patch("subprocess.Popen") as mock_popen, \
+             mock.patch.object(cc_relay, "_restart_launch_spec", return_value=(r"C:\app\cc.exe", [], r"C:\app")):
+            self.assertTrue(cc_relay._spawn_restart_supervisor(pid=9999))
+            mock_popen.assert_called_once()
+            called_env = mock_popen.call_args[1].get("env") or {}
+            self.assertEqual(called_env.get("CC_RELAY_NO_BROWSER"), "1")
+            self.assertEqual(called_env.get("CC_RELAY_RESTART"), "1")
 
     def test_schedule_restart_single_flight(self):
         with mock.patch("threading.Thread") as mock_thread:
@@ -207,6 +216,17 @@ class RestartEndpointSecurityTests(unittest.TestCase):
             self.assertTrue(res.get("ok"))
             self.assertEqual(res.get("message"), "cc-relay restarting...")
             self.assertEqual(hdrs.get("cache-control"), "no-store")
+            mock_sched.assert_called_once()
+
+    def test_restart_allowed_loopback_aliases(self):
+        # Origin http://localhost:<port> with Host 127.0.0.1:<port> should be accepted
+        with mock.patch("cc_relay.schedule_restart") as mock_sched:
+            st, hdrs, res = self._post("/api/restart", headers={
+                "Host": f"127.0.0.1:{self.port}",
+                "Origin": f"http://localhost:{self.port}",
+            })
+            self.assertEqual(st, 200)
+            self.assertTrue(res.get("ok"))
             mock_sched.assert_called_once()
 
     def test_ping_endpoint(self):

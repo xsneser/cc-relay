@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tools.voice_input import tk_runtime
 from tools.voice_input.tk_runtime import (
     _is_valid_tcl_dir,
     _is_valid_tk_dir,
@@ -72,6 +73,35 @@ class TestVoiceTkRuntime(unittest.TestCase):
 
     def test_validate_tk_runtime_current(self):
         self.assertTrue(validate_tk_runtime(), "当前环境应能成功验证 Tkinter 运行能力")
+
+    def test_validate_tk_runtime_caches_probe_result(self):
+        cache = tk_runtime._TK_VALIDATION_CACHE
+        cache.clear()
+        try:
+            with mock.patch.object(tk_runtime, "setup_tk_environment", return_value={}), \
+                    mock.patch.object(tk_runtime.subprocess, "run", return_value=mock.Mock(
+                        returncode=0, stdout="TK_OK"
+                    )) as run:
+                self.assertTrue(validate_tk_runtime("test-python.exe"))
+                self.assertTrue(validate_tk_runtime("test-python.exe"))
+                run.assert_called_once()
+        finally:
+            cache.clear()
+
+    def test_failed_tk_validation_can_succeed_after_repair(self):
+        cache = tk_runtime._TK_VALIDATION_CACHE
+        cache.clear()
+        try:
+            with mock.patch.object(tk_runtime, "setup_tk_environment", return_value={}), \
+                    mock.patch.object(tk_runtime.subprocess, "run", side_effect=[
+                        mock.Mock(returncode=1, stdout=""),
+                        mock.Mock(returncode=0, stdout="TK_OK"),
+                    ]) as run:
+                self.assertFalse(validate_tk_runtime("repair-python.exe"))
+                self.assertTrue(validate_tk_runtime("repair-python.exe"))
+                self.assertEqual(run.call_count, 2)
+        finally:
+            cache.clear()
 
     def test_find_voice_python_with_desktop_requirement(self):
         py_sense = find_voice_python(engine="sensevoice_offline", require_desktop=True)

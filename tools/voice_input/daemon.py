@@ -34,6 +34,8 @@ class VoiceInputDaemon:
         self.injector = WindowsInjector(
             restore_clipboard=self.config.restore_clipboard,
             restore_delay=self.config.restore_clipboard_delay,
+            auto_reactivate_target=getattr(self.config, "auto_reactivate_target", True),
+            restore_switched_focus=getattr(self.config, "restore_switched_focus", True),
         )
 
         # 核心会话协调器 (仲裁所有输入源)
@@ -76,20 +78,42 @@ class VoiceInputDaemon:
         self.coordinator.add_final_listener(self._on_console_final)
 
     def _on_engine_ready(self):
-        """ASR 模型预载与 warm-up 完成后，安全启动全局对讲热键监听"""
+        """ASR 模型可接收会话后，安全启动全局对讲热键监听。"""
         if not self._is_running:
             return
-        print(f"[*] ASR 引擎已就绪，正在激活全局对讲监听: {self.hotkey_ctrl.get_display_name()}...")
+        startup_id = os.environ.get("CC_VOICE_START_ATTEMPT_ID", "")
+        started = time.monotonic()
+        if self.server:
+            self.server.input_status = {"state": "activating", "ready": False, "error": ""}
+        print(f"[*] ASR 引擎已就绪，正在激活全局对讲监听: {self.hotkey_ctrl.get_display_name()}...", flush=True)
+        try:
+            caps = self.engine.get_capabilities()
+            if caps.get("vram_mode") == "on_demand_offload" and str(caps.get("device", "")).startswith("cuda"):
+                print("[*] Qwen 模型已在系统内存就绪，将在按键识别时载入显存。", flush=True)
+        except Exception:
+            pass
         try:
             self.hotkey_ctrl.start()
-            print("[+] 全局对讲热键已就绪！点击桌面悬浮胶囊或按住热键即可在光标处自动输入。")
+            elapsed = round(time.monotonic() - started, 2)
+            if self.server:
+                self.server.input_status = {"state": "ready", "ready": True, "error": ""}
+            print(f"[+] 全局对讲热键已就绪！(激活耗时 {elapsed}s)", flush=True)
+            if startup_id:
+                print(f"[{time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())}] [VOICE_STARTUP] "
+                      f"{json.dumps({'attempt_id': startup_id, 'phase': 'input_ready', 'duration_seconds': elapsed}, ensure_ascii=False)}",
+                      flush=True)
         except Exception as e:
-            print(f"[!] 全局热键监听未就绪 ({e})，已降级运行 (可通过桌面悬浮胶囊或 Web UI 使用)。")
+            elapsed = round(time.monotonic() - started, 2)
+            if self.server:
+                self.server.input_status = {"state": "error", "ready": False, "error": str(e)}
+            print(f"[!] 全局热键监听未就绪 ({e})，激活耗时 {elapsed}s。", flush=True)
 
         if self.widget:
             self.widget.set_ready()
 
     def _on_engine_error(self, err_msg: str):
+        if self.server:
+            self.server.input_status = {"state": "error", "ready": False, "error": str(err_msg)}
         if self.widget:
             self.widget.set_error(err_msg)
 
@@ -133,10 +157,21 @@ class VoiceInputDaemon:
         except Exception:
             pass
 
-    def _on_hotkey_start(self):
+    def _on_hotkey_start(self, target_snapshot=None):
         """按下热键触发录音"""
+        if target_snapshot is None:
+            try:
+                from .inject import capture_target_snapshot
+                target_snapshot = capture_target_snapshot()
+            except Exception:
+                target_snapshot = None
         self._play_feedback(1200, 40)
-        self.coordinator.start_session(source="hotkey", mode="ptt", output_mode="inject")
+        self.coordinator.start_session(
+            source="hotkey",
+            mode="ptt",
+            output_mode="inject",
+            target_snapshot=target_snapshot,
+        )
 
     def _on_hotkey_stop(self):
         """松开热键结束录音并触发 2-Pass 纠错与注入"""
@@ -210,6 +245,10 @@ class VoiceInputDaemon:
         print("\n[*] 正在退出语音伴侣守护进程...")
         self._is_running = False
         self.coordinator.cancel_session()
+        try:
+            self.injector.close()
+        except Exception:
+            pass
         self.hotkey_ctrl.stop()
         if self.widget:
             self.widget.stop()

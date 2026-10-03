@@ -315,6 +315,20 @@ class TestCustomProvidersRelayIntegration(unittest.TestCase):
         self.assertTrue(sf["has_key"])
         self.assertNotIn("sk-sf-secret", json.dumps(view))
 
+    def test_voice_vram_mode_config_round_trip(self):
+        base_conf = {"tools": {"voice": {"engine": "qwen_2pass"}}}
+        with mock.patch("cc_relay._save_conf"):
+            view = cc_relay._apply_config_update(base_conf, {
+                "tools": {"voice": {"vram_mode": "on_demand_offload"}}
+            })
+        self.assertEqual(view["tools"]["voice"]["vram_mode"], "on_demand_offload")
+
+        with self.assertRaisesRegex(ValueError, "unsupported vram_mode"):
+            with mock.patch("cc_relay._save_conf"):
+                cc_relay._apply_config_update(base_conf, {
+                    "tools": {"voice": {"vram_mode": "invalid"}}
+                })
+
     def test_apply_config_update_custom_providers(self):
         base_conf = {
             "custom_providers": {

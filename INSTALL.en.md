@@ -9,18 +9,19 @@ This guide walks through a complete `cc-relay` setup from scratch: installation,
 ## 📋 Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
-2. [Getting the Source and Initial Configuration](#2-getting-the-source-and-initial-configuration)
-3. [Wiring Up the Three Upstreams](#3-wiring-up-the-three-upstreams)
-   - [3.1 DeepSeek Direct](#31-deepseek-direct)
-   - [3.2 Codex (CLIProxyAPI) Bridge](#32-codex-cliproxyapi-bridge)
-   - [3.3 Gemini (Antigravity Tools) Bridge](#33-gemini-antigravity-tools-bridge)
-4. [Client Configuration (Desktop 3P & CLI)](#4-client-configuration)
-   - [4.1 Claude Desktop (GUI) 3P Inference Gateway](#41-claude-desktop-gui-3p-inference-gateway-recommended)
-   - [4.2 Injecting the Claude Code CLI Configuration](#42-injecting-the-claude-code-cli-configuration)
-5. [Seamless Automation on Windows (Wrapper & Lifecycle)](#5-seamless-automation-on-windows-wrapper--lifecycle)
-6. [Daemonization on macOS / Linux](#6-daemonization-on-macos--linux)
-7. [Daily Operations and Diagnostics](#7-daily-operations-and-diagnostics)
-8. [Troubleshooting FAQ](#8-troubleshooting-faq)
+2. [Windows One-Click Installer & Cooperative Uninstaller (Recommended)](#2-windows-one-click-installer--cooperative-uninstaller-recommended)
+3. [Getting the Source and Initial Configuration](#3-getting-the-source-and-initial-configuration)
+4. [Wiring Up the Three Upstreams](#4-wiring-up-the-three-upstreams)
+   - [4.1 DeepSeek Direct](#41-deepseek-direct)
+   - [4.2 Codex (CLIProxyAPI) Bridge](#42-codex-cliproxyapi-bridge)
+   - [4.3 Gemini (Antigravity Tools) Bridge](#43-gemini-antigravity-tools-bridge)
+5. [Client Configuration (Desktop 3P & CLI)](#5-client-configuration)
+   - [5.1 Claude Desktop (GUI) 3P Inference Gateway](#51-claude-desktop-gui-3p-inference-gateway-recommended)
+   - [5.2 Injecting the Claude Code CLI Configuration](#52-injecting-the-claude-code-cli-configuration)
+6. [Seamless Automation on Windows (Wrapper & Lifecycle)](#6-seamless-automation-on-windows-wrapper--lifecycle)
+7. [Daemonization on macOS / Linux](#7-daemonization-on-macos--linux)
+8. [Daily Operations and Diagnostics](#8-daily-operations-and-diagnostics)
+9. [Troubleshooting FAQ](#9-troubleshooting-faq)
 
 ---
 
@@ -36,16 +37,41 @@ This guide walks through a complete `cc-relay` setup from scratch: installation,
 
 ---
 
-## 2. Getting the Source and Initial Configuration
+## 2. Windows One-Click Installer & Cooperative Uninstaller (Recommended)
 
-### 2.1 Clone the repository
+### 2.1 Installer Highlights
+- **Out of the box**: Packaged with Inno Setup 6 as standard installer `CC-Relay-Setup-v2.4.9.exe`, installed by default into `%LOCALAPPDATA%\Programs\CC-Relay`, **no administrator privileges required**.
+- **Integrated Offline Voice ASR**: Bundles an embedded portable Python 3.10 runtime, `sherpa-onnx`, and the **SenseVoice INT8 model (~228MB)**. Users can immediately use global speech typing and desktop capsule even on a clean system without network or system Python.
+- **Automatic Environment Setup**: Automatically adds `{app}\wrapper` to the user's `PATH` environment variable and broadcasts `WM_SETTINGCHANGE`. Open any terminal and type `claude` to connect to the local relay.
+- **Asset Protection**: Upgrades preserve existing `config.json` without overwriting API keys or routing rules.
+
+### 2.2 Uninstaller Wizard & Multi-component Cleanup
+When uninstalling from Windows "Installed Apps" or Control Panel, the uninstaller (`unins000.exe`) provides interactive options:
+1. **[X] Voice Companion offline runtime & SenseVoice model (~380MB)** *(Checked by default)*: Terminates port 8401 process and frees disk space.
+2. **[ ] Codex Gateway (CLIProxyAPI :8317)** *(Unchecked by default)*: Clears proxy directory and credentials.
+3. **[ ] Gemini Companion (launches Antigravity Tools native uninstaller)** *(Unchecked by default)*: Automatically launches Antigravity Tools native `uninstall.exe`.
+4. **[ ] Remove user personal configuration (config.json, call logs, API keys)** *(Unchecked by default)*.
+5. **Clean PATH restoration**: Automatically removes wrapper from `PATH`.
+
+### 2.3 Building the Installer from Source
+Run the one-click build pipeline:
+```cmd
+build_installer.bat
+```
+Produces `output\CC-Relay-Setup-v2.4.9.exe`.
+
+---
+
+## 3. Getting the Source and Initial Configuration
+
+### 3.1 Clone the repository
 
 ```bash
 git clone https://github.com/xsneser/cc-relay.git
 cd cc-relay
 ```
 
-### 2.2 Create your local config file
+### 3.2 Create your local config file
 
 ```bash
 # Windows (CMD / PowerShell)

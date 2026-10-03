@@ -68,6 +68,23 @@ class TestDesktopVoiceWidget(unittest.TestCase):
         applied_style = args[2]
         self.assertTrue(applied_style & 0x08000000)  # WS_EX_NOACTIVATE
 
+    def test_qwen_on_demand_badge_keeps_gpu_as_target(self):
+        class FakeEngine:
+            is_loaded = True
+
+            def get_capabilities(self):
+                return {
+                    "engine": "qwen_2pass",
+                    "device": "cuda:0",
+                    "model_device": "cpu",
+                    "gpu_resident": False,
+                    "vram_mode": "on_demand_offload",
+                    "residency_state": "cpu_ready",
+                }
+
+        self.coord.engine = FakeEngine()
+        self.assertEqual(self.widget._get_model_display_name(), "Qwen 1.7B · GPU")
+
     def test_toggle_record(self):
         self.widget._toggle_record()
         self.assertTrue(self.coord.is_recording)

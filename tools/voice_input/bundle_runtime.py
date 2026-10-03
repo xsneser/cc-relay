@@ -54,12 +54,14 @@ def test_runtime_interpreter(py_exe: Path) -> bool:
         "print('RUNTIME_OK')\n"
     )
     try:
+        silent_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
         res = subprocess.run(
             [str(py_exe), "-c", check_code],
             capture_output=True,
             text=True,
             timeout=8,
             cwd=str(REPO_ROOT),
+            creationflags=silent_flags,
         )
         return res.returncode == 0 and "RUNTIME_OK" in res.stdout
     except Exception as e:

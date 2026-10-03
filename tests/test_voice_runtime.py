@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import tools.voice_input.runtime as voice_runtime
 from tools.voice_input.runtime import (
     _probe_interpreter,
     find_voice_python,
@@ -86,23 +87,52 @@ class TestVoiceRuntime(unittest.TestCase):
         ready = check_deps_ready(sys.executable)
         self.assertTrue(ready)
 
-    @mock.patch("tools.voice_input.runtime.check_deps_ready")
+    @mock.patch("tools.voice_input.runtime._probe_dependency_report")
     @mock.patch("tools.voice_input.runtime.subprocess.run")
-    def test_ensure_voice_dependencies_no_op_when_ready(self, mock_run, mock_ready):
-        mock_ready.return_value = True
+    def test_ensure_voice_dependencies_no_op_when_ready(self, mock_run, mock_probe):
+        ready = {name: True for name in ("numpy", "sounddevice", "pynput", "websockets", "win32gui")}
+        mock_probe.return_value = (ready, None)
         self.assertTrue(ensure_voice_dependencies(python_exe=sys.executable))
         mock_run.assert_not_called()
 
-    @mock.patch("tools.voice_input.runtime.check_deps_ready")
+    @mock.patch("tools.voice_input.runtime._probe_dependency_report")
     @mock.patch("tools.voice_input.runtime.subprocess.run")
-    def test_ensure_voice_dependencies_installs_when_missing(self, mock_run, mock_ready):
-        mock_ready.side_effect = [False, True]
+    def test_ensure_voice_dependencies_installs_when_missing(self, mock_run, mock_probe):
+        missing = {name: True for name in ("numpy", "sounddevice", "websockets", "win32gui")}
+        missing["pynput"] = False
+        ready = {name: True for name in ("numpy", "sounddevice", "pynput", "websockets", "win32gui")}
+        mock_probe.side_effect = [(missing, None), (ready, None)]
         mock_run.return_value = mock.Mock(returncode=0)
         self.assertTrue(ensure_voice_dependencies(python_exe=sys.executable))
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
         self.assertIn("-m", cmd)
         self.assertIn("pip", cmd)
+
+    @mock.patch("tools.voice_input.runtime._probe_dependency_report", return_value=(None, "probe timed out"))
+    @mock.patch("tools.voice_input.runtime.subprocess.run")
+    def test_dependency_probe_failure_does_not_trigger_pip(self, mock_run, _mock_probe):
+        progress = []
+        self.assertFalse(ensure_voice_dependencies(
+            python_exe=sys.executable,
+            on_progress=lambda phase, details: progress.append((phase, details)),
+        ))
+        mock_run.assert_not_called()
+        self.assertEqual(progress[-1][0], "dependency_probe_failed")
+
+    @mock.patch("tools.voice_input.runtime._probe_dependency_report")
+    @mock.patch("tools.voice_input.runtime.subprocess.run", return_value=mock.Mock(returncode=1, stderr=b"offline"))
+    def test_failed_pip_repair_is_reported(self, _mock_run, mock_probe):
+        missing = {name: True for name in ("numpy", "sounddevice", "websockets", "win32gui")}
+        missing["pynput"] = False
+        mock_probe.return_value = (missing, None)
+        progress = []
+        self.assertFalse(ensure_voice_dependencies(
+            python_exe=sys.executable,
+            on_progress=lambda phase, details: progress.append((phase, details)),
+        ))
+        self.assertEqual(progress[-1][0], "dependency_install_failed")
+        self.assertIn("offline", progress[-1][1]["error"])
 
     def test_find_voice_python_routes_by_engine(self):
         # 验证针对 Qwen 引擎能正确路由到具备 transformers 的系统解释器
@@ -111,6 +141,37 @@ class TestVoiceRuntime(unittest.TestCase):
         # 验证针对 SenseVoice 引擎能正确路由到具备 sherpa_onnx 的 .venv 或 bundled runtime
         py_sv = find_voice_python(engine="sensevoice_offline")
         self.assertTrue(".venv" in py_sv or "runtime" in py_sv)
+
+    @mock.patch.dict(os.environ, {"CC_VOICE_PYTHON": "candidate-python"})
+    @mock.patch("pathlib.Path.is_file", return_value=False)
+    @mock.patch("tools.voice_input.runtime._check_module_in_interpreter", return_value=False)
+    @mock.patch("tools.voice_input.runtime._probe_interpreter", return_value=True)
+    def test_resolver_probes_each_candidate_only_once(self, mock_probe, mock_module, _mock_is_file):
+        result = find_voice_python(repo_root=Path("Z:/fake-repo"), engine="qwen_2pass")
+        self.assertEqual(result, "candidate-python")
+        # Target-module and fallback passes share the same per-candidate probe cache.
+        self.assertEqual(mock_probe.call_count, len({item.args[0] for item in mock_probe.call_args_list}))
+        self.assertEqual(mock_module.call_count, len({item.args[0] for item in mock_module.call_args_list}))
+
+    @mock.patch("tools.voice_input.runtime.subprocess.run", return_value=mock.Mock(
+        returncode=0, stdout="TK_STATIC_OK"
+    ))
+    def test_desktop_candidate_probe_does_not_create_tk_window(self, run):
+        self.assertTrue(voice_runtime._probe_desktop_capability(sys.executable))
+        code = run.call_args.args[0][2]
+        self.assertNotIn("tkinter.Tk(", code)
+        self.assertIn("find_tcl_tk_dirs", code)
+
+    def test_routine_dependency_report_does_not_create_tk_window(self):
+        import json
+        payload = {name: True for name in voice_runtime._DIAGNOSTIC_MODULES}
+        completed = mock.Mock(returncode=0, stdout="__JSON_START__" + json.dumps(payload))
+        with mock.patch.object(voice_runtime.subprocess, "run", return_value=completed) as run:
+            report = diagnose_python_environment(sys.executable)
+        self.assertTrue(report["tkinter"])
+        probe_code = run.call_args.args[0][2]
+        self.assertNotIn("validate_tk_runtime", probe_code)
+        self.assertNotIn("tkinter.Tk(", probe_code)
 
 
 if __name__ == "__main__":

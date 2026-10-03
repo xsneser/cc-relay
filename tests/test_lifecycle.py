@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -127,6 +128,34 @@ class VoiceAutoStartTests(unittest.TestCase):
             self.assertEqual(st["pid"], 4321)
             mock_write.assert_called_once_with(4321)
 
+    def test_starting_status_skips_slow_device_discovery(self):
+        with mock.patch.object(cc_relay, "_VOICE_STARTING", True), \
+                mock.patch.object(cc_relay, "get_voice_available_devices") as devices:
+            status = cc_relay.voice_status_dict({"tools": {"voice": {}}})
+        self.assertEqual(status["status"], "starting")
+        self.assertIn("startup", status)
+        devices.assert_not_called()
+
+    def test_voice_status_exposes_runtime_residency(self):
+        probe = {
+            "service": "voice", "status": "ready", "ready": True,
+            "capabilities": {
+                "vram_mode": "on_demand_offload", "model_device": "cpu",
+                "gpu_resident": False, "residency_state": "cpu_ready",
+            },
+        }
+        with mock.patch.object(cc_relay, "_probe_voice_service", return_value=probe), \
+                mock.patch.object(cc_relay, "get_voice_available_devices", return_value=[]), \
+                mock.patch("tools.voice_input.config.VoiceConfig.from_relay_config") as load_cfg:
+            cfg = load_cfg.return_value
+            cfg.is_qwen_installed.return_value = False
+            cfg.is_sensevoice_installed.return_value = False
+            st = cc_relay.voice_status_dict({"tools": {"voice": {"vram_mode": "on_demand_offload"}}})
+        self.assertEqual(st["vram_mode"], "on_demand_offload")
+        self.assertEqual(st["model_device"], "cpu")
+        self.assertFalse(st["gpu_resident"])
+        self.assertEqual(st["residency_state"], "cpu_ready")
+
     def test_voice_stop_kills_only_tracked_pid(self):
         proc = mock.Mock(pid=5678)
         proc.poll.return_value = None
@@ -139,22 +168,62 @@ class VoiceAutoStartTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][-2:], ["/PID", "5678"])
 
     def test_voice_start_returns_already_when_up(self):
-        with mock.patch.object(cc_relay, "voice_up", return_value=True):
+        with mock.patch.object(cc_relay, "_probe_voice_service", return_value={"service": "voice", "ready": True}):
             self.assertEqual(cc_relay.voice_start(), "already")
+
+    def test_voice_start_acknowledges_without_waiting_for_model(self):
+        with mock.patch.object(cc_relay, "_probe_voice_service", return_value=None), \
+                mock.patch.object(cc_relay, "_voice_start_sync", return_value="started"), \
+                mock.patch.object(cc_relay.threading.Thread, "start", autospec=True):
+            self.assertEqual(cc_relay.voice_start(conf={"tools": {"voice": {}}}), "starting")
+            self.assertTrue(cc_relay._VOICE_STARTING)
+        cc_relay._VOICE_STARTING = False
+
+    def test_failed_dependency_repair_prevents_child_spawn(self):
+        conf = {"tools": {"voice": {"engine": "qwen_2pass"}}}
+        with mock.patch.object(cc_relay, "_probe_voice_service", return_value=None), \
+                mock.patch("tools.voice_input.runtime.find_voice_python", return_value=sys.executable), \
+                mock.patch("tools.voice_input.runtime.ensure_voice_dependencies", return_value=False), \
+                mock.patch.object(cc_relay.subprocess, "Popen") as popen:
+            result = cc_relay._voice_start_sync(conf, attempt_id="dependency-fail")
+        self.assertTrue(result.startswith("start-failed"))
+        popen.assert_not_called()
+
+    def test_readiness_monitor_waits_for_ready_not_just_health(self):
+        proc = mock.Mock(pid=9999)
+        proc.poll.return_value = None
+        conf = {"tools": {"voice": {}}}
+        health_loading = {"service": "voice", "pid": proc.pid, "status": "loading_model", "ready": False}
+        health_ready = {"service": "voice", "pid": proc.pid, "status": "ready", "ready": True}
+        with cc_relay._VOICE_START_LOCK:
+            cc_relay._VOICE_STARTUP = {
+                "attempt_id": "monitor-test", "started_at": time.time(),
+                "started_monotonic": time.monotonic(), "phase": "waiting_for_health",
+                "phase_started_monotonic": time.monotonic(), "phase_durations": {}, "details": {},
+            }
+        with mock.patch.object(cc_relay, "_probe_voice_service", side_effect=[health_loading, health_ready]), \
+                mock.patch.object(cc_relay.time, "sleep"):
+            cc_relay._monitor_voice_startup(proc, conf, 0, "monitor-test")
+        self.assertEqual(cc_relay._VOICE_STARTUP["phase"], "ready")
+        self.assertNotEqual(cc_relay._VOICE_STARTUP["phase"], "loading_model")
 
     def test_voice_start_reports_child_exit_as_start_failed(self):
         proc = mock.Mock(pid=9999)
         proc.poll.return_value = 1  # 模拟子进程闪退
         conf = {"tools": {"voice": {}}}
-        with mock.patch.object(cc_relay, "voice_up", return_value=False), \
+        with mock.patch.object(cc_relay, "_probe_voice_service", return_value=None), \
+                mock.patch("tools.voice_input.runtime.find_voice_python", return_value=sys.executable), \
+                mock.patch("tools.voice_input.runtime.ensure_voice_dependencies", return_value=True), \
+                mock.patch("tools.voice_input.tk_runtime.setup_tk_environment", return_value={}), \
                 mock.patch.object(cc_relay.subprocess, "Popen", return_value=proc), \
                 mock.patch("builtins.open", mock.mock_open()), \
                 mock.patch.object(cc_relay, "_get_voice_job", return_value=False), \
+                mock.patch.object(cc_relay.threading.Thread, "start", autospec=True), \
                 mock.patch.object(cc_relay.os.path, "isfile", return_value=False):
-            res = cc_relay.voice_start(conf=conf)
-            self.assertTrue(res.startswith("start-failed"))
-            self.assertIn("exit code 1", res)
-            self.assertNotEqual(res, "timeout")
+            res = cc_relay._voice_start_sync(conf=conf, attempt_id="test-attempt")
+            self.assertEqual(res, "starting")
+            cc_relay._monitor_voice_startup(proc, conf, 0, "test-attempt")
+            self.assertIn("code 1", cc_relay._VOICE_LAST_ERROR)
 
 
 class RequestAutoStartGateTests(unittest.TestCase):

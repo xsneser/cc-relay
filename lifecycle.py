@@ -69,7 +69,8 @@ def antigravity_up(conf=None):
 
 def antigravity_auto_start_enabled(conf=None):
     """Return whether implicit Antigravity startup is explicitly enabled."""
-    conf = conf or _load_conf()
+    if conf is None:
+        conf = _load_conf()
     tools = conf.get("tools") or {}
     settings = tools.get("antigravity") or {}
     return settings.get("auto_start") is True
@@ -115,7 +116,8 @@ def voice_up(conf=None):
 
 
 def voice_auto_start_enabled(conf=None):
-    conf = conf or _load_conf()
+    if conf is None:
+        conf = _load_conf()
     tools = conf.get("tools") or {}
     settings = tools.get("voice") or {}
     return settings.get("auto_start") is True
