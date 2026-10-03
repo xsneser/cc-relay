@@ -65,7 +65,7 @@ class VoiceConfig:
 
     # 注入与剪贴板
     restore_clipboard: bool = True
-    restore_clipboard_delay: float = 0.15
+    restore_clipboard_delay: float = 0.35
     beep_feedback: bool = False
     auto_reactivate_target: bool = True
     restore_switched_focus: bool = True

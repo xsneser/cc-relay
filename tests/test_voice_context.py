@@ -237,6 +237,35 @@ class TestVoiceContext(unittest.TestCase):
             self.assertIn("这是关于架构精简的 Plan 计划内容", snap.context)
             self.assertNotIn("会话A内容", snap.context)
 
+    def test_generic_new_client_window_does_not_leak_titled_old_session_context(self):
+        from unittest import mock
+        registry = VoiceContextRegistry(ttl_seconds=60)
+        # 模拟内存中有已经完成的老会话 A (具有专属 ai_title)
+        registry.observe_request("sess-old", 101, "m", [{"role": "user", "content": "老会话的历史提问"}])
+        with registry._lock:
+            registry._pending[("sess-old", 101)]["session_name"] = "old-session-name"
+            registry._pending[("sess-old", 101)]["ai_title"] = "老会话专属架构分析"
+
+        # 模拟磁盘上有新启动且尚未命名的空白会话 B
+        mock_disk_new_sess = {
+            "session_id": "sess-new-uuid",
+            "session_name": "cc-relay-new",
+            "ai_title": "",
+            "jsonl_path": "/path/to/new.jsonl",
+            "started_at": 200.0,
+        }
+        with mock.patch("voice_context._find_session_from_disk", return_value=mock_disk_new_sess), \
+                mock.patch("voice_context._read_session_messages_from_jsonl", return_value=[]):
+            # 新开窗口标题是通用的“✳ Claude Code”时，绝不泄漏老会话的上下文，返回空白上下文！
+            snap = registry.snapshot_for_target(
+                target_pid=11948,
+                target_title="✳ Claude Code",
+                parent_map={101: 11948},
+            )
+            self.assertIsNotNone(snap)
+            self.assertEqual(snap.session_id, "sess-new-uuid")
+            self.assertEqual(snap.context, "")
+
 
 if __name__ == "__main__":
     unittest.main()

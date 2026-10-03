@@ -419,6 +419,7 @@ def _find_session_from_disk(target_title: str = "", target_pid: Optional[int] = 
                 "session_name": name,
                 "ai_title": ai_title,
                 "jsonl_path": jsonl_path,
+                "started_at": float(sdata.get("startedAt") or 0) / 1000.0,
                 "updated_at": float(sdata.get("updatedAt") or 0) / 1000.0,
             })
         except Exception:
@@ -450,9 +451,20 @@ def _find_session_from_disk(target_title: str = "", target_pid: Optional[int] = 
             c for c in candidates
             if c["pid"] and _is_process_related(c["pid"], int(target_pid), parent_map)
         ]
+        # 若当前窗口标题没有显式匹配，但有候选会话已经具有独立的 ai_title（说明它属于另一个已有主题的标签页），
+        # 必须从通用窗口候选列表中排除，防止老会话反向污染新开客户端！
+        if title_lower:
+            uncontradicted = [c for c in proc_matches if not c["ai_title"] or c["ai_title"].lower() in title_lower]
+            if uncontradicted:
+                proc_matches = uncontradicted
+
         if len(proc_matches) == 1:
             return proc_matches[0]
         elif len(proc_matches) > 1:
+            # 优先选择最新启动且尚未命名的会话（典型的新开终端特征）
+            new_unnamed = [c for c in proc_matches if not c["ai_title"]]
+            if new_unnamed:
+                return max(new_unnamed, key=lambda c: c.get("started_at", 0))
             return max(proc_matches, key=lambda c: c["updated_at"])
 
     return None
@@ -661,14 +673,13 @@ class VoiceContextRegistry:
                 disk_session = _find_session_from_disk(target_title, target_pid, parent_map)
                 if disk_session:
                     disk_msgs = _read_session_messages_from_jsonl(disk_session.get("jsonl_path") or "")
-                    if disk_msgs:
-                        context = self._render(disk_msgs, max_chars=max_chars)
-                        return VoiceContextSnapshot(
-                            session_id=disk_session["session_id"],
-                            model="relay-main",
-                            context=context,
-                            revision=1,
-                        )
+                    context = self._render(disk_msgs, max_chars=max_chars) if disk_msgs else ""
+                    return VoiceContextSnapshot(
+                        session_id=disk_session["session_id"],
+                        model="relay-main",
+                        context=context,
+                        revision=1,
+                    )
 
             if chosen is not None:
                 context = self._render(chosen["messages"], max_chars=max_chars)

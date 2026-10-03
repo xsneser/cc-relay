@@ -752,7 +752,7 @@ class WindowsInjector:
     def __init__(
         self,
         restore_clipboard: bool = True,
-        restore_delay: float = 0.15,
+        restore_delay: float = 0.35,
         auto_reactivate_target: bool = True,
         restore_switched_focus: bool = True,
     ):
@@ -833,7 +833,8 @@ class WindowsInjector:
 
         # 延迟恢复剪贴板
         if self.restore_clipboard and old_clipboard is not None:
-            time.sleep(self.restore_delay)
+            effective_delay = max(0.35, float(self.restore_delay or 0.35))
+            time.sleep(effective_delay)
             # 仅当剪贴板仍是刚注入的内容时恢复，防止覆盖用户正在复制的新数据
             current_clip = get_clipboard_text()
             if current_clip == text:
@@ -907,9 +908,10 @@ class WindowsInjector:
                 restore_foreground_window(switched_from_hwnd)
             return InjectionResult(False, InjectionOutcome.SENDINPUT_ERROR, "替换按键发送不完整，原输入状态未知")
 
-        # 5. 延迟恢复剪贴板
+        # 5. 延迟恢复剪贴板 (动态自适应退格数量，保证目标应用完成 Ctrl+V 读取)
         if self.restore_clipboard and old_clipboard is not None:
-            time.sleep(self.restore_delay)
+            effective_delay = max(0.40, float(self.restore_delay or 0.35), 0.003 * backspace_count + 0.35)
+            time.sleep(effective_delay)
             if get_clipboard_text() == corrected_text:
                 set_clipboard_text(old_clipboard)
 
