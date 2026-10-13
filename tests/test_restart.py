@@ -54,10 +54,55 @@ class RestartUnitTests(unittest.TestCase):
         spec = (r"C:\app\cc-relay.exe", [], r"C:\app")
         cmd = cc_relay._build_restart_supervisor_command(1234, spec)
         self.assertIn("Wait-Process -Id 1234", cmd)
-        self.assertIn("Start-Sleep -Milliseconds", cmd)
+        self.assertIn("Start-Sleep -Milliseconds 1200", cmd)
+        self.assertIn("Get-Process -Id 1234", cmd)
         self.assertIn("Start-Process", cmd)
         self.assertIn(r"'C:\app\cc-relay.exe'", cmd)
         self.assertIn(r"-WorkingDirectory 'C:\app'", cmd)
+
+    def test_create_exclusive_server_success(self):
+        srv = cc_relay.create_exclusive_server(("127.0.0.1", 0), cc_relay.UIHandler, max_wait_sec=2.0)
+        try:
+            self.assertIsNotNone(srv)
+            self.assertGreater(srv.server_port, 0)
+        finally:
+            srv.server_close()
+
+    def test_create_exclusive_server_retry_on_addr_in_use(self):
+        calls = []
+        dummy_srv = mock.MagicMock()
+
+        def fake_init(addr, handler):
+            calls.append(addr)
+            if len(calls) == 1:
+                err = OSError(10048, "Address already in use")
+                err.winerror = 10048
+                raise err
+            return dummy_srv
+
+        with mock.patch("relay.handlers.ui_handler.ExclusiveThreadingHTTPServer", side_effect=fake_init):
+            srv = cc_relay.create_exclusive_server(("127.0.0.1", 9999), cc_relay.UIHandler, max_wait_sec=2.0)
+            self.assertEqual(srv, dummy_srv)
+            self.assertEqual(len(calls), 2)
+
+    def test_create_exclusive_server_timeout(self):
+        def fake_init(addr, handler):
+            err = OSError(10048, "Address already in use")
+            err.winerror = 10048
+            raise err
+
+        with mock.patch("relay.handlers.ui_handler.ExclusiveThreadingHTTPServer", side_effect=fake_init):
+            with self.assertRaises(OSError) as ctx:
+                cc_relay.create_exclusive_server(("127.0.0.1", 9999), cc_relay.UIHandler, max_wait_sec=0.3)
+            self.assertIn("10048", str(ctx.exception))
+
+    def test_create_exclusive_server_non_retry_error(self):
+        def fake_init(addr, handler):
+            raise PermissionError("Access denied")
+
+        with mock.patch("relay.handlers.ui_handler.ExclusiveThreadingHTTPServer", side_effect=fake_init):
+            with self.assertRaises(PermissionError):
+                cc_relay.create_exclusive_server(("127.0.0.1", 9999), cc_relay.UIHandler, max_wait_sec=2.0)
 
     def test_spawn_restart_supervisor_sets_restart_env(self):
         with mock.patch("subprocess.Popen") as mock_popen, \

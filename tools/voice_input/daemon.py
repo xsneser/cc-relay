@@ -119,7 +119,11 @@ class VoiceInputDaemon:
 
     @property
     def _pid_file(self) -> Path:
-        return Path(__file__).resolve().parent.parent.parent / ".voice.pid"
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        data_pid = repo_root / "data" / ".voice.pid"
+        if data_pid.parent.exists():
+            return data_pid
+        return repo_root / ".voice.pid"
 
     def _write_pid_file(self):
         """记录自身 PID 至根目录 .voice.pid 文件，方便 Relay 管理"""

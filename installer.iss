@@ -5,7 +5,7 @@
 ; =====================================================================
 
 #define MyAppName "CC Relay"
-#define MyAppVersion "2.4.10"
+#define MyAppVersion "2.4.11"
 #define MyAppPublisher "CC Relay Team"
 #define MyAppURL "https://github.com/xsneser/cc-relay"
 #define MyAppExeName "cc-relay.exe"
@@ -52,6 +52,8 @@ Source: "installer_build\staging\stop_relay.bat"; DestDir: "{app}"; Flags: ignor
 Source: "installer_build\staging\start_relay.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "installer_build\staging\build_info.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "installer_build\staging\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "installer_build\staging\lifecycle.py"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "installer_build\staging\relay\*"; DestDir: "{app}\relay"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 ; 配置文件模板 (始终覆盖为最新模板)
 Source: "installer_build\staging\config.example.json"; DestDir: "{app}"; Flags: ignoreversion
@@ -373,6 +375,8 @@ begin
     if OptCleanUserData then
     begin
       DeleteFile(ExpandConstant('{app}\config.json'));
+      DelTree(ExpandConstant('{app}\data'), True, True, True);
+      DelTree(ExpandConstant('{app}\logs'), True, True, True);
       DeleteFile(ExpandConstant('{app}\records.jsonl'));
       DeleteFile(ExpandConstant('{app}\records.v1.jsonl'));
       DeleteFile(ExpandConstant('{app}\relay_launch.log'));

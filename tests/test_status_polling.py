@@ -10,7 +10,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import antigravity_updater
+from relay.upstreams import antigravity_updater
 import cc_relay
 
 
@@ -141,7 +141,7 @@ class StatusPollingCacheTests(unittest.TestCase):
         updater = antigravity_updater.AntigravityUpdater()
         with dependencies[0], dependencies[1], dependencies[2], dependencies[3], \
                 mock.patch("urllib.request.build_opener") as mock_opener, \
-                mock.patch("antigravity_updater.get_antigravity_updater", return_value=updater):
+                mock.patch("relay.upstreams.antigravity_updater.get_antigravity_updater", return_value=updater):
             mock_client = mock.Mock()
             mock_client.open.side_effect = slow_open
             mock_opener.return_value = mock_client

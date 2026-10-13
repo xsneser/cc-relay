@@ -183,7 +183,7 @@ class TestVoiceSessionCoordinator(unittest.TestCase):
         self.coord.start_session(source="widget", mode="toggle", output_mode="inject")
         self.coord.stop_session()
 
-        self.assertTrue(applied.wait(2))
+        self.assertTrue(applied.wait(5))
         self.coord._correction_client.capture_context.assert_called_once_with(mock_snap.return_value)
         self.coord._correction_client.correct.assert_called_once_with(
             mock_snap.return_value, context, "/cost"

@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from codex_callback import LoopbackCallback
+from relay.upstreams.codex_callback import LoopbackCallback
 
 
 class CallbackTests(unittest.TestCase):

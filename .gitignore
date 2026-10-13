@@ -8,6 +8,12 @@ codex-proxy/ui-auth-runtime/
 .proxy_key
 .cli-proxy-api/
 
+# ── 运行时目录隔离 ──
+data/
+!data/.gitkeep
+logs/
+!logs/.gitkeep
+
 # ── 运行时流量、提示词抓包与缓存数据 ──
 records.jsonl
 *.jsonl

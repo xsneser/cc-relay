@@ -11,8 +11,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-import antigravity_updater
-from antigravity_updater import (
+from relay.upstreams import antigravity_updater
+from relay.upstreams.antigravity_updater import (
     AntigravityUpdater,
     parse_version_tuple,
     clean_release_notes,
@@ -84,7 +84,7 @@ class TestAntigravityUpdater(unittest.TestCase):
         mock_opener = MagicMock()
         mock_opener.open.return_value.__enter__.return_value = mock_resp
 
-        with patch("antigravity_updater._openers", return_value=[mock_opener]):
+        with patch("relay.upstreams.antigravity_updater._openers", return_value=[mock_opener]):
             status = updater.check(force=True)
 
         self.assertEqual(status["current_version"], "4.8.4")
@@ -109,7 +109,7 @@ class TestAntigravityUpdater(unittest.TestCase):
         mock_opener = MagicMock()
         mock_opener.open.return_value.__enter__.return_value = mock_resp
 
-        with patch("antigravity_updater._openers", return_value=[mock_opener]):
+        with patch("relay.upstreams.antigravity_updater._openers", return_value=[mock_opener]):
             status = updater.check(force=True)
 
         self.assertEqual(status["current_version"], "4.8.4")
@@ -122,7 +122,7 @@ class TestAntigravityUpdater(unittest.TestCase):
         updater._snapshot["latest_version"] = "4.8.4"
         updater._snapshot["last_checked"] = 9999999999.0
 
-        with patch("antigravity_updater._openers") as mock_openers:
+        with patch("relay.upstreams.antigravity_updater._openers") as mock_openers:
             status = updater.check(force=False)
             mock_openers.assert_not_called()
             self.assertEqual(status["latest_version"], "4.8.4")
@@ -159,7 +159,7 @@ class TestAntigravityUpdater(unittest.TestCase):
              patch("cc_relay.get_upstream_health", return_value={"state": "offline", "reason": ""}), \
              patch("cc_relay._get_cpa_updater") as mock_cpa, \
              patch("cc_relay._get_relay_updater") as mock_ru, \
-             patch("antigravity_updater.get_antigravity_updater") as mock_ag:
+             patch("relay.upstreams.antigravity_updater.get_antigravity_updater") as mock_ag:
 
             mock_cpa.return_value.status.return_value = {}
             mock_ru.return_value.status.return_value = {}

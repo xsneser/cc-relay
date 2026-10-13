@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="ui-version" content="2.4.10">
+<meta name="ui-version" content="2.4.11">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -3576,7 +3576,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.10</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.11</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -6401,7 +6401,7 @@ function updateDetailStatusPill(subpage) {
     }
   } else {
     pill.className = 'cfg-mod-badge on';
-    pill.textContent = '● 核心运行中 v2.4.10';
+    pill.textContent = '● 核心运行中 v2.4.11';
   }
 }
 
@@ -8052,15 +8052,17 @@ function startRestartPolling(prevInstanceId) {
   showRestartOverlay('正在断开旧连接并启动新进程...', false);
 
   const startTime = Date.now();
-  const maxWaitMs = 10000;
+  const maxWaitMs = 25000;
+  let inFlight = false;
 
   _restartPollTimer = setInterval(async () => {
+    if (inFlight) return;
     const elapsed = Date.now() - startTime;
     if (elapsed > maxWaitMs) {
       clearInterval(_restartPollTimer);
       _restartPollTimer = null;
       _restartPending = false;
-      showRestartOverlay('10 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
+      showRestartOverlay('25 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
       const btn = $('#btn-restart');
       if (btn) {
         btn.disabled = false;
@@ -8071,39 +8073,44 @@ function startRestartPolling(prevInstanceId) {
 
     if (elapsed < 3000) {
       showRestartOverlay('正在断开旧连接并启动新进程...', false);
-    } else if (elapsed < 7000) {
+    } else if (elapsed < 8000) {
       showRestartOverlay('正在等待服务端口释放并启动...', false);
     } else {
       showRestartOverlay('正在连接新服务实例，请稍候...', false);
     }
 
+    inFlight = true;
     try {
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch('/api/ping?_ts=' + Date.now(), {
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      clearTimeout(tid);
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data && !data.error && (!prevInstanceId || data.instance_id !== prevInstanceId)) {
-          clearInterval(_restartPollTimer);
-          _restartPollTimer = null;
-          _restartPending = false;
-          if (data.traffic_paused !== undefined) {
-            try { localStorage.setItem('cc_traffic_paused', data.traffic_paused ? '1' : '0'); } catch (e) {}
+      try {
+        const res = await fetch('/api/ping?_ts=' + Date.now(), {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && !data.error && data.instance_id && (!prevInstanceId || data.instance_id !== prevInstanceId)) {
+            clearInterval(_restartPollTimer);
+            _restartPollTimer = null;
+            _restartPending = false;
+            if (data.traffic_paused !== undefined) {
+              try { localStorage.setItem('cc_traffic_paused', data.traffic_paused ? '1' : '0'); } catch (e) {}
+            }
+            try { sessionStorage.setItem('cc_restart_toast', 'CC Relay 重启成功'); } catch (e) {}
+            window.location.reload();
+            return;
           }
-          try { sessionStorage.setItem('cc_restart_toast', 'CC Relay 重启成功'); } catch (e) {}
-          window.location.reload();
-          return;
         }
+      } finally {
+        clearTimeout(tid);
       }
     } catch (e) {
       // 服务尚未就绪，继续轮询探测
+    } finally {
+      inFlight = false;
     }
-  }, 600);
+  }, 800);
 }
 
 async function restartService() {
@@ -8116,7 +8123,16 @@ async function restartService() {
     btn.classList.add('pending');
   }
 
-  const prevInstanceId = (st && st.instance_id) || '';
+  let prevInstanceId = (st && st.instance_id) || '';
+  if (!prevInstanceId) {
+    try {
+      const pr = await fetch('/api/ping?_ts=' + Date.now(), { cache: 'no-store' });
+      if (pr.ok) {
+        const pj = await pr.json();
+        if (pj && pj.instance_id) prevInstanceId = pj.instance_id;
+      }
+    } catch (e) {}
+  }
   _restartPending = true;
   showRestartOverlay('正在触发重启并断开旧进程连接...', false);
 

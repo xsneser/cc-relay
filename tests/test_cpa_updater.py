@@ -9,7 +9,7 @@ from unittest import mock
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import cpa_updater
+from relay.upstreams import cpa_updater
 import cc_relay
 
 

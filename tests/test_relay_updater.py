@@ -13,7 +13,10 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import relay_updater
+import urllib.error
+import urllib.request
+import cc_relay
+from relay.upstreams import relay_updater
 
 
 class RelayUpdaterUnitTests(unittest.TestCase):
@@ -42,8 +45,8 @@ class RelayUpdaterUnitTests(unittest.TestCase):
                 stdout="?? config.json\n?? prompts.json\n?? records.jsonl\n?? serve.log\n",
                 stderr=""
             )
-            with mock.patch("relay_updater._is_git_repo", return_value=True), \
-                 mock.patch("relay_updater._run_git", return_value=mock_res):
+            with mock.patch("relay.upstreams.relay_updater._is_git_repo", return_value=True), \
+                 mock.patch("relay.upstreams.relay_updater._run_git", return_value=mock_res):
                 dirty, msg = updater._check_dirty()
                 self.assertFalse(dirty)
                 self.assertEqual(msg, "")
@@ -56,8 +59,8 @@ class RelayUpdaterUnitTests(unittest.TestCase):
                 stdout=" M cc_relay.py\n?? untracked_script.py\n",
                 stderr=""
             )
-            with mock.patch("relay_updater._is_git_repo", return_value=True), \
-                 mock.patch("relay_updater._run_git", return_value=mock_res):
+            with mock.patch("relay.upstreams.relay_updater._is_git_repo", return_value=True), \
+                 mock.patch("relay.upstreams.relay_updater._run_git", return_value=mock_res):
                 dirty, msg = updater._check_dirty()
                 self.assertTrue(dirty)
                 self.assertIn("本地存在未提交的修改", msg)
@@ -81,7 +84,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
             with mock.patch.object(updater, "_request_github_api", return_value=(200, payload, "etag-123")), \
                  mock.patch.object(updater, "_fetch_remote_ui_version", return_value="2.4.2"), \
                  mock.patch.object(updater, "_get_local_commit", return_value={"sha": "1111111222222233333334444444555555556666", "short_sha": "1111111", "branch": "master"}), \
-                 mock.patch("relay_updater._run_git") as mock_git:
+                 mock.patch("relay.upstreams.relay_updater._run_git") as mock_git:
 
                 # mock ancestor check to returncode=1 (not ancestor -> update available)
                 def git_side_effect(args, cwd, timeout=30):
@@ -115,7 +118,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
 
             with mock.patch.object(updater, "_request_github_api", return_value=(200, payload, "etag-123")), \
                  mock.patch.object(updater, "_get_local_commit", return_value={"sha": "1111111222222233333334444444555555556666", "short_sha": "1111111", "branch": "dev"}), \
-                 mock.patch("relay_updater._run_git") as mock_git:
+                 mock.patch("relay.upstreams.relay_updater._run_git") as mock_git:
 
                 def git_side_effect(args, cwd, timeout=30):
                     if "merge-base" in args:
@@ -144,8 +147,8 @@ class RelayUpdaterUnitTests(unittest.TestCase):
                      {"sha": "new12345", "short_sha": "new1234", "branch": "master"}
                  ]), \
                  mock.patch.object(updater, "_compile_check", return_value=(True, "")), \
-                 mock.patch("relay_updater._is_git_repo", return_value=True), \
-                 mock.patch("relay_updater._run_git", return_value=mock.Mock(returncode=0, stdout="", stderr="")):
+                 mock.patch("relay.upstreams.relay_updater._is_git_repo", return_value=True), \
+                 mock.patch("relay.upstreams.relay_updater._run_git", return_value=mock.Mock(returncode=0, stdout="", stderr="")):
 
                 ok, msg = updater.apply_update(restart_callback=lambda: restart_called.set())
                 self.assertTrue(ok)
@@ -166,8 +169,8 @@ class RelayUpdaterUnitTests(unittest.TestCase):
             with mock.patch.object(updater, "_check_dirty", return_value=(False, "")), \
                  mock.patch.object(updater, "_get_local_commit", return_value={"sha": "old_safe_sha", "short_sha": "old", "branch": "master"}), \
                  mock.patch.object(updater, "_compile_check", return_value=(False, "SyntaxError: invalid syntax")), \
-                 mock.patch("relay_updater._is_git_repo", return_value=True), \
-                 mock.patch("relay_updater._run_git", side_effect=record_git):
+                 mock.patch("relay.upstreams.relay_updater._is_git_repo", return_value=True), \
+                 mock.patch("relay.upstreams.relay_updater._run_git", side_effect=record_git):
 
                 ok, msg = updater.apply_update()
                 self.assertFalse(ok)
@@ -182,7 +185,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
             dirty, msg = updater._check_dirty()
             self.assertFalse(dirty)
 
-            with mock.patch("relay_updater._download_and_extract_zip", return_value=True) as mock_dl, \
+            with mock.patch("relay.upstreams.relay_updater._download_and_extract_zip", return_value=True) as mock_dl, \
                  mock.patch.object(updater, "_compile_check", return_value=(True, "")):
 
                 ok, res_msg = updater.apply_update(restart_callback=lambda: restart_called.set())
@@ -231,7 +234,7 @@ class RelayUpdaterUnitTests(unittest.TestCase):
             updater = relay_updater.RelayUpdater(td)
             with mock.patch("sys.frozen", True, create=True), \
                  mock.patch.object(updater, "_find_release_installer", return_value=("https://example.com/CC-Relay-Setup.exe", "CC-Relay-Setup.exe")), \
-                 mock.patch("relay_updater._download_file", return_value=True) as mock_dl, \
+                 mock.patch("relay.upstreams.relay_updater._download_file", return_value=True) as mock_dl, \
                  mock.patch("subprocess.Popen") as mock_popen, \
                  mock.patch("os._exit") as mock_exit:
 
@@ -242,6 +245,107 @@ class RelayUpdaterUnitTests(unittest.TestCase):
                 cmd_called = mock_popen.call_args_list[0][0][0]
                 self.assertIn("/SILENT", cmd_called)
                 mock_exit.assert_called_once_with(0)
+
+
+class RelayUpdateAPITests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.conf_path = os.path.join(cls.temp_dir.name, "config.json")
+        cls.records_path = os.path.join(cls.temp_dir.name, "records.jsonl")
+
+        with open(cls.conf_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "listen_host": "127.0.0.1",
+                "listen_port": 0,
+                "ui_port": 0,
+                "fake_api_key": "sk-test",
+            }, f)
+
+        cls.orig_conf = cc_relay.CONF
+        cls.orig_records = cc_relay.RECORDS
+        cc_relay.CONF = cls.conf_path
+        cc_relay.RECORDS = cls.records_path
+
+        cls.server = cc_relay.ExclusiveThreadingHTTPServer(("127.0.0.1", 0), cc_relay.UIHandler)
+        cls.port = cls.server.server_address[1]
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cc_relay.CONF = cls.orig_conf
+        cc_relay.RECORDS = cls.orig_records
+        cls.temp_dir.cleanup()
+
+    def _get(self, path, headers=None):
+        hdrs = {
+            "Host": f"127.0.0.1:{self.port}",
+            "Origin": f"http://127.0.0.1:{self.port}",
+            "Sec-Fetch-Site": "same-origin",
+        }
+        if headers:
+            hdrs.update(headers)
+        url = f"http://127.0.0.1:{self.port}{path}"
+        req = urllib.request.Request(url, headers=hdrs)
+        return urllib.request.urlopen(req, timeout=5)
+
+    def _post(self, path, payload=b"{}", headers=None):
+        hdrs = {
+            "Content-Type": "application/json",
+            "Host": f"127.0.0.1:{self.port}",
+            "Origin": f"http://127.0.0.1:{self.port}",
+            "X-CC-Relay-UI": "1",
+            "Sec-Fetch-Site": "same-origin",
+        }
+        if headers:
+            hdrs.update(headers)
+        url = f"http://127.0.0.1:{self.port}{path}"
+        req = urllib.request.Request(url, data=payload, headers=hdrs, method="POST")
+        return urllib.request.urlopen(req, timeout=5)
+
+    def test_stats_snapshot_contains_relay_update(self):
+        with self._get("/api/status") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode())
+            self.assertIn("relay_update", data)
+            ru = data["relay_update"]
+            self.assertIn("is_git", ru)
+            self.assertIn("current_version", ru)
+            self.assertIn("has_update", ru)
+
+    def test_get_relay_version_endpoint(self):
+        with self._get("/api/relay/version") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode())
+            self.assertIn("is_git", data)
+            self.assertIn("branch", data)
+            self.assertIn("latest_version", data)
+
+    def test_post_relay_check_rejects_missing_ui_header(self):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            self._post("/api/relay/check", payload=b"{}", headers={"X-CC-Relay-UI": "0"})
+        self.assertEqual(ctx.exception.code, 403)
+
+    def test_post_relay_check_triggers_check(self):
+        with mock.patch("relay.upstreams.relay_updater.RelayUpdater.request_check") as mock_check:
+            mock_check.return_value = {"status": "ok", "checking": True}
+            with self._post("/api/relay/check", payload=b"{}") as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode())
+                self.assertEqual(data.get("status"), "ok")
+                mock_check.assert_called_once()
+
+    def test_post_relay_update_triggers_update(self):
+        with mock.patch("relay.upstreams.relay_updater.RelayUpdater.request_update") as mock_update:
+            mock_update.return_value = {"status": "updating", "update_state": "queued"}
+            with self._post("/api/relay/update", payload=b"{}") as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode())
+                self.assertEqual(data.get("update_state"), "queued")
+                mock_update.assert_called_once()
 
 
 if __name__ == "__main__":

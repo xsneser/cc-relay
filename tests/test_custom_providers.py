@@ -14,7 +14,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from unittest import mock
-from openai_adapter import (
+from relay.adapters.openai_adapter import (
     anthropic_to_openai_request,
     openai_to_anthropic_response,
     OpenAIToAnthropicStreamAdapter,

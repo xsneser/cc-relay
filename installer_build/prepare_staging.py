@@ -86,8 +86,16 @@ def main():
         "config.example.json",
         "stop_relay.bat",
         "start_relay.bat",
-        "THIRD_PARTY_NOTICES.md",
+        "docs/THIRD_PARTY_NOTICES.md",
+        "lifecycle.py",
     ]
+    (STAGING_DIR / "data").mkdir(parents=True, exist_ok=True)
+    (STAGING_DIR / "logs").mkdir(parents=True, exist_ok=True)
+    try:
+        open(STAGING_DIR / "data" / ".gitkeep", "w").close()
+        open(STAGING_DIR / "logs" / ".gitkeep", "w").close()
+    except Exception:
+        pass
     print("\n[*] 复制主程序与控制台资源...")
     for rf in root_files:
         p = REPO_ROOT / rf
@@ -123,7 +131,7 @@ def main():
         pass
 
     build_info = {
-        "version": "2.4.10",
+        "version": "2.4.11",
         "commit": commit_sha,
         "short_sha": short_sha,
         "branch": branch_name,
@@ -132,6 +140,10 @@ def main():
     with open(STAGING_DIR / "build_info.json", "w", encoding="utf-8") as f:
         json.dump(build_info, f, indent=2, ensure_ascii=False)
     print(f"  [+] build_info.json -> commit={short_sha or 'unknown'}, branch={branch_name}")
+
+    # 1.2 复制核心服务模块 relay/
+    print("\n[*] 复制核心服务模块 relay/ ...")
+    copy_tree_filtered(REPO_ROOT / "relay", STAGING_DIR / "relay", ["__pycache__", "*.pyc"])
 
     # 2. 复制 codex-proxy 目录 (排除日志、更新暂存与本地私有配置)
     print("\n[*] 复制 Codex (CPA) 组件资源...")

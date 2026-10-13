@@ -36,7 +36,12 @@ except Exception:
     pass
 
 # 2. 静默模式标准输出重定向 (防止 Windows GUI 无控制台时写 stdout/stderr 报错)
-LOG_FILE = os.path.join(EXE_DIR, "relay_launch.log")
+LOGS_DIR = os.path.join(EXE_DIR, "logs")
+try:
+    os.makedirs(LOGS_DIR, exist_ok=True)
+except Exception:
+    pass
+LOG_FILE = os.path.join(LOGS_DIR, "relay_launch.log")
 class SafeWriter:
     def __init__(self, filename):
         self.filename = filename
@@ -143,6 +148,9 @@ def ensure_essential_files():
             except Exception as e:
                 print(f"写入 config.json 失败: {e}", file=sys.stderr)
 
+    # 释放与同步 ui.html
+    _sync_ui_file()
+
 def _extract_ui_version(filepath):
     """从 ui.html 头部提取 <meta name="ui-version" content="..."> 版本号元数据"""
     if not os.path.isfile(filepath):
@@ -194,54 +202,6 @@ def _sync_ui_file():
             shutil.copy2(bundled_ui, ui_path)
         except Exception:
             pass
-
-def ensure_essential_files():
-    # 初始化 config.json
-    conf_path = os.path.join(EXE_DIR, "config.json")
-    if not os.path.isfile(conf_path):
-        bundled_conf = os.path.join(BUNDLE_DIR, "config.json")
-        if os.path.isfile(bundled_conf) and bundled_conf != conf_path:
-            try:
-                shutil.copy2(bundled_conf, conf_path)
-            except Exception:
-                pass
-        else:
-            default_conf = {
-                "listen_host": "127.0.0.1",
-                "listen_port": 8400,
-                "ui_port": 8610,
-                "mode": "hybrid",
-                "model": "deepseek-chat",
-                "upstreams": {
-                    "deepseek": {
-                        "url": "https://api.deepseek.com",
-                        "auth_type": "bearer",
-                        "key_env": "DEEPSEEK_API_KEY",
-                        "real_key": ""
-                    },
-                    "antigravity": {
-                        "url": "http://127.0.0.1:8045",
-                        "auth_type": "bearer",
-                        "key_env": "ANTIGRAVITY_API_KEY",
-                        "real_key": ""
-                    },
-                    "codex": {
-                        "url": "http://127.0.0.1:8317",
-                        "auth_type": "bearer",
-                        "key_env": "CODEX_PROXY_KEY",
-                        "real_key": ""
-                    }
-                }
-            }
-            try:
-                import json
-                with open(conf_path, "w", encoding="utf-8") as f:
-                    json.dump(default_conf, f, ensure_ascii=False, indent=2)
-            except Exception as e:
-                print(f"写入 config.json 失败: {e}", file=sys.stderr)
-
-    # 释放与同步 ui.html
-    _sync_ui_file()
 
 # 4. 单实例与端口检测
 def is_port_busy(port, host="127.0.0.1"):

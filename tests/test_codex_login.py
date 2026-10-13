@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import codex_login
+from relay.upstreams import codex_login
 
 
 class CodexLoginTests(unittest.TestCase):
@@ -120,7 +120,7 @@ class CodexLoginTests(unittest.TestCase):
         self.launch_patch.stop()
         error = OSError("not enough paging file")
         error.winerror = 1455
-        with mock.patch("codex_login.subprocess.Popen", side_effect=error):
+        with mock.patch("relay.upstreams.codex_login.subprocess.Popen", side_effect=error):
             with self.assertRaises(codex_login._SafeError) as caught:
                 self.login._launch()
         self.assertEqual(caught.exception.message, "系统资源不足，无法启动 Codex 登录服务")
@@ -186,14 +186,14 @@ class CodexLoginTests(unittest.TestCase):
         clock = [0.0]
         def pause(delay):
             clock[0] += delay
-        with mock.patch("codex_login.time.monotonic", side_effect=lambda: clock[0]), \
-             mock.patch("codex_login.time.sleep", side_effect=pause), \
+        with mock.patch("relay.upstreams.codex_login.time.monotonic", side_effect=lambda: clock[0]), \
+             mock.patch("relay.upstreams.codex_login.time.sleep", side_effect=pause), \
              mock.patch.object(self.login, "_port_open", side_effect=lambda: clock[0] >= 2), \
              mock.patch.object(self.login, "_management_works", return_value=True):
             self.assertTrue(self.login._wait_ready({}))
         clock[0] = 0
-        with mock.patch("codex_login.time.monotonic", side_effect=lambda: clock[0]), \
-             mock.patch("codex_login.time.sleep", side_effect=pause), \
+        with mock.patch("relay.upstreams.codex_login.time.monotonic", side_effect=lambda: clock[0]), \
+             mock.patch("relay.upstreams.codex_login.time.sleep", side_effect=pause), \
              mock.patch.object(self.login, "_port_open", return_value=False):
             self.assertFalse(self.login._wait_ready({}))
         self.assertLess(clock[0], 16)
@@ -202,9 +202,9 @@ class CodexLoginTests(unittest.TestCase):
         self.acl_patch.stop()
         self.login.runtime_dir.mkdir()
         completed = mock.Mock(returncode=0)
-        with mock.patch("codex_login.os.name", "nt"), \
-             mock.patch.dict("codex_login.os.environ", {"USERDOMAIN": "ACME", "USERNAME": "Dev"}, clear=False), \
-             mock.patch("codex_login.subprocess.run", return_value=completed) as run:
+        with mock.patch("relay.upstreams.codex_login.os.name", "nt"), \
+             mock.patch.dict("relay.upstreams.codex_login.os.environ", {"USERDOMAIN": "ACME", "USERNAME": "Dev"}, clear=False), \
+             mock.patch("relay.upstreams.codex_login.subprocess.run", return_value=completed) as run:
             self.login._lock_new_runtime_dir()
         command = run.call_args.args[0]
         self.assertEqual(command[:5], ["icacls", str(self.login.runtime_dir), "/inheritance:r", "/grant:r", "ACME\\Dev:(OI)(CI)F"])
