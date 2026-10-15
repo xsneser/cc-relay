@@ -4548,6 +4548,16 @@
             </label>
           </div>
 
+          <!-- Antigravity Tools 可执行文件路径配置 -->
+          <div class="config-field" style="margin:12px 0;">
+            <div class="config-field-label-row">
+              <label for="cfg-antigravity-exe">Antigravity Tools 程序路径</label>
+              <span id="cfg-antigravity-exe-status" style="font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px;">自动探测中…</span>
+            </div>
+            <input type="text" id="cfg-antigravity-exe" class="cfg-base" placeholder="留空则自动检测系统安装路径 (antigravity-tools.exe)">
+            <small class="config-lock-hint" id="hint-antigravity-exe">用于随中转按需自启动及一键唤醒界面；留空将自动探测 LocalAppData 等系统标准安装路径</small>
+          </div>
+
           <!-- Base URL 与 API Key -->
           <div class="config-grid">
             <div class="config-field">
@@ -7446,6 +7456,24 @@ function renderConfig(cfg) {
   if ($('#cfg-antigravity-autostart')) {
     $('#cfg-antigravity-autostart').checked = !!(tools.antigravity && tools.antigravity.auto_start);
   }
+  const agTools = tools.antigravity || {};
+  if ($('#cfg-antigravity-exe')) {
+    $('#cfg-antigravity-exe').value = agTools.exe || '';
+  }
+  const agExeStatus = $('#cfg-antigravity-exe-status');
+  if (agExeStatus) {
+    if (agTools.detected_exe) {
+      const srcText = agTools.exe_source === 'standard' ? '（已自动检测系统安装路径）' :
+        (agTools.exe_source === 'path' ? '（已从 PATH 检测）' : '（已生效）');
+      agExeStatus.textContent = '● ' + agTools.detected_exe + ' ' + srcText;
+      agExeStatus.style.color = '#10b981';
+      agExeStatus.title = agTools.detected_exe;
+    } else {
+      agExeStatus.textContent = '○ 未检测到程序文件，请检查安装';
+      agExeStatus.style.color = '#ef4444';
+      agExeStatus.title = '';
+    }
+  }
 
   // Voice
   const vConf = tools.voice || {};
@@ -7562,7 +7590,8 @@ function collectConfig() {
         outbound_proxy: ($('#cfg-codex-outbound-proxy') ? $('#cfg-codex-outbound-proxy').value : '').trim()
       },
       antigravity: {
-        auto_start: !!($('#cfg-antigravity-autostart') && $('#cfg-antigravity-autostart').checked)
+        auto_start: !!($('#cfg-antigravity-autostart') && $('#cfg-antigravity-autostart').checked),
+        exe: ($('#cfg-antigravity-exe') ? $('#cfg-antigravity-exe').value : '').trim()
       },
       voice: {
         auto_start: !!($('#cfg-voice-autostart') && $('#cfg-voice-autostart').checked),
@@ -8329,7 +8358,16 @@ async function controlUpstream(provider) {
     } else if (res.result === 'not-running') {
       toast(meta.label + ' 已经停止');
     } else if (typeof res.result === 'string' && (res.result.startsWith('start-failed') || ['no-exe', 'stop-failed', 'timeout'].includes(res.result))) {
-      const errDetail = res.result.startsWith('start-failed') ? (res.result.replace(/^start-failed:?\s*/, '') || '启动失败') : res.result;
+      let errDetail = res.result;
+      if (res.result === 'no-exe') {
+        errDetail = '未检测到程序文件，请确认已安装或在设置中指定路径';
+      } else if (res.result.startsWith('start-failed')) {
+        errDetail = res.result.replace(/^start-failed:?\s*/, '') || '启动失败，请检查文件权限或运行环境';
+      } else if (res.result === 'timeout') {
+        errDetail = '等待服务启动超时，请打开客户端检查端口与服务状态';
+      } else if (res.result === 'stop-failed') {
+        errDetail = '停止服务失败，请检查进程权限或手动退出';
+      }
       throw new Error(errDetail);
     } else {
       toast(meta.label + (action === 'start' ? ' 启动指令已受理，正在后台载入…' : ' 代理已停止'));

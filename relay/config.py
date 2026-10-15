@@ -9,6 +9,11 @@ from urllib.parse import urlsplit
 
 from relay.constants import CONF, get_conf_path
 
+try:
+    from relay.antigravity_paths import inspect_antigravity_exe
+except ImportError:
+    from antigravity_paths import inspect_antigravity_exe
+
 CONF_LOCK = threading.Lock()
 _CODEX_LOGIN = None
 _CODEX_LOGIN_LOCK = threading.Lock()
@@ -314,6 +319,16 @@ def _config_public_view(conf):
         "semantic_correction_context_chars": int(v_conf.get("semantic_correction_context_chars") or 4000),
     }
 
+    ag_info = inspect_antigravity_exe(conf)
+    configured_ag_exe = str(conf.get("antigravity_exe") or (tools_conf.get("antigravity") or {}).get("exe") or "")
+    antigravity_view = {
+        "auto_start": bool((tools_conf.get("antigravity") or {}).get("auto_start", True)),
+        "exe": configured_ag_exe,
+        "detected_exe": ag_info.get("path") or "",
+        "exe_source": ag_info.get("source") or "missing",
+        "exe_fallback": bool(ag_info.get("is_fallback", False)),
+    }
+
     return {
         "listen_host": str(conf.get("listen_host") or "127.0.0.1"),
         "listen_port": int(conf.get("listen_port") or 8400),
@@ -323,9 +338,7 @@ def _config_public_view(conf):
         "traffic_paused": bool(conf.get("traffic_paused", False)),
         "tools": {
             "codex": codex_view,
-            "antigravity": {
-                "auto_start": bool((tools_conf.get("antigravity") or {}).get("auto_start", True)),
-            },
+            "antigravity": antigravity_view,
             "voice": voice_view,
         },
         "custom_providers": custom_providers,
@@ -394,9 +407,19 @@ def _apply_config_update(conf, data):
                 except Exception:
                     pass
         if "antigravity" in tools_update:
+            ag_patch = tools_update["antigravity"]
+            if not isinstance(ag_patch, dict):
+                raise ValueError("tools.antigravity must be an object")
             ag = tools.setdefault("antigravity", {})
-            if "auto_start" in tools_update["antigravity"]:
-                ag["auto_start"] = bool(tools_update["antigravity"]["auto_start"])
+            if "auto_start" in ag_patch:
+                ag["auto_start"] = bool(ag_patch["auto_start"])
+            if "exe" in ag_patch:
+                exe_val = str(ag_patch["exe"]).strip()
+                if exe_val:
+                    candidate["antigravity_exe"] = exe_val
+                else:
+                    candidate.pop("antigravity_exe", None)
+                    ag.pop("exe", None)
         if "voice" in tools_update:
             v_patch = tools_update["voice"]
             if not isinstance(v_patch, dict):
@@ -493,6 +516,15 @@ def _apply_config_update(conf, data):
                     entry["models"] = [str(x).strip() for x in m_val if str(x).strip()]
                 elif isinstance(m_val, str):
                     entry["models"] = [x.strip() for x in m_val.replace(",", "\n").splitlines() if x.strip()]
+
+    if "antigravity_exe" in data:
+        raw_ag_exe = data["antigravity_exe"]
+        if raw_ag_exe is not None:
+            ag_exe_str = str(raw_ag_exe).strip()
+            if ag_exe_str:
+                candidate["antigravity_exe"] = ag_exe_str
+            else:
+                candidate.pop("antigravity_exe", None)
 
     _dispatch_save_conf(candidate)
     return _config_public_view(candidate)

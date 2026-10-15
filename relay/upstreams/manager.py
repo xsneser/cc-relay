@@ -15,10 +15,12 @@ try:
     from relay.upstreams import antigravity_updater
     from relay.upstreams.cpa_updater import CPAUpdater
     from relay.upstreams import relay_updater
+    from relay.antigravity_paths import find_antigravity_exe
 except ImportError:
     import antigravity_updater
     from cpa_updater import CPAUpdater
     import relay_updater
+    from antigravity_paths import find_antigravity_exe
 from relay.config import get_codex_login, load_conf
 from relay.constants import BASE, UPSTREAM_DEGRADED_TTL, _tcp
 from relay.router import CODEX_MODELS, DEEPSEEK_MODELS, GEMINI_MODELS, _key_for, _upstream_conf
@@ -298,8 +300,8 @@ def antigravity_start(conf):
     global _ANTIGRAVITY_PROCESS, _ANTIGRAVITY_EXE
     if antigravity_up(conf):
         return "already"
-    exe = (conf.get("antigravity_exe") or "").strip()
-    if not exe or not os.path.exists(exe):
+    exe = find_antigravity_exe(conf)
+    if not exe:
         return "no-exe"
     try:
         _sub = getattr(sys.modules.get("cc_relay"), "subprocess", subprocess)
@@ -365,11 +367,11 @@ def antigravity_owned():
 def antigravity_open_ui(conf=None):
     """Wake up or launch Antigravity Tools window so user can access its native update interface."""
     conf = conf or load_conf()
-    exe = (conf.get("antigravity_exe") or "").strip()
+    exe = find_antigravity_exe(conf)
     if not exe:
-        exe = os.path.expandvars(r"%LOCALAPPDATA%\Antigravity Tools\antigravity-tools.exe")
-    if not os.path.exists(exe):
-        return {"ok": False, "error": f"未找到 Antigravity Tools 可执行文件: {exe}"}
+        raw_cfg = (conf.get("antigravity_exe") or "").strip()
+        target_hint = f": {raw_cfg}" if raw_cfg else ""
+        return {"ok": False, "error": f"未找到 Antigravity Tools 可执行文件{target_hint}"}
 
     try:
         subprocess.Popen([exe], cwd=os.path.dirname(exe))

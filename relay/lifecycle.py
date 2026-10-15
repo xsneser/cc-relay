@@ -10,6 +10,11 @@ cc-relay 生命周期管理 (被 claude wrapper 调用)
 import os, sys, time, json, socket, subprocess
 from urllib.parse import urlparse
 
+try:
+    from relay.antigravity_paths import find_antigravity_exe
+except ImportError:
+    from antigravity_paths import find_antigravity_exe
+
 BASE = os.environ.get("CC_RELAY_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONF = os.path.join(BASE, "config.json")
 RELAY = os.path.join(BASE, "cc_relay.py")
@@ -82,8 +87,8 @@ def antigravity_ensure(conf=None):
     conf = conf or _load_conf()
     if antigravity_up(conf):
         return "already"
-    exe = (conf.get("antigravity_exe") or "").strip()
-    if not exe or not os.path.exists(exe):
+    exe = find_antigravity_exe(conf)
+    if not exe:
         return "no-exe"
     try:
         subprocess.Popen([exe], cwd=os.path.dirname(exe),

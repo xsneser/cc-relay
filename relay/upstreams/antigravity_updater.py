@@ -17,6 +17,11 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
+try:
+    from relay.antigravity_paths import find_antigravity_exe
+except ImportError:
+    from antigravity_paths import find_antigravity_exe
+
 REPO = "lbjlaq/Antigravity-Manager"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 DEFAULT_UPSTREAM_URL = "http://127.0.0.1:8045"
@@ -100,7 +105,7 @@ class AntigravityUpdater:
     def __init__(self, upstream_url=DEFAULT_UPSTREAM_URL, exe_path=None, proxy_provider=None,
                  interval=4 * 3600, cache_ttl=2 * 3600):
         self.upstream_url = upstream_url.rstrip("/")
-        self.exe_path = exe_path or DEFAULT_EXE
+        self.exe_path = exe_path or find_antigravity_exe() or DEFAULT_EXE
         self.proxy_provider = proxy_provider or (lambda: "")
         self.interval = interval
         self.cache_ttl = cache_ttl
@@ -332,16 +337,18 @@ def get_antigravity_updater(conf=None):
     """Singleton getter for AntigravityUpdater."""
     global _UPDATER_INSTANCE
     with _UPDATER_LOCK:
+        c = conf or {}
+        exe = find_antigravity_exe(c) or DEFAULT_EXE
         if _UPDATER_INSTANCE is None:
-            c = conf or {}
             upstreams = c.get("upstreams") or {}
             ag_up = upstreams.get("antigravity") or {}
             base_url = ag_up.get("base") or DEFAULT_UPSTREAM_URL
-            exe = (c.get("antigravity_exe") or "").strip() or DEFAULT_EXE
             proxy_getter = lambda: _proxy_url_from_conf(conf)
             _UPDATER_INSTANCE = AntigravityUpdater(
                 upstream_url=base_url,
                 exe_path=exe,
                 proxy_provider=proxy_getter,
             )
+        elif conf is not None and exe:
+            _UPDATER_INSTANCE.exe_path = exe
         return _UPDATER_INSTANCE

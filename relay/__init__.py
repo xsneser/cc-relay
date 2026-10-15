@@ -206,6 +206,11 @@ from relay.voice_bridge import (
     voice_stop,
     voice_up,
 )
+from relay.antigravity_paths import (
+    find_antigravity_exe,
+    get_standard_antigravity_candidates,
+    inspect_antigravity_exe,
+)
 from relay import adapters, lifecycle, upstreams, voice_context
 
 __all__ = [k for k in list(globals().keys()) if not k.startswith("__")]
