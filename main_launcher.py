@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CC Relay - Windows 独立打包与后台静默启动主入口 (main_launcher.py)
-用于 PyInstaller 编译为 cc-relay.exe 或由 pythonw 直接静默双击运行。
+CC Relay - Windows 源码版后台静默启动主入口 (main_launcher.py)
+用于由 pythonw 或 python 直接静默启动运行。
 功能:
-  1. 自动定位执行目录，将 config.json / records.jsonl / prompts.json 锚定在 exe 同级目录
-  2. 若初次运行，自动从预置模板初始化 config.json 与 ui.html
+  1. 自动定位执行目录，将 config.json / records.jsonl / prompts.json 锚定在当前项目目录
+  2. 若初次运行，自动从预置模板初始化 config.json
   3. 单实例检测: 若服务已在运行，不重复拉起，直接唤起默认浏览器打开控制台
   4. 后台静默运行 8400 (API) 与 8610 (UI) 服务
   5. 自动拉起默认浏览器展示 Matrix 深色控制台
 """
 import os
 import sys
-import re
 import time
 import socket
 import shutil
@@ -20,23 +19,19 @@ import threading
 import webbrowser
 from types import SimpleNamespace
 
-# 1. 确定运行路径 (兼容 PyInstaller 打包与源码运行)
-if getattr(sys, 'frozen', False):
-    EXE_DIR = os.path.dirname(os.path.abspath(sys.executable))
-    BUNDLE_DIR = getattr(sys, '_MEIPASS', EXE_DIR)
-else:
-    EXE_DIR = os.path.dirname(os.path.abspath(__file__))
-    BUNDLE_DIR = EXE_DIR
+# 1. 确定运行路径 (源码运行)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EXE_DIR = BASE_DIR
 
-# 确保中转服务的所有数据文件持久化在 exe 同级目录
-os.environ["CC_RELAY_DIR"] = EXE_DIR
+# 确保中转服务的所有数据文件持久化在项目根目录
+os.environ["CC_RELAY_DIR"] = BASE_DIR
 try:
-    os.chdir(EXE_DIR)
+    os.chdir(BASE_DIR)
 except Exception:
     pass
 
 # 2. 静默模式标准输出重定向 (防止 Windows GUI 无控制台时写 stdout/stderr 报错)
-LOGS_DIR = os.path.join(EXE_DIR, "logs")
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
 try:
     os.makedirs(LOGS_DIR, exist_ok=True)
 except Exception:
@@ -67,25 +62,18 @@ def show_error(title, msg):
     except Exception:
         print(f"[{title}] {msg}", file=sys.stderr)
 
-# 3. 初始资源文件释放/补全
+# 3. 初始资源文件补全
 def ensure_essential_files():
-    conf_path = os.path.join(EXE_DIR, "config.json")
+    conf_path = os.path.join(BASE_DIR, "config.json")
     if not os.path.isfile(conf_path):
-        # 优先使用同目录或打包内的 config.example.json
-        ex_paths = [
-            os.path.join(EXE_DIR, "config.example.json"),
-            os.path.join(BUNDLE_DIR, "config.example.json"),
-            os.path.join(BUNDLE_DIR, "config.json")
-        ]
+        ex_path = os.path.join(BASE_DIR, "config.example.json")
         copied = False
-        for ep in ex_paths:
-            if os.path.isfile(ep):
-                try:
-                    shutil.copy2(ep, conf_path)
-                    copied = True
-                    break
-                except Exception:
-                    pass
+        if os.path.isfile(ex_path):
+            try:
+                shutil.copy2(ex_path, conf_path)
+                copied = True
+            except Exception:
+                pass
         if not copied:
             # 内置最小默认配置
             default_conf = {
@@ -148,60 +136,9 @@ def ensure_essential_files():
             except Exception as e:
                 print(f"写入 config.json 失败: {e}", file=sys.stderr)
 
-    # 释放与同步 ui.html
-    _sync_ui_file()
-
-def _extract_ui_version(filepath):
-    """从 ui.html 头部提取 <meta name="ui-version" content="..."> 版本号元数据"""
-    if not os.path.isfile(filepath):
-        return None
-    try:
-        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-            for _ in range(80):
-                line = f.readline()
-                if not line:
-                    break
-                m = re.search(r'<meta\s+name=["\']ui-version["\']\s+content=["\']([0-9]+(?:\.[0-9]+)*)["\']', line)
-                if m:
-                    return tuple(int(p) for p in m.group(1).split('.'))
-    except Exception:
-        pass
-    return None
-
-def _sync_ui_file():
-    """释放并同步 ui.html，防止打包运行或旧版解压导致磁盘残留旧文件使得修复失效"""
-    ui_path = os.path.join(EXE_DIR, "ui.html")
-    bundled_ui = os.path.join(BUNDLE_DIR, "ui.html")
-    if not os.path.isfile(bundled_ui) or bundled_ui == ui_path:
-        return
-
-    should_copy = False
+    ui_path = os.path.join(BASE_DIR, "ui.html")
     if not os.path.isfile(ui_path):
-        should_copy = True
-    else:
-        bundled_ver = _extract_ui_version(bundled_ui)
-        disk_ver = _extract_ui_version(ui_path)
-        if bundled_ver is not None:
-            if disk_ver is None or bundled_ver > disk_ver:
-                should_copy = True
-        else:
-            try:
-                if os.path.getmtime(bundled_ui) > os.path.getmtime(ui_path):
-                    should_copy = True
-            except Exception:
-                pass
-
-    if should_copy:
-        try:
-            if os.path.isfile(ui_path):
-                bak_path = ui_path + ".bak"
-                try:
-                    shutil.copy2(ui_path, bak_path)
-                except Exception:
-                    pass
-            shutil.copy2(bundled_ui, ui_path)
-        except Exception:
-            pass
+        show_error("CC Relay 启动警告", "未在项目根目录找到 ui.html，控制台界面可能无法加载。")
 
 # 4. 单实例与端口检测
 def is_port_busy(port, host="127.0.0.1"):

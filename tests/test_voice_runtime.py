@@ -59,22 +59,6 @@ class TestVoiceRuntime(unittest.TestCase):
             resolved = find_voice_python()
             self.assertIn(".venv", resolved)
 
-    @mock.patch("tools.voice_input.runtime._check_module_in_interpreter", return_value=True)
-    @mock.patch("tools.voice_input.runtime._probe_interpreter")
-    def test_find_voice_python_prefers_bundled_runtime(self, mock_probe, mock_check_mod):
-        # 模拟安装包内置便携 runtime 存在且完备时，优先选择 bundled runtime
-        mock_probe.return_value = True
-
-        def is_file_mock(path_obj=None):
-            p_str = str(path_obj) if path_obj is not None else ""
-            if "runtime" in p_str:
-                return True
-            return False
-
-        with mock.patch("pathlib.Path.is_file", autospec=True, side_effect=is_file_mock):
-            resolved = find_voice_python()
-            self.assertIn("runtime", resolved)
-
     def test_diagnose_python_environment_returns_dict(self):
         diag = diagnose_python_environment(sys.executable)
         self.assertIsInstance(diag, dict)

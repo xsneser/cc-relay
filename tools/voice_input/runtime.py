@@ -133,12 +133,7 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
     if env_py:
         candidates.append(env_py)
 
-    # 2. 检查安装包内置的自包含便携运行时 (tools/voice_input/runtime/python.exe)
-    bundled_py_win = repo_root / "tools" / "voice_input" / "runtime" / "python.exe"
-    if bundled_py_win.is_file():
-        candidates.append(str(bundled_py_win.resolve()))
-
-    # 3. 检查 tools/voice_input/.venv 专属独立虚拟环境 (开发调试环境)
+    # 2. 检查 tools/voice_input/.venv 专属独立虚拟环境 (开发调试环境)
     venv_py_win = repo_root / "tools" / "voice_input" / ".venv" / "Scripts" / "python.exe"
     if venv_py_win.is_file():
         candidates.append(str(venv_py_win.resolve()))
@@ -147,8 +142,8 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
     if venv_py_nix.is_file():
         candidates.append(str(venv_py_nix.resolve()))
 
-    # 3. 检查当前主进程的 sys.executable (非打包环境)
-    if not getattr(sys, "frozen", False) and sys.executable:
+    # 3. 检查当前主进程的 sys.executable
+    if sys.executable:
         candidates.append(sys.executable)
 
     # 4. 检查全局 python 命令
@@ -204,7 +199,7 @@ def find_voice_python(repo_root: Optional[Path] = None, engine: Optional[str] = 
             return cand
 
     # 最终保底
-    if not getattr(sys, "frozen", False) and sys.executable:
+    if sys.executable:
         return sys.executable
     return "python"
 

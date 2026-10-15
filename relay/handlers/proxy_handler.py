@@ -103,7 +103,7 @@ def _is_client_socket_closed(sock):
 
 class Relay(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = f"cc-relay/{getattr(relay_updater, 'RELAY_VERSION', '2.4.9')}"
+    server_version = f"cc-relay/{getattr(relay_updater, 'RELAY_VERSION', '2.4.12')}"
 
     def log_message(self, *a):
         pass

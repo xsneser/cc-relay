@@ -9,7 +9,7 @@ This guide walks through a complete `cc-relay` setup from scratch: installation,
 ## 📋 Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
-2. [Windows One-Click Installer & Cooperative Uninstaller (Recommended)](#2-windows-one-click-installer--cooperative-uninstaller-recommended)
+2. [Windows Quick Launch & Script Management](#2-windows-quick-launch--script-management)
 3. [Getting the Source and Initial Configuration](#3-getting-the-source-and-initial-configuration)
 4. [Wiring Up the Three Upstreams](#4-wiring-up-the-three-upstreams)
    - [4.1 DeepSeek Direct](#41-deepseek-direct)
@@ -29,7 +29,7 @@ This guide walks through a complete `cc-relay` setup from scratch: installation,
 
 - **Python 3.8 or newer** (must be on your system `PATH`)
   - Check with: `python --version` or `python3 --version`
-  - *Note: cc-relay is built purely on the standard library — no pip packages are required.*
+  - *Note: cc-relay core relay and dashboard are built purely on standard library — no pip packages are required.*
 - **Claude Code CLI** (installed and working)
   - Check with: `claude --version`
 - **Git**
@@ -37,28 +37,19 @@ This guide walks through a complete `cc-relay` setup from scratch: installation,
 
 ---
 
-## 2. Windows One-Click Installer & Cooperative Uninstaller (Recommended)
+## 2. Windows Quick Launch & Script Management
 
-### 2.1 Installer Highlights
-- **Out of the box**: Packaged with Inno Setup 6 as standard installer `CC-Relay-Setup-v2.4.11.exe`, installed by default into `%LOCALAPPDATA%\Programs\CC-Relay`, **no administrator privileges required**.
-- **Integrated Offline Voice ASR**: Bundles an embedded portable Python 3.10 runtime, `sherpa-onnx`, and the **SenseVoice INT8 model (~228MB)**. Users can immediately use global speech typing and desktop capsule even on a clean system without network or system Python.
-- **Automatic Environment Setup**: Automatically adds `{app}\wrapper` to the user's `PATH` environment variable and broadcasts `WM_SETTINGCHANGE`. Open any terminal and type `claude` to connect to the local relay.
-- **Asset Protection**: Upgrades preserve existing `config.json` without overwriting API keys or routing rules.
-
-### 2.2 Uninstaller Wizard & Multi-component Cleanup
-When uninstalling from Windows "Installed Apps" or Control Panel, the uninstaller (`unins000.exe`) provides interactive options:
-1. **[X] Voice Companion offline runtime & SenseVoice model (~380MB)** *(Checked by default)*: Terminates port 8401 process and frees disk space.
-2. **[ ] Codex Gateway (CLIProxyAPI :8317)** *(Unchecked by default)*: Clears proxy directory and credentials.
-3. **[ ] Gemini Companion (launches Antigravity Tools native uninstaller)** *(Unchecked by default)*: Automatically launches Antigravity Tools native `uninstall.exe`.
-4. **[ ] Remove user personal configuration (config.json, call logs, API keys)** *(Unchecked by default)*.
-5. **Clean PATH restoration**: Automatically removes wrapper from `PATH`.
-
-### 2.3 Building the Installer from Source
-Run the one-click build pipeline:
-```cmd
-scripts\build_installer.bat
-```
-Produces `output\CC-Relay-Setup-v2.4.11.exe`.
+cc-relay provides convenient batch scripts for managing the background service on Windows:
+- **`start_relay.bat` (Start Service)**:
+  - Automatically locates project directory and silently starts `main_launcher.py` via `pythonw`;
+  - Initializes `config.json` from template if missing;
+  - Opens the web console at `http://127.0.0.1:8610`.
+- **`stop_relay.bat` (Stop Service)**:
+  - Cleanly identifies and terminates processes listening on ports 8400 (API) and 8610 (UI);
+  - Ensures full socket teardown with non-blocking delays.
+- **`restart_relay.bat` (Restart Service)**:
+  - Safely stops the service, waits for socket release, and starts the service with `CC_RELAY_NO_BROWSER=1` (suppresses duplicate browser tab opening);
+  - Invoked automatically by the web console's "Restart" button via a detached background process.
 
 ---
 

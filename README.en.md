@@ -44,13 +44,12 @@ Through one unified endpoint it aggregates and dispatches to three upstreams —
   - Live throughput monitoring, token accounting, prompt-cache hit-rate visualisation.
   - Full request/response packet viewer with multi-dimensional filtering and per-call deep dive.
   - Switch the global route, tune each tier's model, and configure thinking effort and trimming switches from the browser.
-- 🔄 **Fully automatic lifecycle watchdog**:
-  - A lightweight Windows wrapper and watchdog service spin the relay up alongside `claude` in seconds, and put it back to sleep once every Claude instance has exited.
-- 📦 **Windows One-Click Installer & Cooperative Uninstaller (v2.4.11)**:
-  - **Self-contained offline ASR**: Bundles an embedded portable Python 3.10 runtime and SenseVoice INT8 offline model (~228MB), delivering instant desktop capsule voice typing with zero prerequisites.
-  - **Dual ASR Engines & Contextual Semantic Correction**: Supports SenseVoice ultra-fast CPU offline ASR and Qwen 1.7B high-precision ASR; automatically matches foreground terminal Claude CLI context to align code identifiers and homophones, with adjustable reasoning effort slider.
-  - **Cooperative Uninstallation**: Interactive uninstaller wizard allowing selective cleanup of Codex proxy, Gemini Antigravity, and ASR models.
-  - **Online Silent Updates**: Check and upgrade in-place seamlessly without losing user API keys and configurations.
+- 🔄 **Fully automatic lifecycle & batch service control**:
+  - Convenient batch scripts `start_relay.bat`, `stop_relay.bat`, and `restart_relay.bat` for background silent launch and reliable restarts on Windows.
+  - One-click server restart directly from the Web console via a detached background process ensuring clean port handover.
+  - Safe in-place auto-updates checking latest GitHub commits with Python syntax verification and automatic rollback.
+- 🎙️ **Voice typing capsule with contextual semantic correction**:
+  - Supports SenseVoice fast offline CPU engine and Qwen 1.7B high-precision engine; automatically matches terminal Claude CLI context for code identifier correction with adjustable thinking slider.
 
 ---
 

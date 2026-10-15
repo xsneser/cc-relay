@@ -101,96 +101,75 @@ _RESTART_LOCK = threading.Lock()
 _RESTART_QUEUED = False
 
 
-def _powershell_quote(arg):
-    """Safely quote a string for PowerShell single-quoted string literal."""
-    return "'" + str(arg).replace("'", "''") + "'"
+def _restart_script_path():
+    """Return the absolute path to restart_relay.bat."""
+    return os.path.join(BASE, "restart_relay.bat")
 
 
-def _restart_launch_spec():
-    """Determine (executable, args_list, working_dir) for restarting."""
-    if getattr(sys, "frozen", False):
-        exe = sys.executable
-        return exe, [], os.path.dirname(os.path.abspath(exe))
-
-    exe = sys.executable
-    script = os.path.abspath(sys.argv[0])
-    base_name = os.path.basename(script).lower()
-
-    if base_name == "main_launcher.py":
-        return exe, [script], os.path.dirname(script)
-    elif base_name == "cc_relay.py":
-        return exe, [script, "serve"], BASE
-    else:
-        launcher = os.path.join(BASE, "main_launcher.py")
-        if os.path.isfile(launcher):
-            return exe, [launcher], BASE
-        return exe, [os.path.join(BASE, "cc_relay.py"), "serve"], BASE
-
-
-def _build_restart_supervisor_command(pid, launch_spec):
-    """Build the PowerShell command that waits for old PID to exit then launches the new process."""
-    exe, args_list, cwd = launch_spec
-    exe_q = _powershell_quote(exe)
-    cwd_q = _powershell_quote(cwd)
-    if args_list:
-        args_q = ", ".join(_powershell_quote(a) for a in args_list)
-        arg_part = f"-ArgumentList @({args_q})"
-    else:
-        arg_part = ""
-
-    return (
-        f"Wait-Process -Id {pid} -Timeout 15 -ErrorAction SilentlyContinue; "
-        f"Start-Sleep -Milliseconds 1200; "
-        f"if (-not (Get-Process -Id {pid} -ErrorAction SilentlyContinue)) {{ "
-        f"Start-Process -WindowStyle Hidden -FilePath {exe_q} {arg_part} -WorkingDirectory {cwd_q} "
-        f"}}"
-    )
-
-
-def _spawn_restart_supervisor(pid=None):
-    """Launch the detached PowerShell supervisor process. Returns True on success."""
-    if pid is None:
-        pid = os.getpid()
-
-    launch_spec = _restart_launch_spec()
-    ps_cmd = _build_restart_supervisor_command(pid, launch_spec)
-
-    ps_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-    if not os.path.isfile(ps_exe):
-        ps_exe = "powershell.exe"
-
-    detached_flags = (
-        getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
-        | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
-    )
+def _spawn_restart_process():
+    """Launch the detached restart batch script. Returns True on success."""
+    script_path = _restart_script_path()
+    if not os.path.isfile(script_path):
+        print(f"[ERROR] Restart script not found: {script_path}", file=sys.stderr)
+        return False
 
     env = dict(os.environ)
     env["CC_RELAY_NO_BROWSER"] = "1"
     env["CC_RELAY_RESTART"] = "1"
 
-    try:
-        subprocess.Popen(
-            [ps_exe, "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
-             "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
-            creationflags=detached_flags,
-            close_fds=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env,
+    if sys.platform == "win32":
+        comspec = os.environ.get("COMSPEC", "cmd.exe")
+        detached_flags = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+            | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
         )
-        return True
-    except Exception as e:
-        print(f"[ERROR] Failed to spawn restart supervisor: {e}", file=sys.stderr)
-        return False
+        log_path = os.path.join(BASE, "logs", "relay_restart.log")
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as log_out:
+                subprocess.Popen(
+                    [comspec, "/c", script_path],
+                    cwd=BASE,
+                    creationflags=detached_flags,
+                    close_fds=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log_out,
+                    stderr=log_out,
+                    env=env,
+                )
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to spawn restart process: {e}", file=sys.stderr)
+            return False
+    else:
+        try:
+            subprocess.Popen(
+                [sys.executable, os.path.join(BASE, "cc_relay.py"), "serve"],
+                cwd=BASE,
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+            )
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to spawn restart process: {e}", file=sys.stderr)
+            return False
+
+
+# 兼容别名
+_spawn_restart_supervisor = _spawn_restart_process
 
 
 def _restart_worker():
     global _RESTART_QUEUED
     try:
-        time.sleep(0.4)
-        if _spawn_restart_supervisor():
+        # 短暂休眠 0.3 秒，确保 API 响应已完全写入并发送给客户端
+        time.sleep(0.3)
+        if _spawn_restart_process():
+            time.sleep(0.5)
             os._exit(0)
     except Exception as e:
         print(f"[ERROR] Restart worker error: {e}", file=sys.stderr)
@@ -236,7 +215,7 @@ def _dispatch_fn(name, default_fn, *args, **kwargs):
 
 
 def read_ui_content():
-    """读取 UI 页面: 优先读工作目录外部文件(方便调试热更), 回退读 PyInstaller 资源目录"""
+    """读取 UI 页面文件"""
     p = os.path.join(BASE, "ui.html")
     if os.path.isfile(p):
         try:
@@ -244,14 +223,6 @@ def read_ui_content():
                 return f.read()
         except Exception:
             pass
-    if hasattr(sys, "_MEIPASS"):
-        bp = os.path.join(sys._MEIPASS, "ui.html")
-        if os.path.isfile(bp):
-            try:
-                with open(bp, "rb") as f:
-                    return f.read()
-            except Exception:
-                pass
     raise FileNotFoundError("ui.html not found")
 
 
@@ -266,7 +237,7 @@ class UIHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
-        if self.path.split("?")[0].startswith(("/api/codex/login", "/api/cpa/", "/api/restart", "/api/relay/", "/api/antigravity/")):
+        if self.path.split("?")[0].startswith(("/api/codex/login", "/api/cpa/", "/api/restart", "/api/relay/", "/api/antigravity/", "/api/ping")):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
@@ -686,7 +657,7 @@ class UIHandler(BaseHTTPRequestHandler):
                 self._json({"error": "Invalid restart request body"}, 400)
                 return
             self.close_connection = True
-            self._json({"ok": True, "message": "cc-relay restarting..."})
+            self._json({"ok": True, "message": "cc-relay restarting...", "instance_id": _PROCESS_INSTANCE_ID})
             try:
                 self.wfile.flush()
             except Exception:

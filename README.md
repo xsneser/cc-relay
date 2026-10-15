@@ -44,13 +44,12 @@
   - 实时吞吐监控、Token 消耗统计、Prompt Cache 命中率可视化分析。
   - 完整请求/响应报文抓包查看器，支持多维过滤、单条调用深度回溯。
   - 支持在 Web 端一键切换全局路由、微调各档位模型、配置思考强度与指纹修剪开关。
-- 🔄 **全自动生命周期看门狗 (Lifecycle Automation)**：
-  - 提供轻量 Windows Wrapper 与看门狗服务，伴随 `claude` 命令按需秒起，并在所有 Claude 实例退出后自动休眠回收资源。
-- 📦 **Windows 一键安装包与协同卸载向导 (Installer & Uninstaller)**：
-  - **自包含 ASR 离线环境**：集成免配置 Python 3.10 便携运行时与 SenseVoice INT8 语音大模型，用户电脑无需预装 Python，安装即享全局悬浮胶囊语音打字。
-  - **双引擎与大模型上下文语义校正 (v2.4.11)**：支持 SenseVoice 极速离线与 Qwen 1.7B 高精度双引擎；深度对齐 Claude CLI 终端上下文进行同音词与代码标识符智能校正，并支持自主拖动滑块调节推理思考强度。
-  - **伴侣组件协同卸载**：卸载程序原生弹窗询问用户是否同步卸载 Codex (CPA)、Gemini (拉起 Antigravity Tools 官方卸载 exe) 及 ASR 离线大模型，一键彻底清理。
-  - **双模在线静默升级**：安装版客户端点击「检查更新」时自动流式下载最新安装包并执行 `/SILENT` 静默升级与自动重启，绝对保护现有 API Keys。
+- 🔄 **全自动生命周期与一键服务管理 (Lifecycle Automation & Service Control)**：
+  - 提供 `start_relay.bat`、`stop_relay.bat`、`restart_relay.bat` 便捷脚本，支持 Windows 后台静默启动、端口安全清理与可靠重启。
+  - 支持在 Web 监控大盘一键重启中转服务，基于独立脱钩批处理进程平滑关闭旧服务并拉起新实例，端口自动安全接管。
+  - 支持在线自动检查更新与一键热升级，自动检测 GitHub 最新提交，执行 Python 语法安全校验与平滑重启。
+- 🎙️ **全局语音输入胶囊与上下文语义校正 (Voice Typing Capsule)**：
+  - 支持 SenseVoice 极速离线与 Qwen 1.7B 高精度双引擎；深度对齐 Claude CLI 终端上下文进行同音词与代码标识符智能校正，并支持自主拖动滑块调节推理思考强度。
 
 ---
 
@@ -92,41 +91,41 @@
 
 ## ⚡ 快速上手
 
-### 方式 1：Windows 一键安装包（推荐，开箱即用）
-
-1. 下载最新的 `CC-Relay-Setup-v2.4.11.exe`（内置便携 ASR 语音环境与 SenseVoice 模型，免 Python 配置）；
-2. 运行安装包，按照向导完成安装，默认安装至 `%LOCALAPPDATA%\Programs\CC-Relay`；
-3. 安装完成后自动启动中转并在浏览器打开 Web 监控大盘 **[http://127.0.0.1:8610](http://127.0.0.1:8610)**；
-4. 开发者如需从源码构建安装包，双击运行批处理即可：
-   ```cmd
-   scripts\build_installer.bat
-   ```
-
-### 方式 2：源码多平台运行（开发者模式）
-
-#### 1. 克隆与初始化配置
+### 1. 克隆与初始化配置
 
 ```bash
 git clone https://github.com/xsneser/cc-relay.git
 cd cc-relay
 
-# 从模板创建本地配置文件
-cp config.example.json config.json
+# 从模板创建本地配置文件 (Windows 使用 copy，Linux/macOS 使用 cp)
+copy config.example.json config.json
 ```
 
-编辑 `config.json`，至少填入你的真实密钥（例如 DeepSeek API Key）：
+编辑 `config.json`，填入你的真实上游密钥（例如 DeepSeek API Key）：
 ```json
 {
-  "real_deepseek_key": "sk-your-real-deepseek-key",
+  "upstreams": {
+    "deepseek": {
+      "base": "https://api.deepseek.com/anthropic",
+      "key_env": "DEEPSEEK_API_KEY"
+    }
+  },
   "fake_api_key": "sk-relay-local-0000"
 }
 ```
 
-#### 2. 启动服务
+### 2. 启动服务
 
+**Windows 用户（推荐批处理脚本）**：
+- **启动服务**：双击 `start_relay.bat`（后台静默启动并在浏览器自动打开控制台）
+- **停止服务**：双击 `stop_relay.bat`（安全释放 8400 与 8610 端口）
+- **重启服务**：双击 `restart_relay.bat`（或直接在 Web 界面右上角点击「重启」按钮）
+
+**命令行 / 多平台运行（Linux / macOS）**：
 ```bash
 # 前台运行（包含核心 Relay 8400 与 Web UI 8610）
 python cc_relay.py serve
+```
 ```
 
 访问浏览器控制台：**[http://127.0.0.1:8610](http://127.0.0.1:8610)**

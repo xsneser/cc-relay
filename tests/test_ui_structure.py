@@ -25,8 +25,10 @@ class TestUIStructure(unittest.TestCase):
         self.assertGreater(len(scripts), 0, "ui.html should contain at least one <script> tag")
 
     def test_launcher_version_extractor(self):
-        import main_launcher
-        ver = main_launcher._extract_ui_version(str(UI_PATH))
+        from relay.upstreams.relay_updater import extract_ui_version, parse_version_tuple
+        ver_str = extract_ui_version(self.html[:4096])
+        self.assertIsNotNone(ver_str)
+        ver = parse_version_tuple(ver_str)
         self.assertIsNotNone(ver)
         self.assertGreaterEqual(ver, (2, 1, 1))
 

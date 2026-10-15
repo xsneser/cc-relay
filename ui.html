@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="ui-version" content="2.4.11">
+<meta name="ui-version" content="2.4.12">
 <title>CC Relay · Claude Code LLM 切换中转站</title>
 <style>
   :root {
@@ -3576,7 +3576,7 @@
           <div class="title-row">
             <h1>CC Relay</h1>
             <span class="brand-sub">Matrix Core</span>
-            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.11</button>
+            <button type="button" class="version-badge" id="relay-version-badge" title="CC Relay 运行版本，点击查看详情或检查更新">v2.4.12</button>
           </div>
           <div class="sub">
             CLAUDE CODE ROUTING ENGINE · <em>HOT RELOAD OPTIMAL</em>
@@ -3729,7 +3729,7 @@
           <div class="cpa-card-title" id="relay-card-title">CC Relay</div>
           <div class="cpa-card-sub" id="relay-card-sub">
             <span class="cpa-card-status" id="relay-card-status">更新信息</span>
-            <span class="cpa-card-ver" id="relay-card-ver">v2.4.1</span>
+            <span class="cpa-card-ver" id="relay-card-ver">v2.4.12</span>
           </div>
         </div>
         <button type="button" class="cpa-card-close" id="relay-card-close" aria-label="关闭通知">
@@ -6401,7 +6401,7 @@ function updateDetailStatusPill(subpage) {
     }
   } else {
     pill.className = 'cfg-mod-badge on';
-    pill.textContent = '● 核心运行中 v2.4.11';
+    pill.textContent = '● 核心运行中 v2.4.12';
   }
 }
 
@@ -8052,7 +8052,7 @@ function startRestartPolling(prevInstanceId) {
   showRestartOverlay('正在断开旧连接并启动新进程...', false);
 
   const startTime = Date.now();
-  const maxWaitMs = 25000;
+  const maxWaitMs = 35000;
   let inFlight = false;
 
   _restartPollTimer = setInterval(async () => {
@@ -8062,7 +8062,7 @@ function startRestartPolling(prevInstanceId) {
       clearInterval(_restartPollTimer);
       _restartPollTimer = null;
       _restartPending = false;
-      showRestartOverlay('25 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
+      showRestartOverlay('35 秒内未能重新连接。服务可能仍在启动，或重启失败。', true);
       const btn = $('#btn-restart');
       if (btn) {
         btn.disabled = false;
@@ -8153,6 +8153,10 @@ async function restartService() {
       } catch (e) {}
       throw new Error(errDetail);
     }
+    try {
+      const j = await res.json();
+      if (j && j.instance_id) prevInstanceId = j.instance_id;
+    } catch (e) {}
   } catch (err) {
     const msg = (err && err.message) || String(err);
     const isNetworkAbort = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed') || msg.includes('abort');

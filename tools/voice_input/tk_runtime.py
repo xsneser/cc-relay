@@ -85,14 +85,7 @@ def find_tcl_tk_dirs(py_exe: Optional[str] = None) -> Tuple[Optional[Path], Opti
         except Exception:
             pass
 
-    # 2. 项目内 tools/voice_input/runtime/tcl
-    try:
-        repo_runtime_tcl = Path(__file__).resolve().parent / "runtime" / "tcl"
-        candidates_roots.append(repo_runtime_tcl)
-    except Exception:
-        pass
-
-    # 3. sys.base_prefix / "tcl"
+    # 2. sys.base_prefix / "tcl"
     try:
         base_prefix = Path(sys.base_prefix)
         candidates_roots.append(base_prefix / "tcl")

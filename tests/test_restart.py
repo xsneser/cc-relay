@@ -19,46 +19,26 @@ import main_launcher
 
 
 class RestartUnitTests(unittest.TestCase):
-    def test_powershell_quote(self):
-        self.assertEqual(cc_relay._powershell_quote("simple"), "'simple'")
-        self.assertEqual(cc_relay._powershell_quote("with space"), "'with space'")
-        self.assertEqual(cc_relay._powershell_quote("with'quote"), "'with''quote'")
-        self.assertEqual(cc_relay._powershell_quote(r"C:\Program Files\cc-relay"), r"'C:\Program Files\cc-relay'")
+    def test_restart_script_path(self):
+        p = cc_relay._restart_script_path()
+        self.assertTrue(p.endswith("restart_relay.bat"))
+        self.assertEqual(os.path.basename(p), "restart_relay.bat")
 
-    def test_restart_launch_spec_frozen(self):
-        with mock.patch.object(sys, "frozen", True, create=True), \
-             mock.patch.object(sys, "executable", r"C:\app\cc-relay.exe"):
-            exe, args, cwd = cc_relay._restart_launch_spec()
-            self.assertEqual(exe, r"C:\app\cc-relay.exe")
-            self.assertEqual(args, [])
-            self.assertEqual(cwd, r"C:\app")
+    def test_spawn_restart_process_missing_script(self):
+        with mock.patch("os.path.isfile", return_value=False):
+            self.assertFalse(cc_relay._spawn_restart_process())
 
-    def test_restart_launch_spec_main_launcher(self):
-        with mock.patch.object(sys, "frozen", False, create=True), \
-             mock.patch.object(sys, "executable", r"C:\python\python.exe"), \
-             mock.patch.object(sys, "argv", [r"C:\repo\main_launcher.py"]):
-            exe, args, cwd = cc_relay._restart_launch_spec()
-            self.assertEqual(exe, r"C:\python\python.exe")
-            self.assertEqual(args, [os.path.abspath(r"C:\repo\main_launcher.py")])
-            self.assertEqual(cwd, os.path.dirname(os.path.abspath(r"C:\repo\main_launcher.py")))
-
-    def test_restart_launch_spec_cc_relay(self):
-        with mock.patch.object(sys, "frozen", False, create=True), \
-             mock.patch.object(sys, "executable", r"C:\python\python.exe"), \
-             mock.patch.object(sys, "argv", [r"C:\repo\cc_relay.py", "serve"]):
-            exe, args, cwd = cc_relay._restart_launch_spec()
-            self.assertEqual(exe, r"C:\python\python.exe")
-            self.assertEqual(args, [os.path.abspath(r"C:\repo\cc_relay.py"), "serve"])
-
-    def test_build_restart_supervisor_command(self):
-        spec = (r"C:\app\cc-relay.exe", [], r"C:\app")
-        cmd = cc_relay._build_restart_supervisor_command(1234, spec)
-        self.assertIn("Wait-Process -Id 1234", cmd)
-        self.assertIn("Start-Sleep -Milliseconds 1200", cmd)
-        self.assertIn("Get-Process -Id 1234", cmd)
-        self.assertIn("Start-Process", cmd)
-        self.assertIn(r"'C:\app\cc-relay.exe'", cmd)
-        self.assertIn(r"-WorkingDirectory 'C:\app'", cmd)
+    def test_spawn_restart_process_success(self):
+        with mock.patch("os.path.isfile", return_value=True), \
+             mock.patch("subprocess.Popen") as mock_popen:
+            self.assertTrue(cc_relay._spawn_restart_process())
+            mock_popen.assert_called_once()
+            called_args = mock_popen.call_args[0][0]
+            called_env = mock_popen.call_args[1].get("env") or {}
+            self.assertEqual(called_env.get("CC_RELAY_NO_BROWSER"), "1")
+            self.assertEqual(called_env.get("CC_RELAY_RESTART"), "1")
+            if sys.platform == "win32":
+                self.assertIn("restart_relay.bat", " ".join(called_args))
 
     def test_create_exclusive_server_success(self):
         srv = cc_relay.create_exclusive_server(("127.0.0.1", 0), cc_relay.UIHandler, max_wait_sec=2.0)
@@ -103,15 +83,6 @@ class RestartUnitTests(unittest.TestCase):
         with mock.patch("relay.handlers.ui_handler.ExclusiveThreadingHTTPServer", side_effect=fake_init):
             with self.assertRaises(PermissionError):
                 cc_relay.create_exclusive_server(("127.0.0.1", 9999), cc_relay.UIHandler, max_wait_sec=2.0)
-
-    def test_spawn_restart_supervisor_sets_restart_env(self):
-        with mock.patch("subprocess.Popen") as mock_popen, \
-             mock.patch.object(cc_relay, "_restart_launch_spec", return_value=(r"C:\app\cc.exe", [], r"C:\app")):
-            self.assertTrue(cc_relay._spawn_restart_supervisor(pid=9999))
-            mock_popen.assert_called_once()
-            called_env = mock_popen.call_args[1].get("env") or {}
-            self.assertEqual(called_env.get("CC_RELAY_NO_BROWSER"), "1")
-            self.assertEqual(called_env.get("CC_RELAY_RESTART"), "1")
 
     def test_schedule_restart_single_flight(self):
         with mock.patch("threading.Thread") as mock_thread:

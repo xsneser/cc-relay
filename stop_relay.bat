@@ -12,14 +12,7 @@ echo.
 
 set KILLED=0
 
-:: 1. 尝试结束打包的 exe 进程
-taskkill /F /IM cc-relay.exe >nul 2>&1
-if %errorlevel%==0 (
-    echo [OK] 已终止 cc-relay.exe 进程。
-    set KILLED=1
-)
-
-:: 2. 尝试结束占用 8400 (API) 端口的后台进程
+:: 1. 尝试结束占用 8400 (API) 端口的后台进程
 for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8400" ^| findstr "LISTENING"') do (
     if not "%%a"=="" (
         taskkill /F /PID %%a >nul 2>&1
@@ -30,7 +23,7 @@ for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8400" ^| findstr "LI
     )
 )
 
-:: 3. 尝试结束占用 8610 (UI) 端口的后台进程
+:: 2. 尝试结束占用 8610 (UI) 端口的后台进程
 for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8610" ^| findstr "LISTENING"') do (
     if not "%%a"=="" (
         taskkill /F /PID %%a >nul 2>&1
@@ -51,4 +44,5 @@ if %KILLED%==1 (
 )
 
 echo.
-timeout /t 3 >nul
+ping -n 3 127.0.0.1 >nul
+exit /b 0

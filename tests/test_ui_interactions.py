@@ -581,7 +581,7 @@ class TestUIInteractions(unittest.TestCase):
         renderRelayProgressCard({
           has_update: true,
           latest_version: '2.5.0',
-          current_version: '2.4.11',
+          current_version: '2.4.12',
           update_state: 'idle'
         });
         assert.equal($('#relay-card-title').textContent, 'CC Relay');
